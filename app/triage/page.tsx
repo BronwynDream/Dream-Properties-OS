@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import DropZone from "./DropZone";
+export const dynamic = "force-dynamic";
 
 type QueueRow = {
   id: string;
@@ -79,7 +80,11 @@ export default async function TriagePage() {
             <tbody>
               {queue.map((b) => (
                 <tr key={b.id}>
-                  <td className="strong">{b.label}</td>
+                  <td className="strong">
+                    <Link href={`/triage/${b.id}`} className="row-link">
+                      {b.label}
+                    </Link>
+                  </td>
                   <td>
                     <span className="pill">{b.status}</span>
                   </td>

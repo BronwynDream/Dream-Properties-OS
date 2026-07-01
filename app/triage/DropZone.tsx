@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { classifyBatch } from "./actions";
 
 // v1: choose a folder (or several nested folders). Each top-level folder becomes
 // one ingest_batch; files upload to the private 'staging' bucket and are recorded
@@ -76,6 +77,12 @@ export default function DropZone() {
           byte_size: f.size,
           status: "uploaded",
         });
+      }
+      // auto-classify the freshly uploaded batch
+      try {
+        await classifyBatch(batch.id);
+      } catch {
+        /* classification can also be run from the batch screen */
       }
       created++;
     }
