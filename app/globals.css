@@ -1,0 +1,130 @@
+:root {
+  --estuary: #0F2A63;
+  --navy: #132B84;
+  --gold: #C8A032;
+  --forest: #1C5B3A;
+  --mist: #EDF0F8;
+  --ink: #15203A;
+  --white: #ffffff;
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--mist);
+  color: var(--ink);
+  font-family: "Hanken Grotesk", system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, .display {
+  font-family: "Fraunces", Georgia, serif;
+  color: var(--estuary);
+  font-weight: 600;
+}
+
+.mono { font-family: "Spline Sans Mono", ui-monospace, monospace; }
+
+/* Gold tideline — the signature Estuary element */
+.tideline {
+  height: 3px;
+  background: linear-gradient(90deg, transparent, var(--gold) 40%, var(--gold) 60%, transparent);
+  border: 0;
+}
+
+/* Centered auth layout */
+.auth-wrap {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.card {
+  width: 100%;
+  max-width: 400px;
+  background: var(--white);
+  border-radius: 16px;
+  box-shadow: 0 10px 40px rgba(15, 42, 99, 0.12);
+  overflow: hidden;
+}
+
+.card-head {
+  background: var(--estuary);
+  color: var(--white);
+  padding: 28px 28px 22px;
+}
+.card-head .eyebrow {
+  font-family: "Spline Sans Mono", ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--gold);
+  margin: 0 0 6px;
+}
+.card-head h1 { color: var(--white); margin: 0; font-size: 24px; }
+
+.card-body { padding: 24px 28px 30px; }
+
+label { display: block; font-size: 13px; font-weight: 600; margin: 0 0 6px; color: var(--estuary); }
+.field { margin-bottom: 16px; }
+
+input {
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid #cbd4e8;
+  border-radius: 9px;
+  font-size: 15px;
+  font-family: inherit;
+}
+input:focus { outline: 2px solid var(--gold); border-color: var(--gold); }
+
+button.primary {
+  width: 100%;
+  padding: 12px;
+  background: var(--navy);
+  color: var(--white);
+  border: 0;
+  border-radius: 9px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+button.primary:hover { background: var(--estuary); }
+button.primary:disabled { opacity: 0.6; cursor: default; }
+
+.error {
+  background: #fdecec;
+  color: #a12020;
+  border: 1px solid #f3c2c2;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 13px;
+  margin-bottom: 14px;
+}
+
+/* Dashboard shell */
+.app-head {
+  background: var(--estuary);
+  color: var(--white);
+  padding: 18px 28px;
+}
+.app-head .eyebrow {
+  font-family: "Spline Sans Mono", ui-monospace, monospace;
+  font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--gold); margin: 0;
+}
+.app-head h1 { color: var(--white); margin: 2px 0 0; font-size: 22px; }
+.app-body { padding: 32px 28px; max-width: 900px; }
+.pill {
+  display: inline-block; padding: 3px 10px; border-radius: 999px;
+  background: var(--mist); color: var(--estuary); font-size: 12px; font-weight: 600;
+  font-family: "Spline Sans Mono", ui-monospace, monospace; text-transform: uppercase; letter-spacing: 0.08em;
+}
+button.ghost {
+  background: transparent; color: var(--white); border: 1px solid rgba(255,255,255,0.5);
+  border-radius: 8px; padding: 7px 12px; font-size: 13px; cursor: pointer;
+}
+button.ghost:hover { background: rgba(255,255,255,0.12); }

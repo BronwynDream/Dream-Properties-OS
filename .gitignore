@@ -16,7 +16,11 @@ Thumbs.db
 .idea/
 .vscode/
 
-# Node (for the future app workspace)
+# Node / Next.js
 node_modules/
 dist/
 build/
+.next/
+out/
+next-env.d.ts
+.vercel

@@ -79,6 +79,37 @@ insert into app_user (id, full_name, email, role, ppra_ffc) values
   ('<auth-uuid-vanessa>', 'Vanessa Eyre', 'vanessa@dreamknysna.co.za', 'agent', null);
 ```
 
+## Web app (Next.js)
+
+Phase A scaffold — a login-gated shell that proves auth + RLS against the live DB.
+
+```
+app/            Next.js App Router
+  login/        Supabase email+password sign-in
+  dashboard/    protected shell (shows the user's name + role)
+  auth/signout/ sign-out route
+lib/supabase/   browser + server + middleware clients (@supabase/ssr)
+middleware.ts   session refresh + gates /dashboard
+```
+
+**Run locally**
+```bash
+cp .env.example .env.local     # fill in the two NEXT_PUBLIC_SUPABASE_* values
+npm install
+npm run dev                    # http://localhost:3000
+```
+Get the values from Supabase → Project Settings → API: `Project URL` and the
+`anon` `public` key. (Both are browser-safe; RLS does the gating.)
+
+**Deploy (Vercel)**
+1. Vercel is linked to this repo — every push to `main` auto-deploys.
+2. In the Vercel project → Settings → Environment Variables, add
+   `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` (and later
+   `NEXT_PUBLIC_MAPBOX_TOKEN`). Redeploy so they take effect.
+3. Add the domain `app.dreamknysna.co.za` in Vercel → follow the one DNS record it shows.
+
+Build is verified: `npm run typecheck` and `npm run build` both pass.
+
 ## Status
 
 Schema v0.1 — first migration. RLS is a safe baseline (admin full; agents scoped to
