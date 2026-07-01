@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 
@@ -38,9 +39,12 @@ export default async function Dashboard() {
           You are signed in as <span className="pill">{role}</span>
         </p>
         <p style={{ color: "#5b6885", marginTop: 20, lineHeight: 1.6 }}>
-          This is the gated shell — proof that login, sessions and role-based access
-          are working end to end against the live database. The first working screen
-          (the migration triage queue) plugs in here next.
+          Signed in against the live database with role-based access working end to end.
+        </p>
+        <p style={{ marginTop: 24 }}>
+          <Link href="/triage" className="cta">
+            Open migration triage →
+          </Link>
         </p>
         {!profile && (
           <p className="error" style={{ marginTop: 20 }}>

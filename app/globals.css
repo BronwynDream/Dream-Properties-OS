@@ -128,3 +128,37 @@ button.ghost {
   border-radius: 8px; padding: 7px 12px; font-size: 13px; cursor: pointer;
 }
 button.ghost:hover { background: rgba(255,255,255,0.12); }
+
+.ghost-link {
+  color: var(--white); text-decoration: none; font-size: 14px;
+  border: 1px solid rgba(255,255,255,0.5); border-radius: 8px; padding: 7px 12px;
+}
+.ghost-link:hover { background: rgba(255,255,255,0.12); }
+
+.cta {
+  display: inline-block; background: var(--navy); color: var(--white);
+  text-decoration: none; padding: 12px 18px; border-radius: 9px; font-weight: 600;
+}
+.cta:hover { background: var(--estuary); }
+
+/* Drop zone */
+.dropzone {
+  border: 2px dashed #b6c1de; border-radius: 14px; background: var(--white);
+  padding: 40px 24px; text-align: center; cursor: pointer;
+  display: flex; flex-direction: column; gap: 6px; align-items: center;
+  transition: border-color 0.15s, background 0.15s;
+}
+.dropzone:hover { border-color: var(--gold); background: #fffdf6; }
+.dropzone strong { font-family: "Fraunces", Georgia, serif; color: var(--estuary); font-size: 18px; }
+.dropzone span { color: #5b6885; font-size: 13px; }
+.dz-msg { margin-top: 14px; color: var(--estuary); font-weight: 600; font-size: 14px; }
+
+/* Queue table */
+table.queue { width: 100%; border-collapse: collapse; margin-top: 28px; background: var(--white); border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(15,42,99,0.06); }
+table.queue th { text-align: left; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: #6b78a0; padding: 12px 14px; border-bottom: 2px solid var(--mist); font-family: "Spline Sans Mono", monospace; }
+table.queue td { padding: 12px 14px; border-bottom: 1px solid var(--mist); font-size: 14px; }
+table.queue td.strong { font-weight: 600; color: var(--estuary); }
+.tier { padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; text-transform: uppercase; }
+.tier-green { background: #e2f2e8; color: var(--forest); }
+.tier-amber { background: #fbefd9; color: #9a6414; }
+.tier-red { background: #fdecec; color: #a12020; }
