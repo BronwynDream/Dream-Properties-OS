@@ -1,0 +1,14 @@
+# Supabase project config for Dream Properties OS.
+# The project_id is the Supabase project ref — set it when you `supabase link`.
+project_id = "bon-bons-database"
+
+[db]
+major_version = 15
+
+[storage]
+enabled = true
+# 50 MiB upload cap — scanned deeds / plan sets can be large.
+file_size_limit = "50MiB"
+
+[auth]
+enabled = true

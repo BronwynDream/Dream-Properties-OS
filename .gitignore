@@ -1,0 +1,22 @@
+# Secrets / env — never commit
+.env
+.env.*
+*.local
+supabase/.env
+supabase/.temp/
+
+# Supabase CLI local state
+supabase/.branches/
+.supabase/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+
+# Node (for the future app workspace)
+node_modules/
+dist/
+build/
