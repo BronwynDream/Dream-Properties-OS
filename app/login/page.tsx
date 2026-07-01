@@ -1,11 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 export default function LoginPage() {
-  const router = useRouter();
   const supabase = createClient();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -25,8 +23,9 @@ export default function LoginPage() {
       setLoading(false);
       return;
     }
-    router.replace("/dashboard");
-    router.refresh();
+    // Full navigation so the server re-reads the freshly-set auth cookie.
+    // (Soft router navigation here races the cookie write and can hang.)
+    window.location.assign("/dashboard");
   }
 
   return (
