@@ -194,9 +194,14 @@ table.kv td { padding: 5px 4px; font-size: 13px; border-bottom: 1px solid var(--
 table.kv td.k { color: #8090b5; width: 45%; font-size: 11px; }
 table.kv td.v { color: var(--ink); font-weight: 600; }
 table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px; }
+.extract-groups { grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); }
+.kv-row { margin-bottom: 12px; }
+.kv-label { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+.kv-label .mono { font-size: 11px; color: #8090b5; }
+.kv-conf { font-size: 10px; color: #b3bdd6; }
 .kv-input {
-  width: 100%; padding: 4px 7px; border: 1px solid #d7deef; border-radius: 6px;
-  font-size: 13px; font-family: inherit; font-weight: 600; color: var(--ink); background: #fbfcfe;
+  width: 100%; padding: 8px 10px; border: 1px solid #d7deef; border-radius: 7px;
+  font-size: 14px; font-family: inherit; font-weight: 600; color: var(--ink); background: #fbfcfe;
 }
 .kv-input:focus { outline: 2px solid var(--gold); border-color: var(--gold); background: #fff; }
-.kv-input:disabled { background: transparent; border-color: transparent; }
+.kv-input:disabled { background: transparent; border-color: transparent; padding-left: 0; }

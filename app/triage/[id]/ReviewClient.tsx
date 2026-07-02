@@ -260,30 +260,26 @@ export default function ReviewClient({
             {Array.from(groups.entries()).map(([key, rows]) => (
               <div key={key} className="extract-card">
                 <h3>{key.replace(/_/g, " ")}</h3>
-                <table className="kv">
-                  <tbody>
-                    {rows.map((r) => (
-                      <tr key={r.id}>
-                        <td className="k mono">
-                          {r.target_table}.{r.target_field}
-                        </td>
-                        <td className="v">
-                          <input
-                            className="kv-input"
-                            value={values[r.id] ?? r.proposed_value ?? ""}
-                            disabled={committed}
-                            onChange={(e) =>
-                              setValues((prev) => ({ ...prev, [r.id]: e.target.value }))
-                            }
-                          />
-                        </td>
-                        <td className="c">
-                          {r.confidence != null ? `${Math.round(r.confidence * 100)}%` : ""}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                {rows.map((r) => (
+                  <div key={r.id} className="kv-row">
+                    <div className="kv-label">
+                      <span className="mono">
+                        {r.target_table}.{r.target_field}
+                      </span>
+                      <span className="kv-conf">
+                        {r.confidence != null ? `${Math.round(r.confidence * 100)}%` : ""}
+                      </span>
+                    </div>
+                    <input
+                      className="kv-input"
+                      value={values[r.id] ?? r.proposed_value ?? ""}
+                      disabled={committed}
+                      onChange={(e) =>
+                        setValues((prev) => ({ ...prev, [r.id]: e.target.value }))
+                      }
+                    />
+                  </div>
+                ))}
               </div>
             ))}
           </div>
