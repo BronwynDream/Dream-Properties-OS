@@ -52,7 +52,7 @@ export async function POST(request: Request) {
       { status: 500 },
     );
   }
-  const model = process.env.OPENROUTER_MODEL || "anthropic/claude-3.5-sonnet";
+  const model = process.env.OPENROUTER_MODEL || "openai/gpt-4o-mini";
 
   const { batchId } = (await request.json()) as { batchId?: string };
   if (!batchId) {
