@@ -19,10 +19,9 @@ const TEXT_TARGETS = [
   "fica_questionnaire",
 ];
 
-async function textFromFile(
-  filename: string,
-  buf: Buffer,
-): Promise<string> {
+const MAX_VISION_BYTES = 20 * 1024 * 1024; // 20 MB cap for a scanned doc
+
+async function textFromFile(filename: string, buf: Buffer): Promise<string> {
   const name = filename.toLowerCase();
   try {
     if (name.endsWith(".docx")) {
@@ -37,11 +36,30 @@ async function textFromFile(
       const out = await pdf(buf);
       return out.text ?? "";
     }
-    // eml / txt / html and anything else — treat as text
     return buf.toString("utf8");
   } catch {
     return "";
   }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function callOpenRouter(apiKey: string, model: string, messages: any[], plugins?: any[]) {
+  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": "https://app.dreamknysna.co.za",
+      "X-Title": "Dream Properties OS",
+    },
+    body: JSON.stringify({ model, temperature: 0, messages, ...(plugins ? { plugins } : {}) }),
+  });
+  if (!res.ok) {
+    const t = await res.text();
+    throw new Error(`OpenRouter ${res.status}: ${t.slice(0, 300)}`);
+  }
+  const json = await res.json();
+  return (json?.choices?.[0]?.message?.content ?? "") as string;
 }
 
 export async function POST(request: Request) {
@@ -65,15 +83,12 @@ export async function POST(request: Request) {
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  // Which document types are we willing to read?
   const { data: types } = await supabase
     .from("document_type")
     .select("id, code")
     .in("code", TEXT_TARGETS);
   const idToRank = new Map<string, number>();
-  (types ?? []).forEach((t) =>
-    idToRank.set(t.id, TEXT_TARGETS.indexOf(t.code)),
-  );
+  (types ?? []).forEach((t) => idToRank.set(t.id, TEXT_TARGETS.indexOf(t.code)));
 
   const { data: files } = await supabase
     .from("ingest_file")
@@ -92,68 +107,104 @@ export async function POST(request: Request) {
   if (candidates.length === 0) {
     return NextResponse.json({
       ok: false,
-      note: "No text-readable deal documents found. Classify the batch first, or this folder's agreement may be a scanned image (vision/OCR is a later step).",
+      note: "No deal documents found. Classify the batch first.",
     });
   }
 
-  // Gather text
-  let combined = "";
-  const used: string[] = [];
-  let primaryFileId: string | null = null;
+  // Download candidates, try text extraction on each.
+  const gathered: { id: string; filename: string; buf: Buffer; text: string }[] = [];
   for (const f of candidates) {
-    const { data: blob } = await supabase.storage
-      .from("staging")
-      .download(f.storage_path);
+    const { data: blob } = await supabase.storage.from("staging").download(f.storage_path);
     if (!blob) continue;
     const buf = Buffer.from(await blob.arrayBuffer());
     const text = await textFromFile(f.original_filename, buf);
-    if (text.trim().length < 40) continue; // scanned / empty
-    if (!primaryFileId) primaryFileId = f.id;
-    combined += `\n\n===== ${f.original_filename} =====\n${text}`;
-    used.push(f.original_filename);
-    // stash the extracted text for audit/search
-    await supabase.from("ingest_file").update({ ocr_text: text.slice(0, 100000) }).eq("id", f.id);
+    if (text.trim().length >= 40) {
+      await supabase.from("ingest_file").update({ ocr_text: text.slice(0, 100000) }).eq("id", f.id);
+    }
+    gathered.push({ id: f.id, filename: f.original_filename, buf, text });
   }
 
-  if (combined.trim().length < 40) {
-    return NextResponse.json({
-      ok: false,
-      note: "Documents had no extractable text (likely scanned images). Vision/OCR extraction is a later step.",
-    });
-  }
+  const textDocs = gathered.filter((g) => g.text.trim().length >= 40);
 
-  // Call OpenRouter
   let modelContent = "";
+  let usedFiles: string[] = [];
+  let primaryFileId: string | null = null;
+  let mode = "text";
+
   try {
-    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
+    if (textDocs.length > 0) {
+      // TEXT PATH
+      const combined = textDocs
+        .map((g) => `\n\n===== ${g.filename} =====\n${g.text}`)
+        .join("");
+      primaryFileId = textDocs[0].id;
+      usedFiles = textDocs.map((g) => g.filename);
+      modelContent = await callOpenRouter(apiKey, model, [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: buildUserPrompt(combined) },
+      ]);
+    } else {
+      // VISION / OCR PATH — pick the best scanned doc (prefer a PDF)
+      const primary =
+        gathered.find((g) => g.filename.toLowerCase().endsWith(".pdf")) ??
+        gathered.find((g) => /\.(png|jpe?g|webp)$/i.test(g.filename));
+      if (!primary) {
+        return NextResponse.json({
+          ok: false,
+          note: "No readable agreement (documents are neither text nor a supported scan format).",
+        });
+      }
+      if (primary.buf.length > MAX_VISION_BYTES) {
+        return NextResponse.json({
+          ok: false,
+          note: "Scanned document is too large to OCR in one pass; split it and retry.",
+        });
+      }
+
+      const name = primary.filename.toLowerCase();
+      const isPdf = name.endsWith(".pdf");
+      const b64 = primary.buf.toString("base64");
+      mode = isPdf ? "ocr-pdf" : "vision-image";
+      primaryFileId = primary.id;
+      usedFiles = [primary.filename];
+
+      const contentPart = isPdf
+        ? {
+            type: "file",
+            file: {
+              filename: primary.filename,
+              file_data: `data:application/pdf;base64,${b64}`,
+            },
+          }
+        : {
+            type: "image_url",
+            image_url: {
+              url: `data:image/${name.endsWith(".png") ? "png" : "jpeg"};base64,${b64}`,
+            },
+          };
+
+      const plugins = isPdf
+        ? [{ id: "file-parser", pdf: { engine: "mistral-ocr" } }]
+        : undefined;
+
+      modelContent = await callOpenRouter(
+        apiKey,
         model,
-        temperature: 0,
-        messages: [
+        [
           { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: buildUserPrompt(combined) },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: buildUserPrompt("(the document is attached — read it)") },
+              contentPart,
+            ],
+          },
         ],
-      }),
-    });
-    if (!res.ok) {
-      const t = await res.text();
-      return NextResponse.json(
-        { error: `OpenRouter ${res.status}: ${t.slice(0, 300)}` },
-        { status: 502 },
+        plugins,
       );
     }
-    const json = await res.json();
-    modelContent = json?.choices?.[0]?.message?.content ?? "";
   } catch (e) {
-    return NextResponse.json(
-      { error: `OpenRouter call failed: ${(e as Error).message}` },
-      { status: 502 },
-    );
+    return NextResponse.json({ error: (e as Error).message }, { status: 502 });
   }
 
   let rows;
@@ -166,7 +217,6 @@ export async function POST(request: Request) {
     );
   }
 
-  // Replace any prior proposals for this batch, then insert fresh
   await supabase.from("extraction").delete().eq("batch_id", batchId).eq("status", "proposed");
   if (rows.length > 0) {
     await supabase.from("extraction").insert(
@@ -185,5 +235,5 @@ export async function POST(request: Request) {
 
   await supabase.from("ingest_batch").update({ status: "extracted" }).eq("id", batchId);
 
-  return NextResponse.json({ ok: true, rowsInserted: rows.length, used, model });
+  return NextResponse.json({ ok: true, rowsInserted: rows.length, used: usedFiles, model, mode });
 }
