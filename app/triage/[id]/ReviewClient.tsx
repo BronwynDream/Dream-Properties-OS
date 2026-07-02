@@ -60,7 +60,7 @@ export default function ReviewClient({
       target_table: e.target_table,
       target_field: e.target_field,
       entity_hint: e.entity_hint,
-      value: values[e.id] ?? "",
+      value: values[e.id] ?? e.proposed_value ?? "",
     }));
     const res = await commitBatch(batch.id, rows);
     setCommitMsg(res.ok ? "Committed to live records ✓" : `Commit failed: ${res.error}`);
@@ -270,7 +270,7 @@ export default function ReviewClient({
                         <td className="v">
                           <input
                             className="kv-input"
-                            value={values[r.id] ?? ""}
+                            value={values[r.id] ?? r.proposed_value ?? ""}
                             disabled={committed}
                             onChange={(e) =>
                               setValues((prev) => ({ ...prev, [r.id]: e.target.value }))
