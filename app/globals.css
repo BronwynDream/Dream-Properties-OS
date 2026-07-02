@@ -205,3 +205,31 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
 }
 .kv-input:focus { outline: 2px solid var(--gold); border-color: var(--gold); background: #fff; }
 .kv-input:disabled { background: transparent; border-color: transparent; padding-left: 0; }
+
+/* Property record */
+.fact-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; margin-top: 8px; }
+.fact-grid > div { background: var(--white); border: 1px solid #e2e8f5; border-radius: 10px; padding: 12px 14px; }
+.fact-grid span { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: #8090b5; margin-bottom: 4px; font-family: "Spline Sans Mono", monospace; }
+.fact-grid b { color: var(--estuary); font-size: 15px; }
+.transfer-card { background: var(--white); border: 1px solid #e2e8f5; border-radius: 12px; padding: 18px; margin-top: 16px; box-shadow: 0 4px 20px rgba(15,42,99,0.05); }
+.transfer-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+.transfer-head b { font-family: "Fraunces", Georgia, serif; color: var(--estuary); font-size: 17px; }
+.transfer-cols { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 18px; }
+.col-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: #8090b5; font-family: "Spline Sans Mono", monospace; margin: 0 0 8px; }
+.party-line { font-size: 14px; margin-bottom: 6px; color: var(--ink); }
+.party-line b { color: var(--estuary); }
+.muted { color: #9aa6c4; font-size: 13px; }
+.member-list { margin: 4px 0 0; padding-left: 16px; font-size: 13px; color: #5b6885; }
+.milestones { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 6px; }
+.ms-chip { background: var(--mist); color: var(--estuary); border-radius: 999px; padding: 3px 10px; font-size: 11px; font-family: "Spline Sans Mono", monospace; }
+@media (max-width: 640px) { .transfer-cols { grid-template-columns: 1fr; } }
+.doc-list { margin-top: 14px; border-top: 1px solid var(--mist); padding-top: 12px; }
+.doc-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.doc-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--mist); color: var(--estuary); text-decoration: none;
+  border-radius: 8px; padding: 5px 10px; font-size: 12px; max-width: 260px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.doc-chip:hover { background: #e2e8f5; }
+.pii-dot { background: #fdecec; color: #a12020; border-radius: 4px; padding: 0 4px; font-size: 9px; font-weight: 700; }

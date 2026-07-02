@@ -249,9 +249,52 @@ export async function commitBatch(batchId: string, rows: FieldRow[]) {
   });
   if (error) return { ok: false, error: error.message };
 
+  const result = data as { property_id: string; transfer_id: string };
+
+  // Promote the batch's documents into `document` + link them to the new deal.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const { data: ifiles } = await supabase
+    .from("ingest_file")
+    .select(
+      "id, original_filename, storage_bucket, storage_path, mime_type, byte_size, is_pii, detected_doc_type_id, status",
+    )
+    .eq("batch_id", batchId);
+
+  for (const f of (ifiles ?? []) as any[]) {
+    // skip the .eml wrappers (already unpacked) and anything unclassified
+    if (!f.detected_doc_type_id || f.status === "parsed" || f.status === "committed") continue;
+    const { data: doc } = await supabase
+      .from("document")
+      .insert({
+        doc_type_id: f.detected_doc_type_id,
+        title: f.original_filename,
+        storage_bucket: f.storage_bucket,
+        storage_path: f.storage_path,
+        mime_type: f.mime_type,
+        byte_size: f.byte_size,
+        is_pii: f.is_pii,
+        status: "final",
+        uploaded_by: user?.id ?? null,
+      })
+      .select("id")
+      .single();
+    if (doc) {
+      await supabase.from("document_link").insert([
+        { document_id: doc.id, entity_type: "transfer", entity_id: result.transfer_id },
+        { document_id: doc.id, entity_type: "property", entity_id: result.property_id },
+      ]);
+      await supabase
+        .from("ingest_file")
+        .update({ committed_document_id: doc.id, status: "committed" })
+        .eq("id", f.id);
+    }
+  }
+
   revalidatePath(`/triage/${batchId}`);
   revalidatePath("/triage");
-  return { ok: true, result: data as { property_id: string; transfer_id: string } };
+  return { ok: true, result };
 }
 
 // Manual correction of a single file's detected document type.
