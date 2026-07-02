@@ -2,15 +2,18 @@
 // The model receives a deal's document text and returns strict JSON; we flatten that
 // into `extraction` rows (target_table.target_field) for human review.
 
-export const SYSTEM_PROMPT = `You are a South African property-transfer data extractor for a Knysna estate agency.
-You read the text of sale agreements and related documents and return ONLY a JSON object
-matching the given schema. Rules:
+export const SYSTEM_PROMPT = `You are a South African property data extractor for a Knysna estate agency.
+The document may be a SALE (agreement of sale) OR just a LISTING (mandate, property
+information sheet, CMA). Read whatever it is and return ONLY a JSON object matching the
+given schema. Rules:
 - Extract only what is explicitly present. If a value is not stated, use null. NEVER invent.
 - Money as plain integers in Rand (e.g. 7600000), no symbols or spaces.
+- A sale price/deposit go under "agreement"; an asking/listing price goes under "listing".
 - Dates as ISO YYYY-MM-DD.
 - id_number is the SA ID number if shown; otherwise null.
 - party_type is one of: individual, company, close_corporation, trust, partnership.
 - suspensive_condition status is one of: pending, fulfilled, waived, failed.
+- mandate type is one of: sole, joint, open, exclusive.
 - Return JSON only. No commentary, no markdown fences.`;
 
 export const JSON_SHAPE = `{
@@ -18,6 +21,8 @@ export const JSON_SHAPE = `{
   "sellers": [ { "party_type": "individual", "name": "", "entity_name": null, "id_number": null, "matrimonial_regime": null } ],
   "purchasers": [ { "name": "", "id_number": null } ],
   "agreement": { "price": null, "deposit": null, "transfer_date": null },
+  "listing": { "asking_price": null },
+  "mandate": { "type": null, "expiry": null },
   "suspensive_conditions": [ { "description": "", "status": "pending" } ],
   "commission": { "amount": null }
 }`;
@@ -38,6 +43,8 @@ type Extracted = {
   sellers?: Array<Record<string, unknown>>;
   purchasers?: Array<Record<string, unknown>>;
   agreement?: Record<string, unknown>;
+  listing?: Record<string, unknown>;
+  mandate?: Record<string, unknown>;
   suspensive_conditions?: Array<Record<string, unknown>>;
   commission?: Record<string, unknown>;
 };
@@ -95,6 +102,13 @@ export function mapExtractionToRows(data: Extracted): ExtractionRow[] {
   push("agreement", "price", a.price);
   push("agreement", "deposit", a.deposit);
   push("agreement", "transfer_date", a.transfer_date);
+
+  const l = data.listing ?? {};
+  push("listing", "asking_price", l.asking_price);
+
+  const m = data.mandate ?? {};
+  push("mandate", "type", m.type);
+  push("mandate", "expiry_date", m.expiry);
 
   (data.suspensive_conditions ?? []).forEach((c, i) => {
     const hint = `condition_${i + 1}`;

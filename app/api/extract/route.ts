@@ -15,7 +15,11 @@ const TEXT_TARGETS = [
   "agreement_of_sale",
   "land_freehold_agreement",
   "offer_to_purchase",
+  "property_info",
+  "detailed_listing",
+  "cma",
   "transfer_instruction",
+  "mandate",
   "fica_questionnaire",
 ];
 
