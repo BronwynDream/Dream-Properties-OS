@@ -18,7 +18,19 @@ given schema. Rules:
 - Capture ALL buyers and sellers, including from FICA questionnaires and identity documents.
 - suspensive_condition status is one of: pending, fulfilled, waived, failed.
 - mandate type is one of: sole, joint, open, exclusive.
-- Return JSON only. No commentary, no markdown fences.`;
+- Return JSON only. No commentary, no markdown fences.
+
+CRITICAL — the mandating agency is NOT a party to the sale.
+The listing agency for these documents is Dream Knysna (Dream Knysna CC, reg 98/32181/23),
+principal Bronwyn Eyre, co-director Camilla Eyre, associate agent Vanessa Eyre. The agency
+and its members, directors, or associate agents must NEVER be extracted as sellers or
+purchasers, even if they appear on the mandate, FICA questionnaire, CMA, property information
+sheet, cover letter, or as signatory on the agent's behalf. The seller is the current title
+holder as named in the mandate's "The Seller" section or in the signed agreement of sale,
+not the agent signing for the agency. If the only "seller" candidate you can find is Dream
+Knysna or one of its members acting in an agency capacity, return sellers: []. The same
+applies to Pam Golding Properties Knysna (Knysna Plett Property Professionals Pty Ltd) when
+Dream is co-mandated on a joint mandate: the co-agent is not a party to the sale.`;
 
 export const JSON_SHAPE = `{
   "property": { "title_deed_no": null, "erf_number": null, "extent_sqm": null, "address": null, "suburb": null },
