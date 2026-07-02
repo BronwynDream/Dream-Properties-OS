@@ -51,10 +51,24 @@ export async function classifyBatch(batchId: string) {
     ((types ?? []) as DocType[]).map((t) => [t.code, t]),
   );
 
-  const { data: files } = await supabase
+  const { data: allFiles } = await supabase
     .from("ingest_file")
-    .select("id, original_filename")
+    .select("id, original_filename, byte_size")
     .eq("batch_id", batchId);
+
+  // De-duplicate: same filename + size ingested twice (folder had .eml AND loose copies).
+  const seen = new Set<string>();
+  const dupeIds: string[] = [];
+  const files: { id: string; original_filename: string }[] = [];
+  for (const f of allFiles ?? []) {
+    const key = `${f.original_filename}::${f.byte_size ?? ""}`;
+    if (seen.has(key)) dupeIds.push(f.id);
+    else {
+      seen.add(key);
+      files.push({ id: f.id, original_filename: f.original_filename });
+    }
+  }
+  if (dupeIds.length) await supabase.from("ingest_file").delete().in("id", dupeIds);
 
   const { data: batchRow } = await supabase
     .from("ingest_batch")
@@ -150,6 +164,94 @@ export async function nameAllBatches() {
   }
 
   revalidatePath("/triage");
+}
+
+// Commit reviewed fields into live records via the commit_batch RPC.
+type FieldRow = {
+  target_table: string;
+  target_field: string;
+  entity_hint: string | null;
+  value: string;
+};
+
+export async function commitBatch(batchId: string, rows: FieldRow[]) {
+  const supabase = createClient();
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const fields: any = {
+    property: {},
+    sellers: [],
+    purchasers: [],
+    agreement: {},
+    listing: {},
+    mandate: {},
+    conditions: [],
+    commission: {},
+  };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const at = (arr: any[], i: number) => {
+    while (arr.length <= i) arr.push({});
+    return arr[i];
+  };
+  const idx = (hint: string | null, prefix: string) => {
+    if (!hint || !hint.startsWith(prefix)) return 0;
+    const n = parseInt(hint.slice(prefix.length), 10);
+    return Number.isFinite(n) && n > 0 ? n - 1 : 0;
+  };
+
+  for (const r of rows) {
+    const v = (r.value ?? "").trim();
+    if (!v) continue;
+    const f = r.target_field;
+    switch (r.target_table) {
+      case "property":
+      case "erf":
+        fields.property[f] = v;
+        break;
+      case "agreement":
+        fields.agreement[f] = v;
+        break;
+      case "listing":
+        fields.listing[f] = v;
+        break;
+      case "mandate":
+        fields.mandate[f] = v;
+        break;
+      case "commission":
+        fields.commission[f] = v;
+        break;
+      case "party":
+        if (r.entity_hint?.startsWith("purchaser_")) {
+          at(fields.purchasers, idx(r.entity_hint, "purchaser_"))[f] = v;
+        } else {
+          at(fields.sellers, idx(r.entity_hint, "seller_"))[f] = v;
+        }
+        break;
+      case "party_member": {
+        const mm = (r.entity_hint ?? "").match(/^(seller|purchaser)_(\d+)_member_(\d+)$/);
+        if (mm) {
+          const arr = mm[1] === "purchaser" ? fields.purchasers : fields.sellers;
+          const party = at(arr, parseInt(mm[2], 10) - 1);
+          if (!party.members) party.members = [];
+          at(party.members, parseInt(mm[3], 10) - 1)[f] = v;
+        }
+        break;
+      }
+      case "suspensive_condition":
+        at(fields.conditions, idx(r.entity_hint, "condition_"))[f] = v;
+        break;
+    }
+  }
+
+  const { data, error } = await supabase.rpc("commit_batch", {
+    p_batch_id: batchId,
+    p_fields: fields,
+  });
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath(`/triage/${batchId}`);
+  revalidatePath("/triage");
+  return { ok: true, result: data as { property_id: string; transfer_id: string } };
 }
 
 // Manual correction of a single file's detected document type.

@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { classifyBatch, setFileType } from "../actions";
+import { classifyBatch, setFileType, commitBatch } from "../actions";
 
 type Batch = {
   id: string;
@@ -46,6 +46,27 @@ export default function ReviewClient({
   const [pending, startTransition] = useTransition();
   const [extractBusy, setExtractBusy] = useState(false);
   const [extractMsg, setExtractMsg] = useState<string | null>(null);
+  const [values, setValues] = useState<Record<string, string>>(() =>
+    Object.fromEntries(extractions.map((e) => [e.id, e.proposed_value ?? ""])),
+  );
+  const [committing, setCommitting] = useState(false);
+  const [commitMsg, setCommitMsg] = useState<string | null>(null);
+  const committed = batch.status === "committed";
+
+  async function runCommit() {
+    setCommitting(true);
+    setCommitMsg("Writing to the live database…");
+    const rows = extractions.map((e) => ({
+      target_table: e.target_table,
+      target_field: e.target_field,
+      entity_hint: e.entity_hint,
+      value: values[e.id] ?? "",
+    }));
+    const res = await commitBatch(batch.id, rows);
+    setCommitMsg(res.ok ? "Committed to live records ✓" : `Commit failed: ${res.error}`);
+    setCommitting(false);
+    router.refresh();
+  }
 
   function runClassify() {
     startTransition(async () => {
@@ -206,7 +227,25 @@ export default function ReviewClient({
           </tbody>
         </table>
 
-        <h2 style={{ marginTop: 40, fontSize: 20 }}>Proposed fields</h2>
+        <div style={{ marginTop: 40, display: "flex", alignItems: "center", gap: 12 }}>
+          <h2 style={{ fontSize: 20, margin: 0 }}>Proposed fields</h2>
+          {extractions.length > 0 && !committed && (
+            <button
+              className="cta"
+              style={{ marginLeft: "auto" }}
+              onClick={runCommit}
+              disabled={committing}
+            >
+              {committing ? "Committing…" : "Commit to database"}
+            </button>
+          )}
+          {committed && (
+            <span className="tier tier-green" style={{ marginLeft: "auto" }}>
+              committed
+            </span>
+          )}
+        </div>
+        {commitMsg && <p className="dz-msg">{commitMsg}</p>}
         {extractions.length === 0 ? (
           <div className="note-box">
             <strong>No fields extracted yet.</strong>
@@ -228,7 +267,16 @@ export default function ReviewClient({
                         <td className="k mono">
                           {r.target_table}.{r.target_field}
                         </td>
-                        <td className="v">{r.proposed_value}</td>
+                        <td className="v">
+                          <input
+                            className="kv-input"
+                            value={values[r.id] ?? ""}
+                            disabled={committed}
+                            onChange={(e) =>
+                              setValues((prev) => ({ ...prev, [r.id]: e.target.value }))
+                            }
+                          />
+                        </td>
                         <td className="c">
                           {r.confidence != null ? `${Math.round(r.confidence * 100)}%` : ""}
                         </td>

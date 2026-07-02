@@ -12,14 +12,18 @@ given schema. Rules:
 - Dates as ISO YYYY-MM-DD.
 - id_number is the SA ID number if shown; otherwise null.
 - party_type is one of: individual, company, close_corporation, trust, partnership.
+- For a company/CC/trust/partnership, set entity_name and registration_no, and list its
+  directors / members / shareholders / trustees under "members" (name, id_number, role, share_pct).
+  role is one of: director, member, trustee, partner, ubo.
+- Capture ALL buyers and sellers, including from FICA questionnaires and identity documents.
 - suspensive_condition status is one of: pending, fulfilled, waived, failed.
 - mandate type is one of: sole, joint, open, exclusive.
 - Return JSON only. No commentary, no markdown fences.`;
 
 export const JSON_SHAPE = `{
   "property": { "title_deed_no": null, "erf_number": null, "extent_sqm": null, "address": null, "suburb": null },
-  "sellers": [ { "party_type": "individual", "name": "", "entity_name": null, "id_number": null, "matrimonial_regime": null } ],
-  "purchasers": [ { "name": "", "id_number": null } ],
+  "sellers": [ { "party_type": "individual", "name": "", "entity_name": null, "registration_no": null, "id_number": null, "matrimonial_regime": null, "members": [ { "name": "", "id_number": null, "role": "director", "share_pct": null } ] } ],
+  "purchasers": [ { "party_type": "individual", "name": "", "entity_name": null, "registration_no": null, "id_number": null, "members": [] } ],
   "agreement": { "price": null, "deposit": null, "transfer_date": null },
   "listing": { "asking_price": null },
   "mandate": { "type": null, "expiry": null },
@@ -83,20 +87,26 @@ export function mapExtractionToRows(data: Extracted): ExtractionRow[] {
   push("property", "suburb", p.suburb);
   push("erf", "erf_number", p.erf_number);
 
-  (data.sellers ?? []).forEach((s, i) => {
-    const hint = `seller_${i + 1}`;
+  const pushParty = (side: "seller" | "purchaser", s: Record<string, unknown>, i: number) => {
+    const hint = `${side}_${i + 1}`;
     push("party", "party_type", s.party_type, hint);
     push("party", "display_name", s.name, hint);
     push("party", "entity_name", s.entity_name, hint);
+    push("party", "registration_no", s.registration_no, hint);
     push("party", "id_number", s.id_number, hint);
     push("party", "matrimonial_regime", s.matrimonial_regime, hint);
-  });
+    const members = Array.isArray(s.members) ? (s.members as Array<Record<string, unknown>>) : [];
+    members.forEach((m, j) => {
+      const mhint = `${hint}_member_${j + 1}`;
+      push("party_member", "name", m.name, mhint);
+      push("party_member", "id_number", m.id_number, mhint);
+      push("party_member", "role", m.role, mhint);
+      push("party_member", "share_pct", m.share_pct, mhint);
+    });
+  };
 
-  (data.purchasers ?? []).forEach((b, i) => {
-    const hint = `purchaser_${i + 1}`;
-    push("party", "display_name", b.name, hint);
-    push("party", "id_number", b.id_number, hint);
-  });
+  (data.sellers ?? []).forEach((s, i) => pushParty("seller", s, i));
+  (data.purchasers ?? []).forEach((b, i) => pushParty("purchaser", b, i));
 
   const a = data.agreement ?? {};
   push("agreement", "price", a.price);
