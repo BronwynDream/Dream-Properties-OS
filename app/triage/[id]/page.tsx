@@ -41,12 +41,20 @@ export default async function BatchReview({
     .eq("batch_id", params.id)
     .order("entity_hint", { ascending: true, nullsFirst: true });
 
+  const { data: matches } = await supabase
+    .from("match_candidate")
+    .select("id, target_kind, extracted_ref, candidate_id, candidate_label, score, decision")
+    .eq("batch_id", params.id)
+    .order("extracted_ref")
+    .order("score", { ascending: false });
+
   return (
     <ReviewClient
       batch={batch}
       files={files ?? []}
       docTypes={docTypes ?? []}
       extractions={extractions ?? []}
+      matches={matches ?? []}
     />
   );
 }

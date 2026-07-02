@@ -166,7 +166,7 @@ export async function nameAllBatches() {
   revalidatePath("/triage");
 }
 
-// Commit reviewed fields into live records via the commit_batch RPC.
+// Row shape shared between propose_matches, commit_batch, and the reshape below.
 type FieldRow = {
   target_table: string;
   target_field: string;
@@ -174,9 +174,10 @@ type FieldRow = {
   value: string;
 };
 
-export async function commitBatch(batchId: string, rows: FieldRow[]) {
-  const supabase = createClient();
-
+// Shared reshape of the flat extraction rows into the nested jsonb shape
+// commit_batch + propose_matches expect.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function reshapeFields(rows: FieldRow[]): any {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const fields: any = {
     property: {},
@@ -198,7 +199,6 @@ export async function commitBatch(batchId: string, rows: FieldRow[]) {
     const n = parseInt(hint.slice(prefix.length), 10);
     return Number.isFinite(n) && n > 0 ? n - 1 : 0;
   };
-
   for (const r of rows) {
     const v = (r.value ?? "").trim();
     if (!v) continue;
@@ -240,6 +240,84 @@ export async function commitBatch(batchId: string, rows: FieldRow[]) {
       case "suspensive_condition":
         at(fields.conditions, idx(r.entity_hint, "condition_"))[f] = v;
         break;
+    }
+  }
+  return fields;
+}
+
+// Ask the DB to score fuzzy-match candidates for the batch's extracted
+// property + individual parties. Idempotent; preserves prior decisions.
+export async function proposeMatches(batchId: string, rows: FieldRow[]) {
+  const supabase = createClient();
+  const fields = reshapeFields(rows);
+  const { error } = await supabase.rpc("propose_matches", {
+    p_batch_id: batchId,
+    p_fields: fields,
+  });
+  revalidatePath(`/triage/${batchId}`);
+  if (error) return { ok: false as const, error: error.message };
+  return { ok: true as const };
+}
+
+// Record the reviewer's call on a target: link to a candidate, or create fresh.
+// "link" sets that row to 'link' and clears siblings so a mind-change is one click.
+// "create" marks every candidate row for the target as 'create'.
+// "reset" returns every row for the target to 'undecided'.
+export async function decideMatch(
+  batchId: string,
+  targetRef: string,
+  candidateId: string | null,
+  decision: "link" | "create" | "reset",
+) {
+  const supabase = createClient();
+  if (decision === "reset") {
+    await supabase
+      .from("match_candidate")
+      .update({ decision: "undecided", decided_at: null })
+      .eq("batch_id", batchId)
+      .eq("extracted_ref", targetRef);
+  } else if (decision === "create") {
+    await supabase
+      .from("match_candidate")
+      .update({ decision: "create", decided_at: new Date().toISOString() })
+      .eq("batch_id", batchId)
+      .eq("extracted_ref", targetRef);
+  } else if (decision === "link" && candidateId) {
+    await supabase
+      .from("match_candidate")
+      .update({ decision: "undecided", decided_at: null })
+      .eq("batch_id", batchId)
+      .eq("extracted_ref", targetRef);
+    await supabase
+      .from("match_candidate")
+      .update({ decision: "link", decided_at: new Date().toISOString() })
+      .eq("id", candidateId);
+  }
+  revalidatePath(`/triage/${batchId}`);
+}
+
+export async function commitBatch(batchId: string, rows: FieldRow[]) {
+  const supabase = createClient();
+
+  const fields = reshapeFields(rows);
+
+  // Fold "link" decisions from match_candidate into explicit IDs so
+  // commit_batch skips its match-or-create path for these entities.
+  const { data: decided } = await supabase
+    .from("match_candidate")
+    .select("extracted_ref, candidate_id")
+    .eq("batch_id", batchId)
+    .eq("decision", "link");
+  for (const d of (decided ?? []) as { extracted_ref: string; candidate_id: string }[]) {
+    if (d.extracted_ref === "property") {
+      fields.property.id = d.candidate_id;
+    } else {
+      const m = d.extracted_ref.match(/^(seller|purchaser)_(\d+)$/);
+      if (!m) continue;
+      const arr = m[1] === "purchaser" ? fields.purchasers : fields.sellers;
+      const i = parseInt(m[2], 10) - 1;
+      while (arr.length <= i) arr.push({});
+      arr[i].id = d.candidate_id;
     }
   }
 

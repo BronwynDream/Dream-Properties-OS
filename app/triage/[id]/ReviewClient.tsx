@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { classifyBatch, setFileType, commitBatch } from "../actions";
+import { classifyBatch, setFileType, commitBatch, proposeMatches, decideMatch } from "../actions";
 
 type Batch = {
   id: string;
@@ -30,17 +30,68 @@ type Extraction = {
   confidence: number | null;
   status: string;
 };
+type Match = {
+  id: string;
+  target_kind: "property" | "party";
+  extracted_ref: string;
+  candidate_id: string | null;
+  candidate_label: string | null;
+  score: number | null;
+  decision: "undecided" | "link" | "create" | "merge";
+};
+
+// Human labels for extracted_ref target keys.
+function targetLabel(ref: string): string {
+  if (ref === "property") return "Property";
+  const m = ref.match(/^(seller|purchaser)_(\d+)$/);
+  if (m) return `${m[1] === "seller" ? "Seller" : "Purchaser"} ${m[2]}`;
+  return ref;
+}
+
+// Pull the values we have for a target from the current extraction inputs.
+// Used for the extracted-vs-existing side-by-side.
+function extractedSummary(
+  ref: string,
+  extractions: Extraction[],
+  values: Record<string, string>,
+): string {
+  const val = (e: Extraction) => (values[e.id] ?? e.proposed_value ?? "").trim();
+  if (ref === "property") {
+    const addr = extractions.find(
+      (e) => e.target_table === "property" && e.target_field === "primary_address",
+    );
+    const deed = extractions.find(
+      (e) => e.target_table === "property" && e.target_field === "title_deed_no",
+    );
+    const erf = extractions.find(
+      (e) => e.target_table === "erf" && e.target_field === "erf_number",
+    );
+    const parts = [addr && val(addr), deed && val(deed) && `Deed ${val(deed)}`, erf && val(erf) && `Erf ${val(erf)}`]
+      .filter(Boolean);
+    return parts.join(" · ") || "(no property fields extracted)";
+  }
+  const name = extractions.find(
+    (e) => e.entity_hint === ref && e.target_field === "display_name",
+  );
+  const id = extractions.find(
+    (e) => e.entity_hint === ref && e.target_field === "id_number",
+  );
+  const parts = [name && val(name), id && val(id) && `ID ${val(id)}`].filter(Boolean);
+  return parts.join(" · ") || "(no name extracted)";
+}
 
 export default function ReviewClient({
   batch,
   files,
   docTypes,
   extractions,
+  matches,
 }: {
   batch: Batch;
   files: FileRow[];
   docTypes: DocType[];
   extractions: Extraction[];
+  matches: Match[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -51,7 +102,84 @@ export default function ReviewClient({
   );
   const [committing, setCommitting] = useState(false);
   const [commitMsg, setCommitMsg] = useState<string | null>(null);
+  const [matchBusy, setMatchBusy] = useState(false);
   const committed = batch.status === "committed";
+
+  // Group candidates by target for the Matches panel.
+  const matchesByTarget = useMemo(() => {
+    const m = new Map<string, Match[]>();
+    for (const mc of matches) {
+      if (!m.has(mc.extracted_ref)) m.set(mc.extracted_ref, []);
+      m.get(mc.extracted_ref)!.push(mc);
+    }
+    return m;
+  }, [matches]);
+
+  // A target is "decided" when at least one row is 'link' OR all rows are 'create'.
+  // Undecided targets block the Commit button.
+  const undecidedTargets = useMemo(
+    () =>
+      Array.from(matchesByTarget.entries())
+        .filter(([, rows]) => {
+          const hasLink = rows.some((r) => r.decision === "link");
+          const allCreate = rows.every((r) => r.decision === "create");
+          return !(hasLink || allCreate);
+        })
+        .map(([ref]) => ref),
+    [matchesByTarget],
+  );
+
+  const currentRows = () =>
+    extractions.map((e) => ({
+      target_table: e.target_table,
+      target_field: e.target_field,
+      entity_hint: e.entity_hint,
+      value: values[e.id] ?? e.proposed_value ?? "",
+    }));
+
+  // Auto-propose matches when we first land on the page and have extractions
+  // but no candidate rows yet. Single-shot per mount.
+  const autoProposed = useRef(false);
+  useEffect(() => {
+    if (autoProposed.current) return;
+    if (committed) return;
+    if (extractions.length === 0) return;
+    if (matches.length > 0) return;
+    autoProposed.current = true;
+    (async () => {
+      setMatchBusy(true);
+      await proposeMatches(batch.id, currentRows());
+      setMatchBusy(false);
+      router.refresh();
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [batch.id]);
+
+  async function rerunMatches() {
+    setMatchBusy(true);
+    await proposeMatches(batch.id, currentRows());
+    setMatchBusy(false);
+    router.refresh();
+  }
+
+  function pickLink(ref: string, candidateId: string) {
+    startTransition(async () => {
+      await decideMatch(batch.id, ref, candidateId, "link");
+      router.refresh();
+    });
+  }
+  function pickCreate(ref: string) {
+    startTransition(async () => {
+      await decideMatch(batch.id, ref, null, "create");
+      router.refresh();
+    });
+  }
+  function resetTarget(ref: string) {
+    startTransition(async () => {
+      await decideMatch(batch.id, ref, null, "reset");
+      router.refresh();
+    });
+  }
 
   async function runCommit() {
     setCommitting(true);
@@ -227,6 +355,106 @@ export default function ReviewClient({
           </tbody>
         </table>
 
+        {extractions.length > 0 && !committed && (
+          <div className="match-panel" style={{ marginTop: 40 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <h2 style={{ fontSize: 20, margin: 0 }}>Matches</h2>
+              <span style={{ color: "#5b6885", fontSize: 13 }}>
+                {matchesByTarget.size === 0
+                  ? matchBusy
+                    ? "Looking for candidates…"
+                    : "No candidates found — safe to commit as new."
+                  : undecidedTargets.length === 0
+                    ? "All targets decided ✓"
+                    : `${undecidedTargets.length} target(s) awaiting a call`}
+              </span>
+              <button
+                className="ghost-dark"
+                style={{ marginLeft: "auto" }}
+                onClick={rerunMatches}
+                disabled={matchBusy}
+              >
+                {matchBusy ? "Working…" : "Re-check matches"}
+              </button>
+            </div>
+
+            {Array.from(matchesByTarget.entries()).map(([ref, rows]) => {
+              const linked = rows.find((r) => r.decision === "link");
+              const allCreate = rows.every((r) => r.decision === "create");
+              const decided = !!linked || allCreate;
+              return (
+                <div key={ref} className="match-target" style={{ marginTop: 16 }}>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+                    <strong>{targetLabel(ref)}</strong>
+                    <span style={{ color: "#5b6885", fontSize: 13 }}>
+                      extracted: {extractedSummary(ref, extractions, values)}
+                    </span>
+                    {decided && (
+                      <button
+                        className="ghost-dark"
+                        style={{ marginLeft: "auto", padding: "4px 10px", fontSize: 12 }}
+                        onClick={() => resetTarget(ref)}
+                        disabled={pending}
+                      >
+                        Reset
+                      </button>
+                    )}
+                  </div>
+
+                  <div style={{ marginTop: 8, display: "grid", gap: 8 }}>
+                    {rows.map((r) => {
+                      const isLinked = r.decision === "link";
+                      return (
+                        <div
+                          key={r.id}
+                          className="match-row"
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 12,
+                            padding: "10px 12px",
+                            border: "1px solid",
+                            borderColor: isLinked ? "#1C5B3A" : "#e2e5ee",
+                            background: isLinked ? "rgba(28,91,58,0.05)" : "#fff",
+                            borderRadius: 6,
+                          }}
+                        >
+                          <span style={{ flex: 1 }}>{r.candidate_label ?? "(unlabelled)"}</span>
+                          <span
+                            className="pill"
+                            style={{ background: "#EDF0F8", color: "#15203A" }}
+                          >
+                            {r.score != null ? `${Math.round(r.score * 100)}%` : "—"}
+                          </span>
+                          {isLinked ? (
+                            <span className="tier tier-green">linked</span>
+                          ) : (
+                            <button
+                              className="ghost-dark"
+                              onClick={() => r.candidate_id && pickLink(ref, r.id)}
+                              disabled={pending || !r.candidate_id}
+                            >
+                              Link
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                    <button
+                      className={allCreate ? "cta" : "ghost-dark"}
+                      style={{ alignSelf: "flex-start" }}
+                      onClick={() => pickCreate(ref)}
+                      disabled={pending || allCreate}
+                    >
+                      {allCreate ? "Creating new ✓" : "Create new record instead"}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
         <div style={{ marginTop: 40, display: "flex", alignItems: "center", gap: 12 }}>
           <h2 style={{ fontSize: 20, margin: 0 }}>Proposed fields</h2>
           {extractions.length > 0 && !committed && (
@@ -234,7 +462,12 @@ export default function ReviewClient({
               className="cta"
               style={{ marginLeft: "auto" }}
               onClick={runCommit}
-              disabled={committing}
+              disabled={committing || undecidedTargets.length > 0}
+              title={
+                undecidedTargets.length > 0
+                  ? `Decide matches first: ${undecidedTargets.map(targetLabel).join(", ")}`
+                  : undefined
+              }
             >
               {committing ? "Committing…" : "Commit to database"}
             </button>
