@@ -78,7 +78,16 @@ export default function DropZone() {
           status: "uploaded",
         });
       }
-      // auto-classify the freshly uploaded batch
+      // unpack any .eml files (extract their attachments), then classify everything
+      try {
+        await fetch("/api/unpack", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ batchId: batch.id }),
+        });
+      } catch {
+        /* can also be run from the batch screen */
+      }
       try {
         await classifyBatch(batch.id);
       } catch {

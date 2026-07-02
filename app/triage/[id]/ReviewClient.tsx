@@ -60,6 +60,34 @@ export default function ReviewClient({
     });
   }
 
+  async function runUnpack() {
+    setExtractBusy(true);
+    setExtractMsg("Unpacking email attachments…");
+    try {
+      const res = await fetch("/api/unpack", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ batchId: batch.id }),
+      });
+      const json = await res.json();
+      if (json.ok) {
+        await classifyBatch(batch.id);
+        setExtractMsg(
+          json.attachments > 0
+            ? `Unpacked ${json.attachments} attachment(s) from ${json.emails} email(s) — now classified.`
+            : json.note || "No email attachments to unpack.",
+        );
+      } else {
+        setExtractMsg(json.error || "Nothing to unpack.");
+      }
+    } catch (e) {
+      setExtractMsg(`Unpack failed: ${(e as Error).message}`);
+    } finally {
+      setExtractBusy(false);
+      router.refresh();
+    }
+  }
+
   async function runExtract() {
     setExtractBusy(true);
     setExtractMsg("Reading documents…");
@@ -84,6 +112,9 @@ export default function ReviewClient({
   }
 
   const classified = files.filter((f) => f.detected_doc_type_id).length;
+  const hasEml = files.some((f) =>
+    f.original_filename.toLowerCase().endsWith(".eml"),
+  );
 
   // group extractions by entity_hint (seller_1, purchaser_2…) else by table
   const groups = new Map<string, Extraction[]>();
@@ -117,6 +148,11 @@ export default function ReviewClient({
             {classified}/{files.length} classified
           </span>
           <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+            {hasEml && (
+              <button className="ghost-dark" onClick={runUnpack} disabled={extractBusy}>
+                Unpack emails
+              </button>
+            )}
             <button className="ghost-dark" onClick={runClassify} disabled={pending}>
               {pending ? "Working…" : "Classify"}
             </button>
