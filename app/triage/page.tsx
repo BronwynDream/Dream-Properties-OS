@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import DropZone from "./DropZone";
+import QueueActions from "./QueueActions";
 export const dynamic = "force-dynamic";
 
 type QueueRow = {
@@ -52,6 +53,14 @@ export default async function TriagePage() {
 
       <section className="app-body" style={{ maxWidth: 1000 }}>
         <DropZone />
+
+        {!notReady && queue.length > 0 && (
+          <div style={{ marginTop: 20, display: "flex", justifyContent: "flex-end" }}>
+            <QueueActions
+              hasUnnamed={queue.some((b) => /^dropped files/i.test(b.label))}
+            />
+          </div>
+        )}
 
         {notReady ? (
           <p className="error" style={{ marginTop: 24 }}>
