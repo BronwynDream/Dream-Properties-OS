@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { classifyFilename, JURISTIC_CODES } from "@/lib/classify";
+import { reshapeFields } from "@/lib/extract";
 
 type DocType = {
   id: string;
@@ -166,84 +167,13 @@ export async function nameAllBatches() {
   revalidatePath("/triage");
 }
 
-// Row shape shared between propose_matches, commit_batch, and the reshape below.
+// Row shape shared between propose_matches, commit_batch, and reshapeFields.
 type FieldRow = {
   target_table: string;
   target_field: string;
   entity_hint: string | null;
   value: string;
 };
-
-// Shared reshape of the flat extraction rows into the nested jsonb shape
-// commit_batch + propose_matches expect.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function reshapeFields(rows: FieldRow[]): any {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const fields: any = {
-    property: {},
-    sellers: [],
-    purchasers: [],
-    agreement: {},
-    listing: {},
-    mandate: {},
-    conditions: [],
-    commission: {},
-  };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const at = (arr: any[], i: number) => {
-    while (arr.length <= i) arr.push({});
-    return arr[i];
-  };
-  const idx = (hint: string | null, prefix: string) => {
-    if (!hint || !hint.startsWith(prefix)) return 0;
-    const n = parseInt(hint.slice(prefix.length), 10);
-    return Number.isFinite(n) && n > 0 ? n - 1 : 0;
-  };
-  for (const r of rows) {
-    const v = (r.value ?? "").trim();
-    if (!v) continue;
-    const f = r.target_field;
-    switch (r.target_table) {
-      case "property":
-      case "erf":
-        fields.property[f] = v;
-        break;
-      case "agreement":
-        fields.agreement[f] = v;
-        break;
-      case "listing":
-        fields.listing[f] = v;
-        break;
-      case "mandate":
-        fields.mandate[f] = v;
-        break;
-      case "commission":
-        fields.commission[f] = v;
-        break;
-      case "party":
-        if (r.entity_hint?.startsWith("purchaser_")) {
-          at(fields.purchasers, idx(r.entity_hint, "purchaser_"))[f] = v;
-        } else {
-          at(fields.sellers, idx(r.entity_hint, "seller_"))[f] = v;
-        }
-        break;
-      case "party_member": {
-        const mm = (r.entity_hint ?? "").match(/^(seller|purchaser)_(\d+)_member_(\d+)$/);
-        if (mm) {
-          const arr = mm[1] === "purchaser" ? fields.purchasers : fields.sellers;
-          const party = at(arr, parseInt(mm[2], 10) - 1);
-          if (!party.members) party.members = [];
-          at(party.members, parseInt(mm[3], 10) - 1)[f] = v;
-        }
-        break;
-      }
-      case "suspensive_condition":
-        at(fields.conditions, idx(r.entity_hint, "condition_"))[f] = v;
-        break;
-    }
-  }
-  return fields;
-}
 
 // Ask the DB to score fuzzy-match candidates for the batch's extracted
 // property + individual parties. Idempotent; preserves prior decisions.

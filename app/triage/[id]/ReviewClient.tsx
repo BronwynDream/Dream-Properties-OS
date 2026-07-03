@@ -137,23 +137,27 @@ export default function ReviewClient({
       value: values[e.id] ?? e.proposed_value ?? "",
     }));
 
-  // Auto-propose matches when we first land on the page and have extractions
-  // but no candidate rows yet. Single-shot per mount.
-  const autoProposed = useRef(false);
+  // Auto-propose matches whenever we have extractions but no candidate rows.
+  // Fires on mount AND after Extract populates rows via router.refresh() —
+  // the earlier once-per-mount ref guard missed the second firing because
+  // useEffect deps didn't change. Belt-and-braces: /api/extract also calls
+  // propose_matches server-side once extraction rows are written.
+  const proposingRef = useRef(false);
   useEffect(() => {
-    if (autoProposed.current) return;
     if (committed) return;
     if (extractions.length === 0) return;
     if (matches.length > 0) return;
-    autoProposed.current = true;
+    if (proposingRef.current) return;
+    proposingRef.current = true;
     (async () => {
       setMatchBusy(true);
       await proposeMatches(batch.id, currentRows());
       setMatchBusy(false);
+      proposingRef.current = false;
       router.refresh();
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [batch.id]);
+  }, [batch.id, extractions.length, matches.length, committed]);
 
   async function rerunMatches() {
     setMatchBusy(true);

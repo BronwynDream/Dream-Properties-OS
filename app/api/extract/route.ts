@@ -5,6 +5,7 @@ import {
   buildUserPrompt,
   mapExtractionToRows,
   parseModelJson,
+  reshapeFields,
 } from "@/lib/extract";
 
 export const runtime = "nodejs";
@@ -236,6 +237,16 @@ export async function POST(request: Request) {
   }
 
   await supabase.from("ingest_batch").update({ status: "extracted" }).eq("id", batchId);
+
+  // Kick off match candidate proposal now that extraction rows exist.
+  // Belt-and-braces alongside the client-side auto-propose useEffect — if the
+  // client hasn't remounted since extract, propose_matches still runs.
+  if (rows.length > 0) {
+    await supabase.rpc("propose_matches", {
+      p_batch_id: batchId,
+      p_fields: reshapeFields(rows),
+    });
+  }
 
   return NextResponse.json({ ok: true, rowsInserted: rows.length, used: usedFiles, model, mode });
 }

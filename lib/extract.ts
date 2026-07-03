@@ -143,6 +143,86 @@ export function mapExtractionToRows(data: Extracted): ExtractionRow[] {
   return rows;
 }
 
+// Reshape flat rows into the nested jsonb shape commit_batch + propose_matches expect.
+// Accepts either the freshly-extracted `proposed_value` shape or the reviewer-edited
+// `value` shape — whichever the caller has.
+type FlatRow = {
+  target_table: string;
+  target_field: string;
+  entity_hint: string | null;
+  value?: string;
+  proposed_value?: string;
+};
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function reshapeFields(rows: FlatRow[]): any {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const fields: any = {
+    property: {},
+    sellers: [],
+    purchasers: [],
+    agreement: {},
+    listing: {},
+    mandate: {},
+    conditions: [],
+    commission: {},
+  };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const at = (arr: any[], i: number) => {
+    while (arr.length <= i) arr.push({});
+    return arr[i];
+  };
+  const idx = (hint: string | null, prefix: string) => {
+    if (!hint || !hint.startsWith(prefix)) return 0;
+    const n = parseInt(hint.slice(prefix.length), 10);
+    return Number.isFinite(n) && n > 0 ? n - 1 : 0;
+  };
+  for (const r of rows) {
+    const v = ((r.value ?? r.proposed_value) ?? "").trim();
+    if (!v) continue;
+    const f = r.target_field;
+    switch (r.target_table) {
+      case "property":
+      case "erf":
+        fields.property[f] = v;
+        break;
+      case "agreement":
+        fields.agreement[f] = v;
+        break;
+      case "listing":
+        fields.listing[f] = v;
+        break;
+      case "mandate":
+        fields.mandate[f] = v;
+        break;
+      case "commission":
+        fields.commission[f] = v;
+        break;
+      case "party":
+        if (r.entity_hint?.startsWith("purchaser_")) {
+          at(fields.purchasers, idx(r.entity_hint, "purchaser_"))[f] = v;
+        } else {
+          at(fields.sellers, idx(r.entity_hint, "seller_"))[f] = v;
+        }
+        break;
+      case "party_member": {
+        const mm = (r.entity_hint ?? "").match(/^(seller|purchaser)_(\d+)_member_(\d+)$/);
+        if (mm) {
+          const arr = mm[1] === "purchaser" ? fields.purchasers : fields.sellers;
+          const party = at(arr, parseInt(mm[2], 10) - 1);
+          if (!party.members) party.members = [];
+          at(party.members, parseInt(mm[3], 10) - 1)[f] = v;
+        }
+        break;
+      }
+      case "suspensive_condition":
+        at(fields.conditions, idx(r.entity_hint, "condition_"))[f] = v;
+        break;
+    }
+  }
+  return fields;
+}
+
 // Parse a model response that should be JSON, tolerating code fences / stray text.
 export function parseModelJson(content: string): Extracted {
   let s = content.trim();
