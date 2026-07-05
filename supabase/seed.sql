@@ -76,6 +76,7 @@ insert into document_type (code, label, category, is_pii_default, retention_year
   ('estate_design_manual','Estate Architectural Design Manual','plan',false,null),
   ('transfer_instruction','Transfer Instruction to Conveyancer','correspondence',false,5),
   ('email_thread','Email Correspondence','correspondence',false,5),
+  ('photo','Property Photograph','photo',false,null),
   ('other','Other','other',false,null)
 on conflict (code) do nothing;
 

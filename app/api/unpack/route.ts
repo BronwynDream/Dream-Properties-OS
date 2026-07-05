@@ -50,10 +50,19 @@ export async function POST(request: Request) {
     const base = eml.original_filename.replace(/\.eml$/i, "");
 
     for (const att of parsed.attachments ?? []) {
-      const filename = att.filename || `attachment-${attachmentCount + 1}`;
-      // skip inline signature images etc. that have no real filename and are tiny
-      if (!att.filename && (att.size ?? 0) < 20000) continue;
+      // Skip inline decoration — Bronwyn's Dream email footer + Outlook signature
+      // template arrive here as attachments with contentDisposition=inline and
+      // a contentId (referenced from HTML body via cid:). Both are strong signals
+      // this is chrome, not content. Also skip Outlook's auto-named image00N.*
+      // as belt-and-braces for clients that omit the disposition header.
+      const isInline =
+        (att as { contentDisposition?: string }).contentDisposition === "inline" ||
+        (att as { related?: boolean }).related === true ||
+        !!att.contentId;
+      const outlookAutoName = /^image\d+\.(png|jpe?g|gif|webp)$/i.test(att.filename ?? "");
+      if (isInline || outlookAutoName) continue;
 
+      const filename = att.filename || `attachment-${attachmentCount + 1}`;
       const path = `${batchId}/_unpacked/${base}/${filename}`;
       const content = att.content as Buffer;
       await supabase.storage.from("staging").upload(path, content, {

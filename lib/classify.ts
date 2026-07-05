@@ -51,9 +51,15 @@ export const JURISTIC_CODES = new Set([
   "trust_deed",
 ]);
 
+// Image extensions we treat as property photos when no textual rule matched.
+// Rules-first still wins: a file named "Front Elevation.jpg" hits the plan rule
+// above; a file named "IMG_1234.jpg" falls through to here.
+const IMAGE_EXT = /\.(jpe?g|png|heic|heif|webp|tiff?|gif|bmp)$/i;
+
 export function classifyFilename(filename: string): string {
   for (const { re, code } of RULES) {
     if (re.test(filename)) return code;
   }
+  if (IMAGE_EXT.test(filename)) return "photo";
   return "other";
 }

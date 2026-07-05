@@ -8,6 +8,38 @@ _Last updated: 2026-07-05_
 
 ---
 
+## PHOTO CLASSIFICATION + INLINE-IMAGE FILTER (2026-07-05)
+
+**Two extraction-pipeline bugs fixed** noticed while browsing committed data:
+
+1. **Photos landed as `other`**. `lib/classify.ts` had zero image rules and the
+   `document_type` seed had no `photo` code, so `IMG_1234.jpg` matched nothing
+   and fell through. Added `photo` (category `photo`) to seed.sql + catch-up
+   migration `0014_photo_doctype.sql` for Bon Bon's Database. Classifier now
+   has an image-extension fallback (`.jpg .jpeg .png .heic .heif .webp .tif
+   .tiff .gif .bmp`) that fires after the text rules miss, so a filename that
+   says "Front Elevation.jpg" still hits the plan rule first.
+
+2. **Bronwyn's Dream email signature/footer was being imported as attachments**.
+   `app/api/unpack/route.ts` only skipped inline images that were both unnamed
+   AND < 20 KB — but Outlook always names inline images (`image001.png`) and
+   the Dream footer PNG is well over 20 KB, so they came through. Fixed to
+   skip on the actual MIME signals: `contentDisposition === 'inline'`, mailparser's
+   `related === true`, or a set `contentId` (cid: body reference). Plus a
+   belt-and-braces regex against Outlook auto-names.
+
+Interim: newly-classified photos still land as `document` rows on commit, not
+`media` rows. A Photos section on Property Record + the media-table reshape are
+a follow-up ship. For now `photo` is searchable + viewable via the existing
+Documents section.
+
+**Needs `0014_photo_doctype.sql` run against Bon Bon's Database + a push.**
+Existing batches keep their prior classifications. Re-open a batch and hit
+"Classify" to re-run against the updated ruleset — heads-up: `classifyBatch`
+overwrites every file's `detected_doc_type_id` from the filename, so any manual
+`setFileType` corrections in that batch flip back. A "reclassify only files
+still marked `other`" pass would fix that, but is out of scope for this fix.
+
 ## POST-HOC DUPE FINDER (2026-07-05)
 
 **Admin screen to merge duplicates that predate the matching flow** — replaces the
