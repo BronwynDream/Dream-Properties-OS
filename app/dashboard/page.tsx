@@ -41,13 +41,18 @@ export default async function Dashboard() {
         <p style={{ color: "#5b6885", marginTop: 20, lineHeight: 1.6 }}>
           Signed in against the live database with role-based access working end to end.
         </p>
-        <p style={{ marginTop: 24, display: "flex", gap: 12 }}>
+        <p style={{ marginTop: 24, display: "flex", gap: 12, flexWrap: "wrap" }}>
           <Link href="/triage" className="cta">
             Open migration triage →
           </Link>
           <Link href="/properties" className="ghost-dark" style={{ textDecoration: "none" }}>
             Property database →
           </Link>
+          {role === "admin" && (
+            <Link href="/dupes" className="ghost-dark" style={{ textDecoration: "none" }}>
+              Merge duplicates →
+            </Link>
+          )}
         </p>
         {!profile && (
           <p className="error" style={{ marginTop: 20 }}>

@@ -4,9 +4,60 @@ Running log of what's decided, built, and next. Updated at the end of each worki
 session. `PROJECT.md` remains the canonical business/design doc; this file is the
 "where are we right now" companion.
 
-_Last updated: 2026-07-02_
+_Last updated: 2026-07-05_
 
 ---
+
+## POST-HOC DUPE FINDER (2026-07-05)
+
+**Admin screen to merge duplicates that predate the matching flow** — replaces the
+ad-hoc SQL DO block used on 2026-07-02 to clean up `15 Eagles Way × 2` and the
+`7 The Grove` pair. Turns that pattern into a scan + merge that works from the
+browser as new dupes surface.
+
+**Migration `0013_dupe_finder.sql`** adds:
+- `dupe_dismissal` table (unique on target_kind + normalized pair `a_id < b_id`,
+  admin RLS) so "not a duplicate" judgments persist between scans.
+- `find_property_dupes(threshold, limit)` — pairwise trigram scan on
+  `primary_address` OR exact `title_deed_no` match, returns each side's label +
+  deed + suburb + extent + counts (erven / transfers / listings) so the admin
+  can pick the winner on evidence. Uses the pg_trgm GIN indexes from 0011.
+- `find_party_dupes(threshold, limit)` — same shape for `display_name` OR exact
+  `id_number` / `registration_no`. Only compares within the same `party_type`
+  (won't cross individuals with juristics).
+- `merge_properties(winner, loser, reason)` and `merge_parties(winner, loser,
+  reason)` — security-definer, `is_admin()`-gated. Winner keeps id + non-null
+  values; loser's non-null values fill winner's gaps (`coalesce` per column,
+  notes concatenated with a merge marker). All FKs repointed; unique-constraint
+  clashes on `erf`, `transfer_party`, `fica`, `party_member`, `document_link`
+  resolved by dropping the loser's conflicting row first. Both spouse
+  self-marriage and party_member self-membership guarded. Audit row logged;
+  loser deleted; dismissal rows referencing loser cleaned up.
+- `dismiss_dupe(kind, a_id, b_id, reason)` — normalises pair order and inserts
+  idempotently.
+
+**UI `/dupes`** (admin-only, `role === 'admin'` gate + admin-check in the RPCs):
+tabs for Properties / Parties, adjustable score threshold (default 0.5), and one
+`PairCard` per candidate showing the two sides side-by-side with field-level
+diffs highlighted. Buttons: **Keep A → merge B**, **Keep B → merge A**, **Not a
+duplicate** (with an optional reason that lands in the audit log). Linked from
+the dashboard for admins only.
+
+Typecheck green, `next build` compiles clean (12/12 pages; the `/login`
+prerender-env error is the same known local-only issue — Vercel has the vars).
+
+**Needs `0013_dupe_finder.sql` run against Bon Bon's Database + a push**. First
+runtime test: rescan Properties tab — should be empty (the 2026-07-02 cleanup
+already collapsed the historical dupes). Then re-run 15 Eagles Way (Vanessa
+folder if there is one) as a batch and commit it to a new address form → the
+next scan should surface the pair, and Keep-A-merge-B should collapse them.
+
+Out of scope for this ship (follow-ups):
+- Juristic-party matching in the *pre-commit* flow (still deferred from the
+  2026-07-02 note). The post-hoc scan here already covers juristics.
+- 3-way / n-way merge (only pairs today).
+- Undo / restore-from-audit — the merge is destructive; the audit_log row is
+  the only trace after loser deletion.
 
 ## MATCH/MERGE REVIEW UI (2026-07-02)
 
@@ -198,7 +249,8 @@ commit migrations 0009/0010 run.
   redefinition **dropped 0010's registration_no + members handling** (would regress juristic capture).
   **Fix: `0012_reconcile_upsert_party.sql`** merges both (explicit link + reg/members). Run order:
   …0010 → 0011 → **0012**. The matching functions are dormant until the app wires a match-review step.
-- [ ] Next: move files to documents/fica buckets; wire match-review UI to `propose_matches`; lead inbox; map; agent RLS test.
+- [x] **Post-hoc dupe finder** — `0013_dupe_finder.sql` + `/dupes` admin UI. Ships the browser-driven replacement for the manual DO-block merge. See top of file.
+- [ ] Next: move files to documents/fica buckets; lead inbox; map; agent RLS test; juristic pre-commit matching.
 - [ ] Commit `0007`, `0008`, `pilot_7_the_grove.sql`, `docs/drop-and-triage-spec.md` to GitHub.
 
 **Scaling model (for ~500 folders):** decouple automated ingestion from human confirmation.
