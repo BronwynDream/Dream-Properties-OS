@@ -113,6 +113,106 @@ Also queued from earlier (smaller):
 
 ---
 
+## LIVE MAP + FIRST REAL BOWDEN COMMIT (2026-07-06 afternoon)
+
+**Bronwyn's first real email → committed Property Record**, and the map screen
+came fully to life. The afternoon was a series of "the pipeline actually
+works, now let's find and fix the next thing hiding" moments.
+
+### The Bowden pipeline run
+- Bronwyn dropped five `.eml` files for 6 Bowden Park, Leisure Isle. Batch
+  auto-classified as Email Correspondence (correct — the wrappers). Unpack
+  silently produced 0 attachments.
+- **Root cause found by parsing a Bowden .eml locally with mailparser**: my
+  earlier inline-signature filter (`f5a1be4`) was over-eager. It skipped any
+  attachment with `contentId` set — but Outlook sets a contentId on nearly
+  every attachment, including real PDFs (Lightstone report, Signed Joint
+  Mandate, 6 Bowden Park Plans). All silently dropped. Fixed by removing the
+  `!!contentId` check from the skip signal: only `contentDisposition === 'inline'`
+  OR `related === true` count as skip signals now.
+- Also bumped `/api/unpack` maxDuration 60 → 300, added per-file error
+  surfacing (download/read/parse/upload/insert stage), and stopped marking
+  `.eml` files as `parsed` on partial failures so retries actually retry.
+- After the fix: 14 documents committed to a live Property Record — Lightstone,
+  Signed Joint Mandate, Plans, Zoning Certificate ERF 7474, Municipal Account,
+  Insurance, guest-house docs — with Stephen Athey Collins as the extracted
+  seller.
+
+### Extraction gaps found + fixed
+- Empty Suburb / Type / Ownership on the Bowden record → three problems:
+  1. `commit_batch` had no fallback for suburb when the LLM lumped it into
+     `primary_address`. Added a scan-address-for-seeded-suburb-name fallback
+     in `commitBatch` (`fcfe217`).
+  2. `TEXT_TARGETS` in `/api/extract` didn't include `lightstone_report`,
+     `title_deed`, `rates_account`, `boundary_relaxation`, or
+     `ppra_disclosure` — the LLM never saw the Lightstone report even though
+     it was in the batch. Added them (`34b4b32`).
+  3. `JSON_SHAPE` had no `property_type` or `ownership_type` fields. Added
+     them with the seeded taxonomy vocabulary in the prompt. Migration
+     `0016_property_facts.sql` teaches `commit_batch` to look them up by
+     code OR label and write the FK columns on insert, plus fills NULLs on
+     link so a follow-up batch enriches existing records.
+
+### Map screen — went live, painfully
+Everything wrong that could be silently wrong, was. The sequence of hunts:
+1. `/map` showed "No properties yet" → **0015 migration hadn't been applied**;
+   query for `lng/lat` failed silently, `data` was null, count was 0.
+2. Fixed migration, page then showed "No coordinates on file" — geocoder
+   button visible but Bronwyn's Mapbox token wasn't being read (dark navy
+   canvas, no basemap).
+3. Sequence of token diagnostics revealed the token was VALID (returned
+   full style JSON when hit directly) — Vercel wasn't the problem.
+4. Added a temporary debug panel to `MapView` — logged `container size on
+   init: 1248x0`. **Root cause: the `.map-shell` grid had one implicit row
+   with no `grid-template-rows`, so the row auto-sized to content, and
+   since `.map-canvas` is position:absolute it contributed 0.** Row
+   collapsed. Fixed by switching `.map-shell` to flexbox with explicit
+   `height: calc(100vh - 54px)` and `.map-stage { height: 100% }`.
+5. Basemap tiles finally rendered. Geocode button still looked disabled →
+   the `.map-empty` overlay at z-index 25 was covering the geocode-bar at
+   z-index 22, blocking clicks. Fixed by raising the bar to z-index 30
+   and setting `pointer-events: none` on the empty-state overlay.
+6. Geocode fired, all 7 properties (including 6 Bowden) landed on the map,
+   mandate-coloured pins with price labels baked in, side preview card
+   working end to end. Debug panel ripped out.
+
+Also queued along the way:
+- Safer paste hygiene: `.trim()` the Mapbox token everywhere it's read
+  (Vercel env-var trailing whitespace was a real suspect).
+- `mapboxgl.supported()` check → surfaces a specific error if WebGL is
+  disabled.
+- `map.resize()` + `ResizeObserver` on the map container — belt-and-braces
+  against future layout-shift regressions.
+- Full Mapbox `on('error')` handler → surfaces a red banner on the map.
+
+### Basemap switcher shipped
+Three-tab toggle in the left rail: **Satellite** (default, satellite-streets-v12
+— gorgeous for property, roofs and pools visible), **Streets** (colored
+navigation style), **Light** (the original). `map.setStyle()` swaps live;
+HTML markers stay put across style changes so no re-add gymnastics.
+
+### Content-based reclassifier + differ shipped earlier in the day
+Already documented below — they held up well against the day's real data
+(Gas COC content-classify catching the SAQCC file was mentioned; the
+batch differ didn't get exercised yet since Bowden was a fresh property).
+
+### Queued for next session (unchanged from the earlier queue)
+1. Manual "attach to existing property" at batch review (correctness fix
+   for the FICA-only trickle case)
+2. On-commit document + transfer dedupe
+3. Bulk extract button
+4. Bulk commit button
+
+Plus: **custom Dream Mapbox Studio style** (in progress — Simon is building
+the palette in Studio with a gold coastline as the signature. Once
+published, one line goes into the BASEMAPS array as a fourth chip.)
+
+Also the smaller follow-ups list stays (IN_CONVEYANCING pill, transfer
+status advance, geom sync, staging bucket cleanup, safer Classify, photo
+carousel).
+
+---
+
 ## BATCH DIFFER — "WHAT THIS BATCH ADDS" (2026-07-06)
 
 **Answers the "nugget in one file" concern**. Bronwyn worried that batch-level
