@@ -8,6 +8,41 @@ _Last updated: 2026-07-06_
 
 ---
 
+## CONTENT-BASED RECLASSIFY (2026-07-06)
+
+**Fixes the Gas COC problem** — files whose filename was uninformative (like
+`20260219134128251.pdf`, obviously a SAQCC Gas certificate but invisible to
+`lib/classify.ts`) landed as `other`. The extractor already OCRs scanned PDFs
+but only pulls fields — it never fed that content back to the classifier.
+This ship closes the loop.
+
+- `lib/content-classify.ts` — regex ruleset that scans document text (from
+  PDF text layer, docx, or OCR). Ordered rules, first hit wins. Covers Gas
+  COC, Electrical COC, Beetle, FICA, ID, passport, marriage cert, title deed,
+  rates, juristic-party paperwork (resolution / CIPC / trust / share
+  register / VAT), mandate types, PPRA disclosure, CMA, Lightstone report,
+  offer to purchase, agreement of sale, movables, addendum, plans, design
+  manuals.
+- `app/api/reclassify/route.ts` — targets files marked `other` OR unclassified
+  OR classification_confidence < 0.5 (so manual `setFileType` corrections
+  above 0.5 are safe). For each: uses cached `ocr_text` if present, else
+  downloads and extracts text via `textFromFile` (pdf-parse / mammoth /
+  raw). If text is empty (scanned image with no text layer), OCRs via
+  OpenRouter's `file-parser` + `mistral-ocr` plugin (same path `/api/extract`
+  uses). Regex classifier first; LLM fallback (single classify prompt,
+  cheap) for the rest. Writes back `detected_doc_type_id`, `is_pii`,
+  `classification_confidence`, and caches `ocr_text`. Skips photos and
+  `.eml` wrappers.
+- **UI**: "Reclassify unknowns (N)" button in the batch review header, only
+  shown when N > 0. Sits between Classify and Extract fields (AI).
+
+Cost sanity: ~$0.01 OCR + ~$0.001 LLM classify per unknown file. A batch with
+3–5 unknowns costs a few cents.
+
+**No migration needed.** Just push.
+
+---
+
 ## MAP + DASHBOARD REWORK + SHARED TOP BAR (2026-07-06)
 
 **First real front-end pass** — lifts the live app from an admin table shell

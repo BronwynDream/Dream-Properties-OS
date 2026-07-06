@@ -264,10 +264,44 @@ export default function ReviewClient({
     }
   }
 
+  async function runReclassify() {
+    setExtractBusy(true);
+    setExtractMsg("Reading unknown files…");
+    try {
+      const res = await fetch("/api/reclassify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ batchId: batch.id }),
+      });
+      const json = await res.json();
+      if (json.ok) {
+        setExtractMsg(
+          json.changed > 0
+            ? `Reclassified ${json.changed} of ${json.processed} unknown file(s).`
+            : json.note || `Nothing to reclassify from ${json.processed} candidate(s).`,
+        );
+      } else {
+        setExtractMsg(json.error || "Reclassify failed.");
+      }
+    } catch (e) {
+      setExtractMsg(`Reclassify failed: ${(e as Error).message}`);
+    } finally {
+      setExtractBusy(false);
+      router.refresh();
+    }
+  }
+
   const classified = files.filter((f) => f.detected_doc_type_id).length;
   const hasEml = files.some((f) =>
     f.original_filename.toLowerCase().endsWith(".eml"),
   );
+  const otherTypeId = docTypes.find((d) => d.label === "Other")?.id;
+  const unknownCount = files.filter(
+    (f) =>
+      !f.detected_doc_type_id ||
+      f.detected_doc_type_id === otherTypeId ||
+      (f.classification_confidence ?? 1) < 0.5,
+  ).length;
 
   // group extractions by entity_hint (seller_1, purchaser_2…) else by table
   const groups = new Map<string, Extraction[]>();
@@ -309,6 +343,16 @@ export default function ReviewClient({
             <button className="ghost-dark" onClick={runClassify} disabled={pending}>
               {pending ? "Working…" : "Classify"}
             </button>
+            {unknownCount > 0 && (
+              <button
+                className="ghost-dark"
+                onClick={runReclassify}
+                disabled={extractBusy}
+                title="Read each unknown file (OCR if scanned) and classify by content"
+              >
+                {extractBusy ? "Working…" : `Reclassify unknowns (${unknownCount})`}
+              </button>
+            )}
             <button className="cta" onClick={runExtract} disabled={extractBusy || classified === 0}>
               {extractBusy ? "Reading…" : "Extract fields (AI)"}
             </button>
