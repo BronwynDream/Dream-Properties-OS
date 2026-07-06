@@ -73,11 +73,15 @@ export default function MapView({
   const [pending, startTransition] = useTransition();
   const [geocodeMsg, setGeocodeMsg] = useState<string | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
+  const [debugLog, setDebugLog] = useState<string[]>([]);
 
   // Trim defensively — pasted env vars sometimes carry trailing \n or spaces,
   // and Mapbox rejects those silently. Also useful diagnostic: if the token
   // arrived truncated (e.g. Vercel encoding issue), the length is visible.
   const cleanToken = (mapboxToken ?? "").trim();
+
+  const pushDebug = (msg: string) =>
+    setDebugLog((l) => [...l, `${new Date().toLocaleTimeString()} ${msg}`]);
 
   // Group + count by mandate for the filter chips.
   const mandateCounts = useMemo(() => {
@@ -103,8 +107,23 @@ export default function MapView({
   // Set up the map on mount. If no token is configured, render an empty state
   // instead of initialising Mapbox with a broken client.
   useEffect(() => {
-    if (!containerRef.current) return;
-    if (!cleanToken) return;
+    pushDebug(`mount · token length=${mapboxToken.length} · cleanToken length=${cleanToken.length}`);
+    pushDebug(`token starts with '${cleanToken.slice(0, 6)}' ends with '${cleanToken.slice(-4)}'`);
+    if (!containerRef.current) {
+      pushDebug("bail: containerRef null");
+      return;
+    }
+    if (!cleanToken) {
+      pushDebug("bail: cleanToken empty");
+      return;
+    }
+    // WebGL check — Safari can disable it.
+    if (!mapboxgl.supported()) {
+      pushDebug("bail: mapboxgl.supported() = false (WebGL disabled?)");
+      setMapError("This browser doesn't support WebGL (Mapbox requires it).");
+      return;
+    }
+    pushDebug("mapboxgl.supported() = true");
     mapboxgl.accessToken = cleanToken;
 
     let map: mapboxgl.Map;
@@ -117,18 +136,23 @@ export default function MapView({
         attributionControl: false,
         cooperativeGestures: false,
       });
+      pushDebug("new Map() ok");
     } catch (e) {
+      pushDebug(`new Map() threw: ${(e as Error).message}`);
       setMapError(`Mapbox init failed: ${(e as Error).message}`);
       return;
     }
 
     map.on("error", (evt) => {
       const msg = (evt.error as Error | undefined)?.message ?? "unknown mapbox error";
-      // Log full detail so Safari's console shows it, and surface a summary on-screen.
       // eslint-disable-next-line no-console
       console.error("[mapbox]", msg, evt);
+      pushDebug(`error event: ${msg}`);
       setMapError(msg);
     });
+    map.on("load", () => pushDebug("style loaded"));
+    map.on("styledata", () => pushDebug("styledata"));
+    map.on("sourcedata", () => pushDebug("sourcedata"));
 
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-left");
     map.addControl(
@@ -346,6 +370,27 @@ export default function MapView({
             }}
           >
             <b>Mapbox error:</b> {mapError}
+          </div>
+        )}
+        {debugLog.length > 0 && (
+          <div
+            style={{
+              position: "absolute", left: 16, top: 60, zIndex: 30,
+              background: "rgba(255,255,255,0.96)",
+              border: "1px solid #d7deef", borderRadius: 10,
+              padding: "8px 12px", fontSize: 11, maxWidth: 520,
+              boxShadow: "0 6px 20px rgba(15,22,52,0.14)",
+              fontFamily: "Spline Sans Mono, monospace",
+              color: "#15203a",
+              maxHeight: 200, overflowY: "auto",
+            }}
+          >
+            <div style={{ fontWeight: 700, marginBottom: 4, color: "#0F2A63" }}>
+              Map debug
+            </div>
+            {debugLog.map((l, i) => (
+              <div key={i}>{l}</div>
+            ))}
           </div>
         )}
         {mapboxToken && stats.total === 0 && (
