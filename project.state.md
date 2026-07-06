@@ -10,11 +10,62 @@ _Last updated: 2026-07-06_
 
 ## QUEUED FOR NEXT SESSION — bulk-migration unlocks
 
-Three ships that would flip the migration path from "click each batch" to
-"click a queue". None are architectural; they're all extensions to what
-already exists.
+Four ships that would flip the migration path from "click each batch" to
+"click a queue" and close the trickle-in workflow gap. None are
+architectural; they're all extensions to what already exists.
 
-**1. Bulk extract button** (`/triage` page)
+**Sequence rationale**: #1 is a correctness fix — the trickle-in workflow
+(mandate → FICA → agreement across separate drops) creates orphan "Unknown
+address" properties today when the FICA-only drop can't be auto-matched.
+Ship first. #2 (dedupe) is what makes bulk-commit safe. Then #3 bulk-extract
++ #4 bulk-commit as the throughput unlocks.
+
+**1. Manual "attach to existing property" at batch review** (correctness — SHIP FIRST)
+- Right now, when the matcher finds no property candidate (e.g. a FICA-only
+  drop with no address in the extracted fields), Bronwyn has no way to
+  say "this batch belongs to `42 Duthie`" manually. `commit_batch` falls
+  back to `Unknown address` and creates a phantom property.
+- New: a search box in the Matches panel for the property target — type
+  an address / deed / erf, get autocomplete results from `property`,
+  click one to inject its `id` into `fields.property.id`. Reuses the
+  same code path the auto-`link` decision already uses.
+- Also: a "attach to this existing transfer" picker when linking to a
+  property that already has transfers — closes the second-transfer noise
+  without needing dedupe to guess.
+- ~2 hours. Highest priority.
+
+**2. On-commit document + transfer dedupe** (safety for bulk commit)
+- Before creating a `document` row from an `ingest_file`, check whether a
+  document with the same `normaliseFilename(title)` AND `byte_size`
+  already exists linked to the target property. If yes: reuse the
+  existing document row and only add the new `document_link` — with the
+  new `document_link.role` set to `batch:<label>` so the provenance
+  survives.
+- Also do a lightweight transfer dedupe: if this batch's proposed
+  agreement price + date matches an existing transfer on the linked
+  property, reuse that transfer instead of creating a new one.
+- Uses the same `lib/diff.ts` helpers the differ already uses.
+- Turns the "informational" differ into the "safe on commit" differ.
+- ~medium; 2–3 hours.
+
+**3. Bulk extract button** (`/triage` page)
+- "Extract all unextracted green batches" (or `green + amber`). Fires
+  `/api/extract` per batch in sequence with a small concurrency cap
+  (probably 3). Same cost model as today — the user triggers, nothing
+  fires automatically on drop.
+- Show an estimated LLM cost (rough $/batch × count) on the button so
+  nobody accidentally torches R500 on a wave.
+- Progress ticker + fail-tolerant (if one batch OCR errors, keep going).
+- ~1 hour to build.
+
+**4. Bulk commit button** (`/triage` page)
+- "Commit all one-click-safe batches" — bar: `tier=green` AND every
+  match target has an auto-decided `link` AND (once #2 is in) no
+  document-dedupe conflicts on the differ.
+- Skips anything that would create a duplicate transfer or has field
+  conflicts on the property target's differ.
+- Reports "committed X, skipped Y for review" with a table of skips.
+- ~half day.
 - "Extract all unextracted green batches" (or `green + amber`). Fires
   `/api/extract` per batch in sequence with a small concurrency cap
   (probably 3). Same cost model as today — the user triggers, nothing
