@@ -14,13 +14,12 @@ Four ships that would flip the migration path from "click each batch" to
 "click a queue" and close the trickle-in workflow gap. None are
 architectural; they're all extensions to what already exists.
 
-**Sequence rationale**: #1 is a correctness fix — the trickle-in workflow
-(mandate → FICA → agreement across separate drops) creates orphan "Unknown
-address" properties today when the FICA-only drop can't be auto-matched.
-Ship first. #2 (dedupe) is what makes bulk-commit safe. Then #3 bulk-extract
-+ #4 bulk-commit as the throughput unlocks.
+**Sequence rationale**: #1 and #2 were **shipped 2026-07-06 evening** — see
+the design-pass section below. Remaining queue: bulk migration throughput
+(bulk extract + bulk commit) plus new items from tonight's real-data run
+(transfer picker + merge-transfers UI + doc-revision dedupe).
 
-**1. Manual "attach to existing property" at batch review** (correctness — SHIP FIRST)
+**~~1. Manual "attach to existing property" — SHIPPED 2026-07-06~~**
 - Right now, when the matcher finds no property candidate (e.g. a FICA-only
   drop with no address in the extracted fields), Bronwyn has no way to
   say "this batch belongs to `42 Duthie`" manually. `commit_batch` falls
@@ -34,7 +33,7 @@ Ship first. #2 (dedupe) is what makes bulk-commit safe. Then #3 bulk-extract
   without needing dedupe to guess.
 - ~2 hours. Highest priority.
 
-**2. On-commit document + transfer dedupe** (safety for bulk commit)
+**~~2. On-commit document dedupe — SHIPPED 2026-07-06~~** (transfer dedupe still open)
 - Before creating a `document` row from an `ingest_file`, check whether a
   document with the same `normaliseFilename(title)` AND `byte_size`
   already exists linked to the target property. If yes: reuse the
@@ -66,6 +65,37 @@ Ship first. #2 (dedupe) is what makes bulk-commit safe. Then #3 bulk-extract
   conflicts on the property target's differ.
 - Reports "committed X, skipped Y for review" with a table of skips.
 - ~half day.
+
+**5. Transfer picker at commit time** (queued 2026-07-06 evening after
+the 15 Eagles Way 3-transfer mess)
+- When a batch links to a property that already has one or more transfers,
+  offer a third option beyond "auto-decide" and "create new": "attach to
+  this existing transfer". Same shape as the property-attach flow — search
+  or pick from the existing transfers on the linked property.
+- Root fix: stops commits creating a fresh transfer every time. Bronwyn's
+  "one listing, three folders trickled in" workflow no longer produces
+  three identical transfer rows on one property.
+- Small; ~1-2 hours.
+
+**6. Merge transfers UI on the Property Record** (queued 2026-07-06 evening)
+- Small "Merge into another transfer…" button on each transfer card in
+  the ownership timeline. Opens a picker of the other transfers on this
+  property. Runs the DO-block pattern from tonight's 15 Eagles Way SQL
+  as a server action. Handles the transfer_party / fica / document_link
+  unique-constraint clashes cleanly.
+- Retroactive tool for records already polluted; #5 stops the pollution
+  happening in the first place. Build #5 first.
+- ~2 hours.
+
+**7. Doc revision dedupe** (queued 2026-07-06 evening)
+- Optional cleanup pass: when multiple docs on a property share the same
+  `normaliseFilename(title)` but different `byte_size` (e.g. Property
+  Information v1 + v2 dropped separately), keep only the newest by
+  `uploaded_at` and archive the others.
+- Off by default; run via SQL or a maintenance button. Not a hot path.
+
+**8. Custom Dream Mapbox Studio style** — Simon building in parallel. Once the
+   style URL exists, one line goes into the BASEMAPS array as a fourth chip.
 - "Extract all unextracted green batches" (or `green + amber`). Fires
   `/api/extract` per batch in sequence with a small concurrency cap
   (probably 3). Same cost model as today — the user triggers, nothing
@@ -110,6 +140,95 @@ Also queued from earlier (smaller):
   purged from the DB (bytes still in storage).
 - Safer `Classify`: skip files above 0.9 confidence so hand-fixes survive.
 - Photo carousel in Map preview card (needs media-table reshape).
+
+---
+
+## EVENING ARC — DESIGN PASS + REAL-DATA FIXES (2026-07-06 evening)
+
+Second big block of the day. Everything that shipped between "map is live"
+and "Bronwyn's book is Bronwyn-ready".
+
+### Map pins redesign
+Teardrop pins couldn't hold variable-length price text (`R 24.5M` overflowed)
+and pure navy fills sank into satellite imagery. Swapped for the horizontal
+**price-pill pattern** real-estate portals use (Zillow / Rightmove /
+Property24). Rounded rectangle sized to the price text, mandate colour on
+fill, small pointer arrow at the bottom, white 2px ring for contrast on
+satellite basemap. POR variant for no-price rows: compact muted badge with
+the mandate colour as a thin ring.
+
+### Basemap switcher — Satellite as default
+Three-tab toggle (Satellite / Streets / Light) in the left rail. `mapbox/
+satellite-streets-v12` as the default so Bronwyn sees actual roofs on
+Leisure Isle and Pezula with mandate pins on the buildings. `map.setStyle()`
+keeps HTML markers across style changes so no marker gymnastics.
+
+### Manual property-attach shipped
+- `searchProperties(q)`: ilike over `primary_address` + `title_deed_no`,
+  ilike over `erf.erf_number`, dedupe by property id, backfills erven for
+  every result.
+- `linkPropertyManually(batchId, propertyId, label)`: wipes existing
+  `match_candidate` rows for the property target, inserts a fresh one
+  with `decision='link'` + `candidate_id`. `commit_batch` reads that path
+  and attaches to the chosen property.
+- `PropertyAttach.tsx` client component: expandable inline search, 250ms
+  debounce, big address + mono suburb/erf/deed per result. Renders next to
+  "Create new record instead" on the Property target, AND as a standalone
+  section when the auto-matcher didn't propose a Property target at all
+  (the FICA-only trickle case).
+
+### On-commit document dedupe
+`commitBatch` now pre-fetches existing `document_link` rows on the target
+property and builds a `normaliseFilename(title) + byte_size` map. When
+processing each `ingest_file`, matches reuse the existing `document` row
+and only add the new `document_link` for the transfer. First-in-batch
+duplicates also collapse. Historical dupes (169 Links, Eagles Way) don't
+retro-fix — only new commits.
+
+### Property Record design pass (frontend-design skill)
+Interim data-first layout replaced.
+
+- **Header status pill**: current transfer status as a chip on the right of
+  the masthead. Same palette as map pins. Humanises `IN_CONVEYANCING` →
+  `In conveyancing`, `REGISTERED` → `Registered`, `NO_LIVE_DEAL` → `No live
+  deal`. Transfer date under the pill when set.
+- **Cadastral strip** replaces the 6-tile fact grid. Reads left-to-right in
+  SA deeds-registration order: Erf · Title Deed · Extent · Suburb · Type ·
+  Ownership. Hairline verticals between items. Values dim to half opacity
+  when empty. Mono for deed / erf, Fraunces for named values.
+- **Ownership timeline** as the signature move. The app's gold tideline
+  motif (previously only a decorative rule) becomes a vertical rail down
+  the transfers section with a year marker + tideline dot per transfer.
+  Applies the app signature to an axis where time actually is information.
+- **Photos strip strict**: only `doc_type_code === 'photo'` files land here.
+  Scanned IDs and passports (image files, classified as `id_document` /
+  `passport`) no longer leak into a strip that reads as public property
+  photos. POPIA hygiene. Bigger tiles (168×126).
+- **Documents grouped by category** with gold-tideline underlines under
+  each category eyebrow. FICA eyebrow renders in red as a quiet visual
+  signal that PII lives under it. `Documents (N)` wrapper heading dropped
+  (Chanel critique: one accessory removed).
+
+### 15 Eagles Way triage exercise (real-data test)
+- Two batches for "one listing, trickled in over two folders" hit the
+  live pipeline. Both linked to the existing `b3a041a7-...` property via
+  manual attach. Committed cleanly.
+- Result: three transfers on one property (the two new commits + a July 2
+  empty pilot) — this is the transfer-dedupe gap in real life.
+- Manual SQL DO-block collapsed the three into one keeper. Ownership
+  timeline flattened to a single transfer with all 8 documents attached.
+- Queued: transfer-picker-at-commit (root fix) + merge-transfers UI
+  (retroactive cleanup) so this doesn't need SQL again.
+
+### Suburb backfill for pre-fallback commits
+One-shot `update ... coalesce()` iterating every seeded suburb — patched
+Suburb tile on every property already committed before the 0016 landing.
+The Heads / Leisure Isle / Pezula / Simola / Belvidere / Brenton records
+now all read correctly.
+
+### Cosmetic wins
+`IN_CONVEYANCING` → `In conveyancing` etc. (was queued as a cosmetic
+follow-up) — done as part of the design pass.
 
 ---
 
