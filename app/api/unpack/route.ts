@@ -3,10 +3,19 @@ import { simpleParser } from "mailparser";
 import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+// Bumped from 60 → 300. Real Bronwyn emails run 5–13 MB apiece with base64
+// attachments; sequential parse of a 25 MB batch was silently hitting the
+// old cap. 300s is the Vercel Pro ceiling; Hobby will cap to whatever it
+// allows without failing the deploy.
+export const maxDuration = 300;
+
+type FileError = { file: string; stage: string; message: string };
 
 // Crack open .eml files: pull each attachment out as its own staging file, keep the
 // email body as text. Turns "1 opaque email" into the real documents inside it.
+// Failure-visible: any parse, upload, or insert error is captured per-file and
+// returned to the client, and the .eml is only marked `parsed` on a successful
+// end-to-end run so a retry re-processes it.
 export async function POST(request: Request) {
   const { batchId } = (await request.json()) as { batchId?: string };
   if (!batchId) {
@@ -34,27 +43,54 @@ export async function POST(request: Request) {
   }
 
   let attachmentCount = 0;
+  const errors: FileError[] = [];
+  let successfulEmails = 0;
 
   for (const eml of emls) {
-    const { data: blob } = await supabase.storage.from("staging").download(eml.storage_path);
-    if (!blob) continue;
-    const buf = Buffer.from(await blob.arrayBuffer());
+    let succeeded = true;
 
+    // 1. Download the .eml from staging.
+    const { data: blob, error: dlErr } = await supabase.storage
+      .from("staging")
+      .download(eml.storage_path);
+    if (dlErr || !blob) {
+      errors.push({
+        file: eml.original_filename,
+        stage: "download",
+        message: dlErr?.message ?? "download returned no blob",
+      });
+      continue;
+    }
+
+    let buf: Buffer;
+    try {
+      buf = Buffer.from(await blob.arrayBuffer());
+    } catch (e) {
+      errors.push({
+        file: eml.original_filename,
+        stage: "read",
+        message: (e as Error).message,
+      });
+      continue;
+    }
+
+    // 2. Parse the MIME payload.
     let parsed;
     try {
       parsed = await simpleParser(buf);
-    } catch {
+    } catch (e) {
+      errors.push({
+        file: eml.original_filename,
+        stage: "parse",
+        message: (e as Error).message.slice(0, 300),
+      });
       continue;
     }
 
     const base = eml.original_filename.replace(/\.eml$/i, "");
 
+    // 3. Extract attachments, skipping inline signature decoration.
     for (const att of parsed.attachments ?? []) {
-      // Skip inline decoration — Bronwyn's Dream email footer + Outlook signature
-      // template arrive here as attachments with contentDisposition=inline and
-      // a contentId (referenced from HTML body via cid:). Both are strong signals
-      // this is chrome, not content. Also skip Outlook's auto-named image00N.*
-      // as belt-and-braces for clients that omit the disposition header.
       const isInline =
         (att as { contentDisposition?: string }).contentDisposition === "inline" ||
         (att as { related?: boolean }).related === true ||
@@ -65,11 +101,22 @@ export async function POST(request: Request) {
       const filename = att.filename || `attachment-${attachmentCount + 1}`;
       const path = `${batchId}/_unpacked/${base}/${filename}`;
       const content = att.content as Buffer;
-      await supabase.storage.from("staging").upload(path, content, {
+
+      const { error: upErr } = await supabase.storage.from("staging").upload(path, content, {
         contentType: att.contentType || "application/octet-stream",
         upsert: true,
       });
-      await supabase.from("ingest_file").insert({
+      if (upErr) {
+        errors.push({
+          file: `${eml.original_filename} → ${filename}`,
+          stage: "upload",
+          message: upErr.message,
+        });
+        succeeded = false;
+        continue;
+      }
+
+      const { error: insErr } = await supabase.from("ingest_file").insert({
         batch_id: batchId,
         original_filename: filename,
         storage_bucket: "staging",
@@ -78,15 +125,34 @@ export async function POST(request: Request) {
         byte_size: att.size ?? content.length,
         status: "uploaded",
       });
+      if (insErr) {
+        errors.push({
+          file: `${eml.original_filename} → ${filename}`,
+          stage: "insert",
+          message: insErr.message,
+        });
+        succeeded = false;
+        continue;
+      }
       attachmentCount++;
     }
 
-    // keep the email body as searchable text, mark the .eml as unpacked
-    await supabase
-      .from("ingest_file")
-      .update({ ocr_text: (parsed.text ?? "").slice(0, 100000), status: "parsed" })
-      .eq("id", eml.id);
+    // 4. Only mark 'parsed' if we got through the attachment loop without
+    //    upload/insert errors. That way a retry will reprocess partial failures.
+    if (succeeded) {
+      await supabase
+        .from("ingest_file")
+        .update({ ocr_text: (parsed.text ?? "").slice(0, 100000), status: "parsed" })
+        .eq("id", eml.id);
+      successfulEmails++;
+    }
   }
 
-  return NextResponse.json({ ok: true, emails: emls.length, attachments: attachmentCount });
+  return NextResponse.json({
+    ok: true,
+    emails: successfulEmails,
+    emailsAttempted: emls.length,
+    attachments: attachmentCount,
+    errors,
+  });
 }

@@ -79,14 +79,25 @@ export default function DropZone() {
         });
       }
       // unpack any .eml files (extract their attachments), then classify everything
+      let unpackNote = "";
       try {
-        await fetch("/api/unpack", {
+        const upRes = await fetch("/api/unpack", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ batchId: batch.id }),
         });
-      } catch {
-        /* can also be run from the batch screen */
+        const upJson = await upRes.json();
+        if (upJson && upJson.ok) {
+          if (Array.isArray(upJson.errors) && upJson.errors.length > 0) {
+            unpackNote = ` · unpack: ${upJson.errors.length} error(s) — retry from the review screen`;
+          } else if (upJson.attachments > 0) {
+            unpackNote = ` · unpacked ${upJson.attachments} attachment(s)`;
+          }
+        } else if (upJson && upJson.error) {
+          unpackNote = ` · unpack error: ${upJson.error}`;
+        }
+      } catch (e) {
+        unpackNote = ` · unpack call failed: ${(e as Error).message}`;
       }
       try {
         await classifyBatch(batch.id);
@@ -94,6 +105,7 @@ export default function DropZone() {
         /* classification can also be run from the batch screen */
       }
       created++;
+      if (unpackNote) setMsg((prev) => (prev ?? "") + unpackNote);
     }
 
     setMsg(

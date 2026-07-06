@@ -229,11 +229,21 @@ export default function ReviewClient({
       const json = await res.json();
       if (json.ok) {
         await classifyBatch(batch.id);
-        setExtractMsg(
-          json.attachments > 0
-            ? `Unpacked ${json.attachments} attachment(s) from ${json.emails} email(s) — now classified.`
-            : json.note || "No email attachments to unpack.",
-        );
+        const parts: string[] = [];
+        if (json.attachments > 0) {
+          parts.push(
+            `Unpacked ${json.attachments} attachment(s) from ${json.emails} of ${json.emailsAttempted ?? json.emails} email(s).`,
+          );
+        } else {
+          parts.push(json.note || "No attachments extracted.");
+        }
+        if (Array.isArray(json.errors) && json.errors.length > 0) {
+          const first = json.errors[0];
+          parts.push(
+            `${json.errors.length} error(s) — first: ${first.file} (${first.stage}): ${first.message}`,
+          );
+        }
+        setExtractMsg(parts.join(" · "));
       } else {
         setExtractMsg(json.error || "Nothing to unpack.");
       }
