@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import TopBar from "@/app/components/TopBar";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +27,8 @@ export default async function PropertiesList() {
   const props = (data ?? []) as unknown as PropRow[];
 
   return (
+    <>
+    <TopBar />
     <main>
       <header
         className="app-head"
@@ -35,9 +38,6 @@ export default async function PropertiesList() {
           <p className="eyebrow">Dream Knysna · Properties</p>
           <h1>Property database</h1>
         </div>
-        <Link href="/dashboard" className="ghost-link">
-          ← Dashboard
-        </Link>
       </header>
       <hr className="tideline" />
 
@@ -74,5 +74,6 @@ export default async function PropertiesList() {
         )}
       </section>
     </main>
+    </>
   );
 }

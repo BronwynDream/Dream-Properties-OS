@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import TopBar from "@/app/components/TopBar";
 import DropZone from "./DropZone";
 import QueueActions from "./QueueActions";
 export const dynamic = "force-dynamic";
@@ -36,6 +37,8 @@ export default async function TriagePage() {
   const notReady = !!error && /relation|does not exist|schema cache/i.test(error.message);
 
   return (
+    <>
+    <TopBar />
     <main>
       <header
         className="app-head"
@@ -45,9 +48,6 @@ export default async function TriagePage() {
           <p className="eyebrow">Dream Knysna · Migration triage</p>
           <h1>Bring your folders in</h1>
         </div>
-        <Link href="/dashboard" className="ghost-link">
-          ← Dashboard
-        </Link>
       </header>
       <hr className="tideline" />
 
@@ -110,5 +110,6 @@ export default async function TriagePage() {
         )}
       </section>
     </main>
+    </>
   );
 }

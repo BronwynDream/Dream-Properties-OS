@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import TopBar from "@/app/components/TopBar";
 import PairCard, { PropertyPair, PartyPair, Pair } from "./PairCard";
 
 export const dynamic = "force-dynamic";
@@ -56,6 +57,8 @@ export default async function DupesPage({ searchParams }: { searchParams: Search
   }
 
   return (
+    <>
+    <TopBar />
     <main>
       <header
         className="app-head"
@@ -65,9 +68,6 @@ export default async function DupesPage({ searchParams }: { searchParams: Search
           <p className="eyebrow">Dream Knysna · Duplicate finder</p>
           <h1>Merge duplicate records</h1>
         </div>
-        <Link href="/dashboard" className="ghost-link">
-          ← Dashboard
-        </Link>
       </header>
       <hr className="tideline" />
 
@@ -152,5 +152,6 @@ export default async function DupesPage({ searchParams }: { searchParams: Search
         )}
       </section>
     </main>
+    </>
   );
 }

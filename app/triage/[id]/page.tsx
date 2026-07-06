@@ -1,5 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import TopBar from "@/app/components/TopBar";
 import ReviewClient from "./ReviewClient";
 
 export default async function BatchReview({
@@ -49,12 +50,15 @@ export default async function BatchReview({
     .order("score", { ascending: false });
 
   return (
-    <ReviewClient
-      batch={batch}
-      files={files ?? []}
-      docTypes={docTypes ?? []}
-      extractions={extractions ?? []}
-      matches={matches ?? []}
-    />
+    <>
+      <TopBar />
+      <ReviewClient
+        batch={batch}
+        files={files ?? []}
+        docTypes={docTypes ?? []}
+        extractions={extractions ?? []}
+        matches={matches ?? []}
+      />
+    </>
   );
 }

@@ -4,7 +4,64 @@ Running log of what's decided, built, and next. Updated at the end of each worki
 session. `PROJECT.md` remains the canonical business/design doc; this file is the
 "where are we right now" companion.
 
-_Last updated: 2026-07-05_
+_Last updated: 2026-07-06_
+
+---
+
+## MAP + DASHBOARD REWORK + SHARED TOP BAR (2026-07-06)
+
+**First real front-end pass** — lifts the live app from an admin table shell
+towards the wireframe fidelity (Estuary v0.3). Three ships in one:
+
+**Shared top bar** (`app/components/TopBar.tsx` + `TopBarClient.tsx`) applied
+to every signed-in page. Estuary navy, gold tideline underneath, brand mark
+in Fraunces, nav tabs (Overview / Map / Properties / Triage / Dupes — the last
+admin-only) with active-tab detection via `usePathname`, role pill (gold for
+admin), signout. First shared spine the app has had. Login stays untouched.
+
+**`/map`** — live-data map screen backed by property + latest listing + mandate
++ latest transfer. Mapbox GL with a custom navy map-drop pin, price rendered
+directly on the pin body, coloured by mandate (gold Exclusive / forest Sole /
+navy-ish Joint / amber Under offer / grey Open / darker grey None). Left rail:
+mandate filter chips with counts + scrolling listing list. Right slide-in
+preview card on pin click with address, mandate + status chips, asking price
+(with a gold underline signature), extent / deed / transfer summary, and a
+"Open property record →" CTA. Public Mapbox demo token as fallback; production
+swap is `NEXT_PUBLIC_MAPBOX_TOKEN`. Empty states for zero properties or zero
+geocoded.
+
+**Geocoder** — `geocodeMissingProperties` server action + admin-only "Geocode
+all" button in the map's top-right. Iterates properties where `lng is null`,
+hits Mapbox Geocoding v6 forward endpoint (anchored to Knysna centre +
+`country=za` + a Knysna/Sedgefield/Pezula regex guard for short addresses),
+writes `lng, lat` back. Cheap enough at scale (500 folders ≈ ~$0). Uses
+`MAPBOX_SECRET_TOKEN` server-side (falls back to the public token if not set).
+Migration `0015_map_coords.sql` adds the `lng, lat` numerics — no geom sync
+here (needs a PostGIS helper; deferred).
+
+**Dashboard rework** — replaces the 3-link welcome with a proper landing:
+KPI tiles (Properties / Transfers / In-conveyancing / Live listings, each with
+a deep link) + a Recent activity strip pulling the last six committed
+`ingest_batch` rows with a jump to their property record. Fraunces figures with
+the gold tideline motif under each KPI value.
+
+Styles are additive: ~350 new lines in `globals.css` for topbar, KPI tiles,
+map shell, pin, preview card, and mandate colour semantics. No existing
+classes changed; all previous pages still render fine.
+
+**Needs `0015_map_coords.sql` run + a push.** First test: land on
+/dashboard → nav tabs work; hit /map → "N of M pinned" bar shows in the
+top-right (M is your property count); hit **Geocode all** → refresh → pins
+appear coloured by mandate; click one → preview card slides in. For an
+alternative Mapbox token set `NEXT_PUBLIC_MAPBOX_TOKEN` in Vercel.
+
+Out of scope for this ship, on the follow-up list:
+- Photo carousel in preview card (needs the media-table reshape).
+- Basemap switching (satellite / streets / cadastral).
+- `transfer.status` advance to `registered` when a title-deed doc is present
+  (raised in earlier conversation) — still queued.
+- Cosmetic: `IN_CONVEYANCING` → "In conveyancing" pill formatting.
+- Sync `geom` from `lng, lat` (needs a small SQL helper).
 
 ---
 

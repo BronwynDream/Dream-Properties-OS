@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import TopBar from "@/app/components/TopBar";
 
 export const dynamic = "force-dynamic";
 
@@ -114,6 +115,8 @@ export default async function PropertyRecord({
   const docsFor = (tid: string) => docs.filter((x) => x.transfer_id === tid);
 
   return (
+    <>
+    <TopBar />
     <main>
       <header
         className="app-head"
@@ -246,5 +249,6 @@ export default async function PropertyRecord({
         })}
       </section>
     </main>
+    </>
   );
 }
