@@ -23,7 +23,7 @@ export async function geocodeMissingProperties(): Promise<GeocodeResult> {
     .single();
   if (profile?.role !== "admin") return { ok: false, error: "admin only" };
 
-  const token = process.env.MAPBOX_SECRET_TOKEN || process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+  const token = (process.env.MAPBOX_SECRET_TOKEN || process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "").trim();
   if (!token) return { ok: false, error: "no mapbox token configured" };
 
   const { data: rows, error } = await supabase

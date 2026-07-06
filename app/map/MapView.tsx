@@ -72,6 +72,12 @@ export default function MapView({
   );
   const [pending, startTransition] = useTransition();
   const [geocodeMsg, setGeocodeMsg] = useState<string | null>(null);
+  const [mapError, setMapError] = useState<string | null>(null);
+
+  // Trim defensively — pasted env vars sometimes carry trailing \n or spaces,
+  // and Mapbox rejects those silently. Also useful diagnostic: if the token
+  // arrived truncated (e.g. Vercel encoding issue), the length is visible.
+  const cleanToken = (mapboxToken ?? "").trim();
 
   // Group + count by mandate for the filter chips.
   const mandateCounts = useMemo(() => {
@@ -98,17 +104,32 @@ export default function MapView({
   // instead of initialising Mapbox with a broken client.
   useEffect(() => {
     if (!containerRef.current) return;
-    if (!mapboxToken) return;
-    mapboxgl.accessToken = mapboxToken;
+    if (!cleanToken) return;
+    mapboxgl.accessToken = cleanToken;
 
-    const map = new mapboxgl.Map({
-      container: containerRef.current,
-      style: "mapbox://styles/mapbox/light-v11",
-      center: KNYSNA_CENTRE,
-      zoom: 11,
-      attributionControl: false,
-      cooperativeGestures: false,
+    let map: mapboxgl.Map;
+    try {
+      map = new mapboxgl.Map({
+        container: containerRef.current,
+        style: "mapbox://styles/mapbox/light-v11",
+        center: KNYSNA_CENTRE,
+        zoom: 11,
+        attributionControl: false,
+        cooperativeGestures: false,
+      });
+    } catch (e) {
+      setMapError(`Mapbox init failed: ${(e as Error).message}`);
+      return;
+    }
+
+    map.on("error", (evt) => {
+      const msg = (evt.error as Error | undefined)?.message ?? "unknown mapbox error";
+      // Log full detail so Safari's console shows it, and surface a summary on-screen.
+      // eslint-disable-next-line no-console
+      console.error("[mapbox]", msg, evt);
+      setMapError(msg);
     });
+
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-left");
     map.addControl(
       new mapboxgl.AttributionControl({ compact: true, customAttribution: "Dream Knysna" }),
@@ -121,7 +142,7 @@ export default function MapView({
       mapRef.current = null;
       markersRef.current = {};
     };
-  }, [mapboxToken]);
+  }, [cleanToken]);
 
   // Sync markers to the plottable set. Rebuild on filter change or data change.
   useEffect(() => {
@@ -299,7 +320,7 @@ export default function MapView({
           </div>
         )}
 
-        {!mapboxToken && (
+        {!cleanToken && (
           <div className="map-empty">
             <div className="map-empty-card">
               <h2>Mapbox token needed</h2>
@@ -308,7 +329,23 @@ export default function MapView({
                 Environment Variables) to a public Mapbox access token, then redeploy.
                 A free Mapbox account covers this easily.
               </p>
+              <p style={{ fontSize: 11, color: "#8090b5" }}>
+                Received token length: <b>{mapboxToken.length}</b>
+              </p>
             </div>
+          </div>
+        )}
+        {mapError && (
+          <div
+            style={{
+              position: "absolute", left: 16, bottom: 90, zIndex: 30,
+              background: "#fdecec", color: "#a12020",
+              border: "1px solid #f3c2c2", borderRadius: 10,
+              padding: "10px 14px", fontSize: 12, maxWidth: 420,
+              boxShadow: "0 6px 20px rgba(15,22,52,0.14)",
+            }}
+          >
+            <b>Mapbox error:</b> {mapError}
           </div>
         )}
         {mapboxToken && stats.total === 0 && (
