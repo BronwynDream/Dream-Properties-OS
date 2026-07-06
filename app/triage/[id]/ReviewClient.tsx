@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { classifyBatch, setFileType, commitBatch, proposeMatches, decideMatch } from "../actions";
 import DiffPanel from "./DiffPanel";
+import PropertyAttach from "./PropertyAttach";
 import { PropertyDiff } from "@/lib/diff";
 
 type Batch = {
@@ -502,18 +503,38 @@ export default function ReviewClient({
                         </div>
                       );
                     })}
-                    <button
-                      className={allCreate ? "cta" : "ghost-dark"}
-                      style={{ alignSelf: "flex-start" }}
-                      onClick={() => pickCreate(ref)}
-                      disabled={pending || allCreate}
-                    >
-                      {allCreate ? "Creating new ✓" : "Create new record instead"}
-                    </button>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                      <button
+                        className={allCreate ? "cta" : "ghost-dark"}
+                        onClick={() => pickCreate(ref)}
+                        disabled={pending || allCreate}
+                      >
+                        {allCreate ? "Creating new ✓" : "Create new record instead"}
+                      </button>
+                      {ref === "property" && !linked && (
+                        <PropertyAttach batchId={batch.id} compact />
+                      )}
+                    </div>
                   </div>
                 </div>
               );
             })}
+
+            {/* If the auto-matcher didn't propose a Property target at all
+                (e.g. FICA-only batch with no address extracted), still let
+                the reviewer attach manually — otherwise commit falls back to
+                "Unknown address" and creates a phantom record. */}
+            {!matchesByTarget.has("property") && (
+              <div className="match-target" style={{ marginTop: 20 }}>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+                  <strong>Property</strong>
+                  <span style={{ color: "#5b6885", fontSize: 13 }}>
+                    No property fields extracted for this batch — attach it manually.
+                  </span>
+                </div>
+                <PropertyAttach batchId={batch.id} />
+              </div>
+            )}
           </div>
         )}
 

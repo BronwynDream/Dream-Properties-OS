@@ -321,6 +321,103 @@ export async function commitBatch(batchId: string, rows: FieldRow[]) {
   return { ok: true, result };
 }
 
+// Property search for the manual-attach flow — matches against primary_address,
+// title_deed_no, and erf_number. Returns 20 max, with the property's suburb +
+// erf list rolled in for at-a-glance disambiguation.
+export type PropertyHit = {
+  id: string;
+  address: string;
+  deed: string | null;
+  suburb: string | null;
+  erven: string[];
+};
+
+export async function searchProperties(q: string): Promise<PropertyHit[]> {
+  const supabase = createClient();
+  const query = (q ?? "").trim();
+  if (query.length < 2) return [];
+
+  const like = `%${query.replace(/[%_]/g, "\\$&")}%`;
+
+  // 1. Property-side matches (address / deed).
+  const { data: propHits } = await supabase
+    .from("property")
+    .select("id, primary_address, title_deed_no, suburb:suburb_id(name)")
+    .or(`primary_address.ilike.${like},title_deed_no.ilike.${like}`)
+    .limit(20);
+
+  // 2. Erf-side matches (erf number).
+  const { data: erfHits } = await supabase
+    .from("erf")
+    .select("property_id, erf_number, property:property_id(id, primary_address, title_deed_no, suburb:suburb_id(name))")
+    .ilike("erf_number", like)
+    .limit(20);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const byId = new Map<string, any>();
+  for (const p of (propHits ?? []) as any[]) {
+    byId.set(p.id, { ...p, erven: [] as string[] });
+  }
+  for (const e of (erfHits ?? []) as any[]) {
+    const p = e.property;
+    if (!p) continue;
+    if (!byId.has(p.id)) byId.set(p.id, { ...p, erven: [] as string[] });
+    byId.get(p.id).erven.push(e.erf_number);
+  }
+
+  // Backfill erven for property-side matches so every result shows them.
+  const ids = Array.from(byId.keys());
+  if (ids.length > 0) {
+    const { data: allErven } = await supabase
+      .from("erf")
+      .select("property_id, erf_number")
+      .in("property_id", ids);
+    for (const e of (allErven ?? []) as { property_id: string; erf_number: string }[]) {
+      const row = byId.get(e.property_id);
+      if (row && !row.erven.includes(e.erf_number)) row.erven.push(e.erf_number);
+    }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return Array.from(byId.values()).slice(0, 20).map((p: any) => ({
+    id: p.id,
+    address: p.primary_address ?? "Unknown address",
+    deed: p.title_deed_no ?? null,
+    suburb: p.suburb?.name ?? null,
+    erven: (p.erven ?? []) as string[],
+  }));
+}
+
+// Link the batch's property target to a manually-picked property. Wipes any
+// auto-proposed candidates for the target (they're superseded by this manual
+// choice) and inserts a fresh match_candidate with decision='link' pointing at
+// the chosen property. commit_batch reads that row and skips its match-or-create
+// path, attaching straight to the existing property.
+export async function linkPropertyManually(
+  batchId: string,
+  propertyId: string,
+  label: string,
+) {
+  const supabase = createClient();
+  await supabase
+    .from("match_candidate")
+    .delete()
+    .eq("batch_id", batchId)
+    .eq("extracted_ref", "property");
+  await supabase.from("match_candidate").insert({
+    batch_id: batchId,
+    target_kind: "property",
+    extracted_ref: "property",
+    candidate_id: propertyId,
+    candidate_label: label,
+    score: 1.0,
+    decision: "link",
+    decided_at: new Date().toISOString(),
+  });
+  revalidatePath(`/triage/${batchId}`);
+  return { ok: true as const };
+}
+
 // Manual correction of a single file's detected document type.
 export async function setFileType(fileId: string, batchId: string, docTypeId: string) {
   const supabase = createClient();
