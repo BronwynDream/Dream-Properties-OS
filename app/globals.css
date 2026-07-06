@@ -206,11 +206,111 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
 .kv-input:focus { outline: 2px solid var(--gold); border-color: var(--gold); background: #fff; }
 .kv-input:disabled { background: transparent; border-color: transparent; padding-left: 0; }
 
-/* Property record */
-.fact-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; margin-top: 8px; }
-.fact-grid > div { background: var(--white); border: 1px solid #e2e8f5; border-radius: 10px; padding: 12px 14px; }
-.fact-grid span { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: #8090b5; margin-bottom: 4px; font-family: "Spline Sans Mono", monospace; }
-.fact-grid b { color: var(--estuary); font-size: 15px; }
+/* Property record — hero */
+.record-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; }
+.record-head-title { flex: 1; min-width: 0; }
+.record-head-status { text-align: right; }
+.record-head-date {
+  margin: 8px 0 0; font-size: 11.5px;
+  color: rgba(255,255,255,0.66);
+  font-family: "Spline Sans Mono", monospace; letter-spacing: 0.05em;
+}
+.record-head-date b { color: var(--white); font-weight: 600; }
+
+/* Deal-state pill — same palette as map pins so status reads the same across the app.
+   Small solid dot on the left signals status intensity. */
+.status-chip {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 12px 6px 10px;
+  border-radius: 999px;
+  font-family: "Spline Sans Mono", ui-monospace, monospace;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+  white-space: nowrap;
+}
+.status-chip .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; opacity: 0.85; }
+.status-preparing    { background: #fbefd9; color: #7A5814; }
+.status-conveyancing { background: #fae1c8; color: #7A4515; }
+.status-registered   { background: #dceee3; color: #0E4A2A; }
+.status-none         { background: rgba(255,255,255,0.14); color: rgba(255,255,255,0.85); }
+.status-muted        { background: #eef1f8; color: #6b78a0; }
+/* When on a dark masthead, lift the light-background chips with a subtle inner glow */
+.record-head .status-chip { box-shadow: inset 0 0 0 1px rgba(255,255,255,0.5); }
+
+/* Cadastral strip — Deeds Office cover-sheet vibe: horizontal, hairline verticals,
+   monospaced numerics for deed / erf, empty values dimmed so the reader instantly
+   distinguishes known from unknown. */
+.cadastral {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  background: var(--white);
+  border: 1px solid #e2e8f5; border-radius: 14px;
+  padding: 18px 6px;
+  box-shadow: 0 4px 20px rgba(15,42,99,0.05);
+  margin-top: 24px;
+  overflow: hidden;
+}
+.cadastral-item {
+  padding: 0 18px;
+  border-left: 1px solid var(--mist);
+  min-width: 0;
+}
+.cadastral-item:first-child { border-left: 0; }
+.cadastral-label {
+  display: block;
+  font-family: "Spline Sans Mono", ui-monospace, monospace;
+  font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+  color: #8090b5; margin-bottom: 6px;
+}
+.cadastral-value {
+  display: block;
+  font-family: "Fraunces", Georgia, serif;
+  font-size: 18px; font-weight: 600; color: var(--estuary);
+  letter-spacing: -0.01em; line-height: 1.15;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cadastral-value.mono {
+  font-family: "Spline Sans Mono", ui-monospace, monospace;
+  font-size: 13px; font-weight: 600; letter-spacing: 0.02em;
+}
+.cadastral-item.is-empty .cadastral-value { color: #b3bdd6; opacity: 0.7; }
+@media (max-width: 900px) {
+  .cadastral { grid-template-columns: repeat(3, 1fr); row-gap: 18px; }
+  .cadastral-item:nth-child(4) { border-left: 0; }
+}
+@media (max-width: 560px) {
+  .cadastral { grid-template-columns: repeat(2, 1fr); }
+  .cadastral-item:nth-child(3),
+  .cadastral-item:nth-child(5) { border-left: 0; }
+}
+
+/* Signature: the ownership timeline — vertical gold tideline anchoring transfer
+   events. Applies the app's signature motif to an axis where time actually is
+   information, not decoration. */
+.timeline { position: relative; margin-top: 20px; padding-left: 60px; }
+.timeline::before {
+  content: ""; position: absolute; left: 30px; top: 8px; bottom: 8px; width: 2px;
+  background: linear-gradient(180deg, var(--gold) 0%, rgba(200,160,50,0.35) 100%);
+  border-radius: 1px;
+}
+.timeline-row { position: relative; margin-bottom: 22px; }
+.timeline-row:last-child { margin-bottom: 0; }
+.timeline-marker {
+  position: absolute; left: -60px; top: 22px;
+  width: 60px;
+  display: flex; align-items: center; justify-content: flex-end;
+  gap: 8px;
+}
+.timeline-year {
+  font-family: "Spline Sans Mono", ui-monospace, monospace;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
+  color: var(--estuary);
+}
+.timeline-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--gold);
+  box-shadow: 0 0 0 3px var(--mist), 0 0 0 4px rgba(200,160,50,0.4);
+  flex-shrink: 0;
+}
 .transfer-card { background: var(--white); border: 1px solid #e2e8f5; border-radius: 12px; padding: 18px; margin-top: 16px; box-shadow: 0 4px 20px rgba(15,42,99,0.05); }
 .transfer-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
 .transfer-head b { font-family: "Fraunces", Georgia, serif; color: var(--estuary); font-size: 17px; }
@@ -234,19 +334,31 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
 .doc-chip:hover { background: #e2e8f5; }
 .pii-dot { background: #fdecec; color: #a12020; border-radius: 4px; padding: 0 4px; font-size: 9px; font-weight: 700; }
 
-/* Document category groups on the Property Record — replaces the flat chip wall */
-.doc-group { margin-top: 12px; }
-.doc-group:first-child { margin-top: 0; }
+/* Document category groups on the Property Record */
+.doc-list { margin-top: 4px; }
+.doc-group { margin-top: 14px; }
+.doc-group:first-child { margin-top: 4px; }
 .doc-group-title {
   font-family: "Spline Sans Mono", ui-monospace, monospace;
-  font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
+  font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
   color: #6b78a0; margin: 0 0 6px;
   display: flex; align-items: baseline; gap: 8px;
+  position: relative; padding-bottom: 4px;
+}
+.doc-group-title::after {
+  content: ""; position: absolute; left: 0; bottom: 0; width: 22px; height: 1.5px;
+  background: linear-gradient(90deg, var(--gold), transparent);
 }
 .doc-group-count {
-  background: var(--mist); color: var(--estuary);
-  padding: 1px 7px; border-radius: 999px;
-  font-size: 9.5px; font-weight: 700; letter-spacing: 0.06em;
+  color: var(--estuary);
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em;
+  font-family: "Spline Sans Mono", monospace;
+}
+/* FICA is protected — subtle red ring across the whole category so the
+   reader knows this section is different in kind. */
+.doc-group.is-pii .doc-group-title { color: #a12020; }
+.doc-group.is-pii .doc-group-title::after {
+  background: linear-gradient(90deg, #a12020, transparent);
 }
 
 /* Photo strip at the top of the Property Record. Horizontal scroll on overflow;
@@ -261,7 +373,7 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
 .photo-strip-scroll::-webkit-scrollbar-thumb { background: #d7deef; border-radius: 3px; }
 .photo-tile {
   flex: 0 0 auto;
-  width: 128px; height: 96px;
+  width: 168px; height: 126px;
   border-radius: 10px;
   background: var(--mist) center/cover no-repeat;
   border: 1px solid #d7deef;

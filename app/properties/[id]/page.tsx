@@ -116,10 +116,11 @@ export default async function PropertyRecord({
     const { data: signed } = await supabase.storage
       .from(d.storage_bucket)
       .createSignedUrl(d.storage_path, 3600);
-    const isImage =
-      (d.mime_type ?? "").startsWith("image/") ||
-      /\.(jpe?g|png|heic|heif|webp|gif|tiff?)$/i.test(d.title ?? "") ||
-      d.doc_type?.code === "photo";
+    // Photos strip is strict: only files classified as a photo doc_type. Scanned
+    // ID cards and passports are image files too but are id_document / passport
+    // by doc_type — surfacing them in a public-looking photo strip would be a
+    // POPIA hygiene problem.
+    const isImage = d.doc_type?.code === "photo";
     docs.push({
       transfer_id: dl.entity_id,
       id: d.id,
@@ -169,33 +170,64 @@ export default async function PropertyRecord({
     })).filter((g) => g.items.length > 0);
   };
 
+  // Determine the primary "state" pill for the header — the most recent
+  // transfer's status is the deal Bronwyn cares about right now.
+  const currentTransfer = transfers[0];
+  const statusHuman = (raw: string | null | undefined): { label: string; kind: string } => {
+    if (!raw) return { label: "No live deal", kind: "none" };
+    const s = raw.toLowerCase();
+    if (s === "registered") return { label: "Registered", kind: "registered" };
+    if (s === "in_conveyancing") return { label: "In conveyancing", kind: "conveyancing" };
+    if (s === "preparing") return { label: "Preparing", kind: "preparing" };
+    if (s === "cancelled" || s === "withdrawn") return { label: raw, kind: "muted" };
+    return { label: raw.replace(/_/g, " "), kind: "preparing" };
+  };
+  const headerStatus = statusHuman(currentTransfer?.status);
+
+  const facts = [
+    { label: "Erf", value: (erven ?? []).map((e: any) => e.erf_number).join(", "), mono: true },
+    { label: "Title deed", value: prop.title_deed_no, mono: true },
+    { label: "Extent", value: prop.extent_sqm ? `${prop.extent_sqm} m²` : null },
+    { label: "Suburb", value: prop.suburb?.name },
+    { label: "Type", value: prop.property_type?.label },
+    { label: "Ownership", value: prop.ownership_type?.label },
+  ];
+
   return (
     <>
     <TopBar />
     <main>
-      <header
-        className="app-head"
-        style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}
-      >
-        <div>
+      <header className="app-head record-head">
+        <div className="record-head-title">
           <p className="eyebrow">Dream Knysna · Property record</p>
           <h1>{prop.primary_address}</h1>
         </div>
-        <Link href="/properties" className="ghost-link">
-          ← Properties
-        </Link>
+        <div className="record-head-status">
+          <span className={`status-chip status-${headerStatus.kind}`}>
+            <span className="dot" />
+            {headerStatus.label}
+          </span>
+          {currentTransfer?.transfer_date && (
+            <p className="record-head-date">
+              Transfer date <b>{currentTransfer.transfer_date}</b>
+            </p>
+          )}
+        </div>
       </header>
       <hr className="tideline" />
 
       <section className="app-body" style={{ maxWidth: 1000 }}>
-        {/* Property facts */}
-        <div className="fact-grid">
-          <div><span>Suburb</span><b>{prop.suburb?.name ?? "—"}</b></div>
-          <div><span>Erven</span><b>{(erven ?? []).map((e: any) => e.erf_number).join(", ") || "—"}</b></div>
-          <div><span>Title deed</span><b className="mono">{prop.title_deed_no ?? "—"}</b></div>
-          <div><span>Extent</span><b>{prop.extent_sqm ? `${prop.extent_sqm} m²` : "—"}</b></div>
-          <div><span>Type</span><b>{prop.property_type?.label ?? "—"}</b></div>
-          <div><span>Ownership</span><b>{prop.ownership_type?.label ?? "—"}</b></div>
+        {/* Cadastral strip — reads left-to-right like a Deeds Office cover sheet.
+            Missing values dim so what's known vs unknown is visually obvious. */}
+        <div className="cadastral">
+          {facts.map((f) => (
+            <div key={f.label} className={`cadastral-item ${!f.value ? "is-empty" : ""}`}>
+              <span className="cadastral-label">{f.label}</span>
+              <span className={`cadastral-value ${f.mono ? "mono" : ""}`}>
+                {f.value ?? "—"}
+              </span>
+            </div>
+          ))}
         </div>
 
         {uniquePhotos.length > 0 && (
@@ -226,13 +258,20 @@ export default async function PropertyRecord({
           </section>
         )}
 
-        <h2 style={{ marginTop: 36, fontSize: 20 }}>
-          Transfers ({transfers.length})
-        </h2>
+        <div className="section-head" style={{ marginTop: 36, marginBottom: 4 }}>
+          <h2 style={{ fontSize: 20, margin: 0 }}>Ownership timeline</h2>
+          <span className="mono" style={{ fontSize: 11, color: "#8090b5", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+            {transfers.length} {transfers.length === 1 ? "transfer" : "transfers"}
+          </span>
+        </div>
         {transfers.length === 0 && (
-          <p style={{ color: "#5b6885" }}>No transfers recorded on this property yet.</p>
+          <p style={{ color: "#5b6885", marginTop: 12 }}>
+            No transfers on record yet. Drop this property&apos;s folder in Triage to bring in
+            its ownership history.
+          </p>
         )}
 
+        <div className="timeline">
         {transfers.map((t) => {
           const parties = tparties.filter((tp) => tp.transfer_id === t.id);
           const sellers = parties.filter((p) => p.side === "seller");
@@ -264,12 +303,25 @@ export default async function PropertyRecord({
             );
           };
 
+          const tStatus = statusHuman(t.status);
+          const year =
+            t.transfer_date?.slice(0, 4) ??
+            t.registered_date?.slice(0, 4) ??
+            t.created_at?.slice(0, 4) ??
+            "—";
+
           return (
-            <div key={t.id} className="transfer-card">
+            <div key={t.id} className="timeline-row">
+              <div className="timeline-marker">
+                <span className="timeline-year">{year}</span>
+                <span className="timeline-dot" />
+              </div>
+              <div className="transfer-card">
               <div className="transfer-head">
                 <b>{t.name}</b>
-                <span className={`tier tier-${t.status === "registered" ? "green" : "amber"}`}>
-                  {t.status}
+                <span className={`status-chip status-${tStatus.kind}`}>
+                  <span className="dot" />
+                  {tStatus.label}
                 </span>
               </div>
 
@@ -309,11 +361,11 @@ export default async function PropertyRecord({
 
               {docsFor(t.id).length > 0 && (
                 <div className="doc-list">
-                  <p className="col-title">Documents ({docsFor(t.id).length})</p>
                   {groupedDocsFor(t.id).map((group) => (
-                    <div key={group.key} className="doc-group">
+                    <div key={group.key} className={`doc-group ${group.key === "fica" ? "is-pii" : ""}`}>
                       <p className="doc-group-title">
-                        {group.label} <span className="doc-group-count">{group.items.length}</span>
+                        {group.label}
+                        <span className="doc-group-count">{group.items.length}</span>
                       </p>
                       <div className="doc-chips">
                         {group.items.map((d) => (
@@ -334,9 +386,11 @@ export default async function PropertyRecord({
                   ))}
                 </div>
               )}
+              </div>
             </div>
           );
         })}
+        </div>
       </section>
     </main>
     </>
