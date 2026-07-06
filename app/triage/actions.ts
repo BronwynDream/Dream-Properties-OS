@@ -251,6 +251,22 @@ export async function commitBatch(batchId: string, rows: FieldRow[]) {
     }
   }
 
+  // Suburb fallback: if the LLM extracted an address but not a suburb
+  // (very common — LLMs treat "6 Bowden Park, Leisure Isle, Knysna" as one
+  // string), scan the extracted address for a seeded suburb name.
+  // Prefer the longest match (Thesen Islands beats Thesen).
+  if (!fields.property.suburb && fields.property.primary_address) {
+    const { data: suburbs } = await supabase.from("suburb").select("name");
+    const addr = String(fields.property.primary_address).toLowerCase();
+    let best: string | null = null;
+    for (const s of (suburbs ?? []) as { name: string }[]) {
+      if (addr.includes(s.name.toLowerCase())) {
+        if (!best || s.name.length > best.length) best = s.name;
+      }
+    }
+    if (best) fields.property.suburb = best;
+  }
+
   const { data, error } = await supabase.rpc("commit_batch", {
     p_batch_id: batchId,
     p_fields: fields,
