@@ -90,11 +90,17 @@ export async function POST(request: Request) {
     const base = eml.original_filename.replace(/\.eml$/i, "");
 
     // 3. Extract attachments, skipping inline signature decoration.
+    //    Correct signals for "this is inline chrome, not a real attachment":
+    //    contentDisposition === 'inline' OR mailparser's `related` flag.
+    //    NOT contentId alone — Outlook sets a contentId on almost every
+    //    attachment (including real PDFs), so treating it as a skip signal
+    //    silently drops legitimate documents. Learned this the hard way
+    //    diagnosing the Bowden batch: 3 real PDFs (Lightstone, Signed Joint
+    //    Mandate, Plans) all had cid set and were being lost.
     for (const att of parsed.attachments ?? []) {
       const isInline =
         (att as { contentDisposition?: string }).contentDisposition === "inline" ||
-        (att as { related?: boolean }).related === true ||
-        !!att.contentId;
+        (att as { related?: boolean }).related === true;
       const outlookAutoName = /^image\d+\.(png|jpe?g|gif|webp)$/i.test(att.filename ?? "");
       if (isInline || outlookAutoName) continue;
 
