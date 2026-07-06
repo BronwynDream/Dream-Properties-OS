@@ -234,6 +234,57 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
 .doc-chip:hover { background: #e2e8f5; }
 .pii-dot { background: #fdecec; color: #a12020; border-radius: 4px; padding: 0 4px; font-size: 9px; font-weight: 700; }
 
+/* Document category groups on the Property Record — replaces the flat chip wall */
+.doc-group { margin-top: 12px; }
+.doc-group:first-child { margin-top: 0; }
+.doc-group-title {
+  font-family: "Spline Sans Mono", ui-monospace, monospace;
+  font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
+  color: #6b78a0; margin: 0 0 6px;
+  display: flex; align-items: baseline; gap: 8px;
+}
+.doc-group-count {
+  background: var(--mist); color: var(--estuary);
+  padding: 1px 7px; border-radius: 999px;
+  font-size: 9.5px; font-weight: 700; letter-spacing: 0.06em;
+}
+
+/* Photo strip at the top of the Property Record. Horizontal scroll on overflow;
+   individual tiles are small square thumbnails using the signed URL as background. */
+.photo-strip-scroll {
+  display: flex; gap: 8px;
+  overflow-x: auto; overflow-y: hidden;
+  padding: 4px 2px 12px;
+  scroll-snap-type: x proximity;
+}
+.photo-strip-scroll::-webkit-scrollbar { height: 6px; }
+.photo-strip-scroll::-webkit-scrollbar-thumb { background: #d7deef; border-radius: 3px; }
+.photo-tile {
+  flex: 0 0 auto;
+  width: 128px; height: 96px;
+  border-radius: 10px;
+  background: var(--mist) center/cover no-repeat;
+  border: 1px solid #d7deef;
+  scroll-snap-align: start;
+  transition: transform 0.12s, box-shadow 0.12s;
+  display: block;
+  position: relative;
+  text-decoration: none;
+  color: var(--estuary);
+}
+.photo-tile:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(15,42,99,0.15); }
+.photo-tile-fallback {
+  position: absolute; inset: 0;
+  display: grid; place-items: center;
+  font-size: 32px; opacity: 0.4;
+}
+.photo-tile.more {
+  background: var(--white);
+  display: grid; place-items: center;
+  color: var(--estuary); font-weight: 600; font-size: 13px;
+  border-style: dashed;
+}
+
 /* =========================================================================
    Top bar — applies to every signed-in page. Estuary navy with gold tideline.
    ========================================================================= */

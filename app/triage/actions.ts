@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { classifyFilename, JURISTIC_CODES } from "@/lib/classify";
 import { reshapeFields } from "@/lib/extract";
+import { normaliseFilename } from "@/lib/diff";
 
 type DocType = {
   id: string;
@@ -286,32 +287,74 @@ export async function commitBatch(batchId: string, rows: FieldRow[]) {
     )
     .eq("batch_id", batchId);
 
+  // Pre-fetch existing documents already linked to this property so we can
+  // dedupe by normalised title + byte_size. Turns the "37 docs, most duplicates"
+  // property record into a clean unique set as batches accumulate.
+  const { data: existingLinks } = await supabase
+    .from("document_link")
+    .select("document_id, document:document_id(id, title, byte_size)")
+    .eq("entity_type", "property")
+    .eq("entity_id", result.property_id);
+  const existingByKey = new Map<string, string>();
+  for (const link of (existingLinks ?? []) as any[]) {
+    const d = link.document;
+    if (!d?.title) continue;
+    const key = `${normaliseFilename(d.title)}::${d.byte_size ?? ""}`;
+    existingByKey.set(key, d.id);
+  }
+
   for (const f of (ifiles ?? []) as any[]) {
     // skip the .eml wrappers (already unpacked) and anything unclassified
     if (!f.detected_doc_type_id || f.status === "parsed" || f.status === "committed") continue;
-    const { data: doc } = await supabase
-      .from("document")
-      .insert({
-        doc_type_id: f.detected_doc_type_id,
-        title: f.original_filename,
-        storage_bucket: f.storage_bucket,
-        storage_path: f.storage_path,
-        mime_type: f.mime_type,
-        byte_size: f.byte_size,
-        is_pii: f.is_pii,
-        status: "final",
-        uploaded_by: user?.id ?? null,
-      })
-      .select("id")
-      .single();
-    if (doc) {
-      await supabase.from("document_link").insert([
-        { document_id: doc.id, entity_type: "transfer", entity_id: result.transfer_id },
-        { document_id: doc.id, entity_type: "property", entity_id: result.property_id },
-      ]);
+
+    const key = `${normaliseFilename(f.original_filename)}::${f.byte_size ?? ""}`;
+    const existingDocId = existingByKey.get(key);
+
+    let docId: string | null = null;
+
+    if (existingDocId) {
+      // Same file, already on this property — reuse the document row. Only
+      // add a document_link for the new transfer (the property link is already
+      // there from the prior commit).
+      docId = existingDocId;
+      await supabase.from("document_link").insert({
+        document_id: docId,
+        entity_type: "transfer",
+        entity_id: result.transfer_id,
+      });
+    } else {
+      // First time seeing this file on this property — create it fresh.
+      const { data: doc } = await supabase
+        .from("document")
+        .insert({
+          doc_type_id: f.detected_doc_type_id,
+          title: f.original_filename,
+          storage_bucket: f.storage_bucket,
+          storage_path: f.storage_path,
+          mime_type: f.mime_type,
+          byte_size: f.byte_size,
+          is_pii: f.is_pii,
+          status: "final",
+          uploaded_by: user?.id ?? null,
+        })
+        .select("id")
+        .single();
+      if (doc) {
+        docId = doc.id;
+        await supabase.from("document_link").insert([
+          { document_id: doc.id, entity_type: "transfer", entity_id: result.transfer_id },
+          { document_id: doc.id, entity_type: "property", entity_id: result.property_id },
+        ]);
+        // Remember for the rest of this batch so intra-batch duplicates also
+        // collapse (rare but happens with .eml unpack + loose copies).
+        existingByKey.set(key, doc.id);
+      }
+    }
+
+    if (docId) {
       await supabase
         .from("ingest_file")
-        .update({ committed_document_id: doc.id, status: "committed" })
+        .update({ committed_document_id: docId, status: "committed" })
         .eq("id", f.id);
     }
   }

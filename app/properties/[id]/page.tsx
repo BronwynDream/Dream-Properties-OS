@@ -79,40 +79,95 @@ export default async function PropertyRecord({
   const membersFor = (pid: string) => members.filter((m) => m.entity_party_id === pid);
 
   // Documents linked to these transfers, with short-lived signed URLs to view them.
+  // Now including doc_type.category + mime_type so we can group and identify photos.
   const { data: docLinksData } = tids.length
     ? await supabase
         .from("document_link")
         .select(
-          "entity_id, document:document_id(id, title, storage_bucket, storage_path, is_pii, doc_type:doc_type_id(label))",
+          "entity_id, document:document_id(id, title, storage_bucket, storage_path, mime_type, is_pii, doc_type:doc_type_id(label, category, code))",
         )
         .eq("entity_type", "transfer")
         .in("entity_id", tids)
     : { data: [] };
   const docLinks = (docLinksData ?? []) as any[];
-  const docs: {
+  type DocRow = {
     transfer_id: string;
     id: string;
     title: string;
     label: string | null;
+    code: string | null;
+    category: string;
+    mime_type: string | null;
     is_pii: boolean;
     url: string | null;
-  }[] = [];
+    isImage: boolean;
+  };
+  const docs: DocRow[] = [];
+  const seenIds = new Set<string>();
   for (const dl of docLinks) {
     const d = dl.document;
     if (!d) continue;
+    // Deduplicate at read time as well — a document linked to multiple transfers
+    // (post-dedupe) shows up once per transfer link. Show it under the first.
+    const dedupeKey = `${d.id}::${dl.entity_id}`;
+    if (seenIds.has(dedupeKey)) continue;
+    seenIds.add(dedupeKey);
+
     const { data: signed } = await supabase.storage
       .from(d.storage_bucket)
       .createSignedUrl(d.storage_path, 3600);
+    const isImage =
+      (d.mime_type ?? "").startsWith("image/") ||
+      /\.(jpe?g|png|heic|heif|webp|gif|tiff?)$/i.test(d.title ?? "") ||
+      d.doc_type?.code === "photo";
     docs.push({
       transfer_id: dl.entity_id,
       id: d.id,
       title: d.title,
       label: d.doc_type?.label ?? null,
+      code: d.doc_type?.code ?? null,
+      category: d.doc_type?.category ?? "other",
+      mime_type: d.mime_type ?? null,
       is_pii: d.is_pii,
       url: signed?.signedUrl ?? null,
+      isImage,
     });
   }
-  const docsFor = (tid: string) => docs.filter((x) => x.transfer_id === tid);
+
+  // Photos aggregated across all transfers for the top strip.
+  const propertyPhotos = docs.filter((d) => d.isImage);
+  // Dedupe across transfers by document id — the same photo linked to two
+  // transfers should only show once in the strip.
+  const seenPhotoIds = new Set<string>();
+  const uniquePhotos: DocRow[] = [];
+  for (const p of propertyPhotos) {
+    if (seenPhotoIds.has(p.id)) continue;
+    seenPhotoIds.add(p.id);
+    uniquePhotos.push(p);
+  }
+
+  // Category rendering order — most important first.
+  const CATEGORY_ORDER: { key: string; label: string }[] = [
+    { key: "mandate", label: "Mandate" },
+    { key: "agreement", label: "Agreement" },
+    { key: "listing", label: "Listing" },
+    { key: "compliance", label: "Compliance" },
+    { key: "fica", label: "FICA" },
+    { key: "municipal", label: "Municipal" },
+    { key: "plan", label: "Plans" },
+    { key: "company", label: "Company / Juristic" },
+    { key: "correspondence", label: "Correspondence" },
+    { key: "other", label: "Other" },
+  ];
+
+  const docsFor = (tid: string) => docs.filter((x) => x.transfer_id === tid && !x.isImage);
+  const groupedDocsFor = (tid: string) => {
+    const all = docsFor(tid);
+    return CATEGORY_ORDER.map((cat) => ({
+      ...cat,
+      items: all.filter((d) => d.category === cat.key),
+    })).filter((g) => g.items.length > 0);
+  };
 
   return (
     <>
@@ -142,6 +197,34 @@ export default async function PropertyRecord({
           <div><span>Type</span><b>{prop.property_type?.label ?? "—"}</b></div>
           <div><span>Ownership</span><b>{prop.ownership_type?.label ?? "—"}</b></div>
         </div>
+
+        {uniquePhotos.length > 0 && (
+          <section className="photo-strip">
+            <p className="col-title" style={{ margin: "24px 0 10px" }}>
+              Photos ({uniquePhotos.length})
+            </p>
+            <div className="photo-strip-scroll">
+              {uniquePhotos.slice(0, 24).map((p) => (
+                <a
+                  key={p.id}
+                  href={p.url ?? "#"}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="photo-tile"
+                  title={p.title}
+                  style={{ backgroundImage: p.url ? `url(${p.url})` : undefined }}
+                >
+                  {!p.url && <span className="photo-tile-fallback">📷</span>}
+                </a>
+              ))}
+              {uniquePhotos.length > 24 && (
+                <div className="photo-tile more">
+                  <span>+{uniquePhotos.length - 24} more</span>
+                </div>
+              )}
+            </div>
+          </section>
+        )}
 
         <h2 style={{ marginTop: 36, fontSize: 20 }}>
           Transfers ({transfers.length})
@@ -227,21 +310,28 @@ export default async function PropertyRecord({
               {docsFor(t.id).length > 0 && (
                 <div className="doc-list">
                   <p className="col-title">Documents ({docsFor(t.id).length})</p>
-                  <div className="doc-chips">
-                    {docsFor(t.id).map((d) => (
-                      <a
-                        key={d.id}
-                        href={d.url ?? "#"}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="doc-chip"
-                        title={d.label ?? undefined}
-                      >
-                        {d.title}
-                        {d.is_pii && <span className="pii-dot">PII</span>}
-                      </a>
-                    ))}
-                  </div>
+                  {groupedDocsFor(t.id).map((group) => (
+                    <div key={group.key} className="doc-group">
+                      <p className="doc-group-title">
+                        {group.label} <span className="doc-group-count">{group.items.length}</span>
+                      </p>
+                      <div className="doc-chips">
+                        {group.items.map((d) => (
+                          <a
+                            key={d.id}
+                            href={d.url ?? "#"}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="doc-chip"
+                            title={d.label ?? undefined}
+                          >
+                            {d.title}
+                            {d.is_pii && <span className="pii-dot">PII</span>}
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
