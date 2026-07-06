@@ -8,6 +8,60 @@ _Last updated: 2026-07-06_
 
 ---
 
+## QUEUED FOR NEXT SESSION — bulk-migration unlocks
+
+Three ships that would flip the migration path from "click each batch" to
+"click a queue". None are architectural; they're all extensions to what
+already exists.
+
+**1. Bulk extract button** (`/triage` page)
+- "Extract all unextracted green batches" (or `green + amber`). Fires
+  `/api/extract` per batch in sequence with a small concurrency cap
+  (probably 3). Same cost model as today — the user triggers, nothing
+  fires automatically on drop.
+- Show an estimated LLM cost (rough $/batch × count) on the button so
+  nobody accidentally torches R500 on a wave.
+- Progress ticker + fail-tolerant (if one batch OCR errors, keep going).
+- ~1 hour to build.
+
+**2. Bulk commit button** (`/triage` page)
+- "Commit all one-click-safe batches" — bar: `tier=green` AND every
+  match target has an auto-decided `link` AND (once #3 is in) no
+  document-dedupe conflicts on the differ.
+- Skips anything that would create a duplicate transfer or has field
+  conflicts on the property target's differ.
+- Reports "committed X, skipped Y for review" with a table of skips.
+- ~half day.
+
+**3. On-commit document dedupe** (in `commitBatch` server action)
+- Before creating a `document` row from an `ingest_file`, check whether a
+  document with the same `normaliseFilename(title)` AND `byte_size`
+  already exists linked to the target property. If yes: reuse the
+  existing document row and only add the new `document_link` — with the
+  new `document_link.role` set to `batch:<label>` (or similar) so the
+  provenance survives.
+- Also do a lightweight transfer dedupe: if this batch's proposed
+  agreement price + date matches an existing transfer on the linked
+  property, reuse that transfer instead of creating a new one.
+- Uses the same `lib/diff.ts` helpers the differ already uses.
+- Turns the "informational" differ into the "safe on commit" differ.
+- ~medium; 2–3 hours.
+
+**Sequence**: build 3 first (dedupe is what makes bulk-commit safe), then
+2, then 1. Or 1 and 3 in parallel (both touch different files) and 2 last.
+
+Also queued from earlier (smaller):
+- Cosmetic: `IN_CONVEYANCING` → "In conveyancing" pill.
+- `transfer.status` advance to `registered` when a `title_deed` doc is
+  present in the batch.
+- Sync `geom` from `lng, lat` (needs a small PostGIS helper migration).
+- Staging bucket cleanup for the historical `imageNNN.*` signature files
+  purged from the DB (bytes still in storage).
+- Safer `Classify`: skip files above 0.9 confidence so hand-fixes survive.
+- Photo carousel in Map preview card (needs media-table reshape).
+
+---
+
 ## BATCH DIFFER — "WHAT THIS BATCH ADDS" (2026-07-06)
 
 **Answers the "nugget in one file" concern**. Bronwyn worried that batch-level
