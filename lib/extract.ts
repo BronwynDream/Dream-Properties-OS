@@ -19,6 +19,8 @@ given schema. Rules:
 - suspensive_condition status is one of: pending, fulfilled, waived, failed.
 - mandate type is one of: sole, joint, open, exclusive.
 - Return JSON only. No commentary, no markdown fences.
+- property.property_type is ONE of: house, apartment, townhouse, vacant_land, estate_plot, farm, commercial. A property inside a named estate (Pezula, Thesen Islands, Simola, Leisure Isle, Belvidere) is usually 'estate_plot' unless the doc clearly says apartment/townhouse.
+- property.ownership_type is ONE of: full_freehold, sectional, share_block, leasehold, fractional, timeshare. 'Full title' / 'freehold' → full_freehold. 'Sectional title' → sectional. If nothing indicates otherwise for a single-erf freestanding house/plot, use full_freehold.
 
 CRITICAL — the mandating agency is NOT a party to the sale.
 The listing agency for these documents is Dream Knysna (Dream Knysna CC, reg 98/32181/23),
@@ -33,7 +35,7 @@ applies to Pam Golding Properties Knysna (Knysna Plett Property Professionals Pt
 Dream is co-mandated on a joint mandate: the co-agent is not a party to the sale.`;
 
 export const JSON_SHAPE = `{
-  "property": { "title_deed_no": null, "erf_number": null, "extent_sqm": null, "address": null, "suburb": null },
+  "property": { "title_deed_no": null, "erf_number": null, "extent_sqm": null, "address": null, "suburb": null, "property_type": null, "ownership_type": null },
   "sellers": [ { "party_type": "individual", "name": "", "entity_name": null, "registration_no": null, "id_number": null, "matrimonial_regime": null, "members": [ { "name": "", "id_number": null, "role": "director", "share_pct": null } ] } ],
   "purchasers": [ { "party_type": "individual", "name": "", "entity_name": null, "registration_no": null, "id_number": null, "members": [] } ],
   "agreement": { "price": null, "deposit": null, "transfer_date": null },
@@ -97,6 +99,8 @@ export function mapExtractionToRows(data: Extracted): ExtractionRow[] {
   push("property", "extent_sqm", p.extent_sqm);
   push("property", "primary_address", p.address);
   push("property", "suburb", p.suburb);
+  push("property", "property_type", p.property_type);
+  push("property", "ownership_type", p.ownership_type);
   push("erf", "erf_number", p.erf_number);
 
   const pushParty = (side: "seller" | "purchaser", s: Record<string, unknown>, i: number) => {

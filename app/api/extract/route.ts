@@ -11,7 +11,11 @@ import {
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-// Document types worth reading for deal fields, most valuable first.
+// Document types worth reading for deal + property facts, most valuable first.
+// Ranked so a batch's top-6 selection picks agreements over listing docs when
+// both are present, but Lightstone / title deed / rates land inside the cut
+// for listing-only batches (Bowden shape: no AoS, but a Lightstone and a
+// mandate). Without these, listings commit with empty deed / extent / type.
 const TEXT_TARGETS = [
   "agreement_of_sale",
   "land_freehold_agreement",
@@ -21,8 +25,13 @@ const TEXT_TARGETS = [
   "share_register",
   "cipc_form",
   "property_info",
+  "lightstone_report",
   "detailed_listing",
   "cma",
+  "title_deed",
+  "rates_account",
+  "boundary_relaxation",
+  "ppra_disclosure",
   "transfer_instruction",
   "mandate",
 ];
