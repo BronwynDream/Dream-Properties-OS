@@ -492,21 +492,61 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
 .map-stage { position: relative; overflow: hidden; }
 .map-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 
-/* Custom pin: navy drop with price label */
-.pin {
-  width: 44px; height: 54px;
-  cursor: pointer; position: relative;
-  filter: drop-shadow(0 3px 6px rgba(0,0,0,0.35));
+/* Price pill pin — Zillow/Rightmove/Property24 pattern. The pill sizes to the
+   price text, so short prices are compact and longer ones stretch cleanly.
+   Small pointer arrow at the bottom aims at the exact coordinate. Sits well
+   on both light and satellite basemaps thanks to the ring + drop-shadow. */
+.price-pin {
+  cursor: pointer;
+  position: relative;
+  display: inline-flex; flex-direction: column; align-items: center;
   transition: transform 0.12s;
+  filter: drop-shadow(0 3px 6px rgba(0,0,0,0.35));
 }
-.pin:hover { transform: scale(1.06); }
-.pin.active { transform: scale(1.14); z-index: 50; }
-.pin svg { display: block; width: 100%; height: 100%; }
-.pin .price {
-  position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
-  color: var(--m-ink); font-family: "Spline Sans Mono", ui-monospace, monospace;
-  font-size: 10px; font-weight: 600; letter-spacing: 0.02em; white-space: nowrap;
-  pointer-events: none;
+.price-pin:hover { transform: scale(1.06); }
+.price-pin.active { z-index: 50; transform: scale(1.14); }
+
+.price-pin .badge {
+  background: var(--m-fill);
+  color: var(--m-ink);
+  font-family: "Spline Sans Mono", ui-monospace, monospace;
+  font-size: 12px; font-weight: 700; letter-spacing: 0.01em; white-space: nowrap;
+  padding: 5px 10px 4px;
+  border-radius: 999px;
+  box-shadow:
+    0 0 0 2px rgba(255,255,255,0.92),                 /* white ring for contrast on satellite */
+    0 1px 2px rgba(15,22,52,0.35);
+  line-height: 1;
+}
+.price-pin .pointer {
+  width: 0; height: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-top: 7px solid var(--m-fill);
+  margin-top: -1px;
+  filter: drop-shadow(0 1px 0 rgba(255,255,255,0.92));
+}
+.price-pin.active .badge {
+  box-shadow:
+    0 0 0 2px rgba(255,255,255,1),
+    0 0 0 4px rgba(15,42,99,0.35),                    /* focus ring in Estuary */
+    0 4px 12px rgba(15,22,52,0.4);
+}
+
+/* No asking price (e.g. sold-side transfers, or POR listings) — smaller
+   muted grey badge so it doesn't shout for attention. */
+.price-pin.por .badge {
+  background: rgba(255,255,255,0.96);
+  color: var(--ink);
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 4px 8px;
+  box-shadow:
+    0 0 0 2px var(--m-fill),                          /* mandate colour as thin ring */
+    0 1px 2px rgba(15,22,52,0.3);
+}
+.price-pin.por .pointer {
+  border-top-color: rgba(255,255,255,0.96);
 }
 
 /* Legend + empty state overlays */

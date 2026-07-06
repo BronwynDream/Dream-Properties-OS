@@ -64,14 +64,6 @@ function formatFullPrice(n: number | null): string {
   return `R ${n.toLocaleString("en-ZA")}`;
 }
 
-function pinSvg(fillCss: string, strokeCss: string): string {
-  return `
-    <svg viewBox="0 0 44 54" xmlns="http://www.w3.org/2000/svg" aria-hidden>
-      <path d="M22 2c-9.94 0-18 8.06-18 18 0 12.5 15.4 30.1 17.1 32a1.2 1.2 0 0 0 1.8 0C24.6 50.1 40 32.5 40 20 40 10.06 31.94 2 22 2z"
-            fill="${fillCss}" stroke="${strokeCss}" stroke-width="1.5"/>
-      <circle cx="22" cy="20" r="12" fill="${strokeCss}" fill-opacity="0.18"/>
-    </svg>`;
-}
 
 export default function MapView({
   properties,
@@ -215,17 +207,16 @@ export default function MapView({
       if (markersRef.current[p.id]) continue;
 
       const el = document.createElement("div");
-      el.className = `pin mandate-${p.mandateType}`;
-      const cs = getComputedStyle(el);
-      const fill = cs.getPropertyValue("--m-fill").trim() || "#132B84";
-      const ink = cs.getPropertyValue("--m-ink").trim() || "#ffffff";
-      el.innerHTML = pinSvg(fill, ink);
+      el.className = `price-pin mandate-${p.mandateType}${p.askingPrice == null ? " por" : ""}`;
 
-      const priceLabel = document.createElement("span");
-      priceLabel.className = "price";
-      priceLabel.textContent = formatPrice(p.askingPrice);
-      priceLabel.style.color = ink;
-      el.appendChild(priceLabel);
+      const badge = document.createElement("span");
+      badge.className = "badge";
+      badge.textContent = p.askingPrice == null ? "POR" : formatPrice(p.askingPrice);
+      el.appendChild(badge);
+
+      const pointer = document.createElement("span");
+      pointer.className = "pointer";
+      el.appendChild(pointer);
 
       el.addEventListener("click", () => setSelectedId(p.id));
 
