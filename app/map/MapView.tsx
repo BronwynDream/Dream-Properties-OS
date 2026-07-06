@@ -154,6 +154,25 @@ export default function MapView({
     map.on("styledata", () => pushDebug("styledata"));
     map.on("sourcedata", () => pushDebug("sourcedata"));
 
+    // Container-size safety: if the map's container is 0 tall at mount (common
+    // when the parent layout hasn't settled yet), Mapbox creates a 0-sized
+    // canvas and tiles never appear even though they download fine. Force a
+    // resize + log the observed size so we know what's happening.
+    const rect0 = containerRef.current?.getBoundingClientRect();
+    pushDebug(`container size on init: ${Math.round(rect0?.width ?? 0)}x${Math.round(rect0?.height ?? 0)}`);
+    // Kick a resize immediately + on next frame + after a short delay.
+    map.resize();
+    requestAnimationFrame(() => map.resize());
+    const resizeTimer = setTimeout(() => {
+      map.resize();
+      const rect1 = containerRef.current?.getBoundingClientRect();
+      pushDebug(`container size after resize: ${Math.round(rect1?.width ?? 0)}x${Math.round(rect1?.height ?? 0)}`);
+    }, 200);
+
+    // Also watch for future resizes (window resize, layout shift).
+    const ro = new ResizeObserver(() => map.resize());
+    if (containerRef.current) ro.observe(containerRef.current);
+
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-left");
     map.addControl(
       new mapboxgl.AttributionControl({ compact: true, customAttribution: "Dream Knysna" }),
@@ -162,6 +181,8 @@ export default function MapView({
 
     mapRef.current = map;
     return () => {
+      clearTimeout(resizeTimer);
+      ro.disconnect();
       map.remove();
       mapRef.current = null;
       markersRef.current = {};
