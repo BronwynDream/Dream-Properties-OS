@@ -30,6 +30,28 @@ const KNYSNA_CENTRE: [number, number] = [23.0479, -34.0363];
 
 const MANDATE_ORDER = ["exclusive", "sole", "joint", "under_offer", "open", "none"] as const;
 
+// Basemap options. Satellite Streets first because for property work it's the
+// killer — you see the actual roof, pool, land, plus street labels for orientation.
+const BASEMAPS = [
+  {
+    id: "satellite",
+    label: "Satellite",
+    style: "mapbox://styles/mapbox/satellite-streets-v12",
+  },
+  {
+    id: "streets",
+    label: "Streets",
+    style: "mapbox://styles/mapbox/streets-v12",
+  },
+  {
+    id: "light",
+    label: "Light",
+    style: "mapbox://styles/mapbox/light-v11",
+  },
+] as const;
+
+type BasemapId = (typeof BASEMAPS)[number]["id"];
+
 function formatPrice(n: number | null): string {
   if (n == null) return "—";
   if (n >= 1_000_000) return `R ${(n / 1_000_000).toFixed(1)}M`;
@@ -70,6 +92,7 @@ export default function MapView({
   const [enabledMandates, setEnabledMandates] = useState<Set<string>>(
     () => new Set(MANDATE_ORDER),
   );
+  const [basemap, setBasemap] = useState<BasemapId>("satellite");
   const [pending, startTransition] = useTransition();
   const [geocodeMsg, setGeocodeMsg] = useState<string | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
@@ -111,11 +134,13 @@ export default function MapView({
     }
     mapboxgl.accessToken = cleanToken;
 
+    const initialStyle =
+      BASEMAPS.find((b) => b.id === basemap)?.style ?? BASEMAPS[0].style;
     let map: mapboxgl.Map;
     try {
       map = new mapboxgl.Map({
         container: containerRef.current,
-        style: "mapbox://styles/mapbox/light-v11",
+        style: initialStyle,
         center: KNYSNA_CENTRE,
         zoom: 11,
         attributionControl: false,
@@ -159,6 +184,17 @@ export default function MapView({
       markersRef.current = {};
     };
   }, [cleanToken]);
+
+  // Basemap swap — setStyle keeps HTML markers, popups, and controls in place
+  // (they're not part of the style), so no marker re-add needed. Guarded so we
+  // don't setStyle on the initial mount before mapRef is populated.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const target = BASEMAPS.find((b) => b.id === basemap)?.style;
+    if (!target) return;
+    map.setStyle(target);
+  }, [basemap]);
 
   // Sync markers to the plottable set. Rebuild on filter change or data change.
   useEffect(() => {
@@ -248,6 +284,22 @@ export default function MapView({
   return (
     <div className="map-shell">
       <aside className="map-rail">
+        <section>
+          <h3>Basemap</h3>
+          <div className="basemap-tabs">
+            {BASEMAPS.map((b) => (
+              <button
+                key={b.id}
+                type="button"
+                className={basemap === b.id ? "on" : ""}
+                onClick={() => setBasemap(b.id)}
+              >
+                {b.label}
+              </button>
+            ))}
+          </div>
+        </section>
+
         <section>
           <h3>Mandate</h3>
           <div className="mandate-chips">
