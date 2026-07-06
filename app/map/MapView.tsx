@@ -263,10 +263,17 @@ export default function MapView({
 
   function runGeocode() {
     setGeocodeMsg(null);
+    pushDebug("geocode: button clicked, calling server action…");
     startTransition(async () => {
-      const res = await geocodeMissingProperties();
-      if (!res.ok) setGeocodeMsg(res.error ?? "geocode failed");
-      else setGeocodeMsg(`Geocoded ${res.geocoded ?? 0} · ${res.failed ?? 0} failed. Reload to see pins.`);
+      try {
+        const res = await geocodeMissingProperties();
+        pushDebug(`geocode result: ${JSON.stringify(res)}`);
+        if (!res.ok) setGeocodeMsg(res.error ?? "geocode failed");
+        else setGeocodeMsg(`Geocoded ${res.geocoded ?? 0} · ${res.failed ?? 0} failed. Reload to see pins.`);
+      } catch (e) {
+        pushDebug(`geocode threw: ${(e as Error).message}`);
+        setGeocodeMsg(`Geocode threw: ${(e as Error).message}`);
+      }
     });
   }
 
@@ -343,11 +350,12 @@ export default function MapView({
         {geocodeMsg && (
           <div
             style={{
-              position: "absolute", top: 60, right: 14, zIndex: 25,
+              position: "absolute", top: 60, right: 14, zIndex: 30,
               background: "var(--white)", color: "var(--ink)",
-              border: "1px solid #e2e8f5", borderRadius: 10,
-              padding: "8px 12px", fontSize: 12, maxWidth: 320,
-              boxShadow: "0 6px 20px rgba(15,22,52,0.14)",
+              border: "2px solid var(--gold)", borderRadius: 12,
+              padding: "14px 18px", fontSize: 14, fontWeight: 600,
+              maxWidth: 420,
+              boxShadow: "0 10px 30px rgba(15,22,52,0.25)",
             }}
           >
             {geocodeMsg}
