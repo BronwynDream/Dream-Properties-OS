@@ -502,7 +502,9 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
   position: absolute; inset: 0; z-index: 25;
   display: grid; place-items: center; padding: 24px;
   background: linear-gradient(180deg, rgba(10,26,56,0.6), rgba(10,26,56,0.85));
+  pointer-events: none;                                   /* card is decorative — don't eat clicks */
 }
+.map-empty > * { pointer-events: auto; }                  /* but re-enable clicks inside the card */
 .map-empty-card {
   background: var(--white); border-radius: 16px; padding: 24px 28px;
   max-width: 460px; text-align: center;
@@ -570,7 +572,7 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
 .pv-cta:hover { background: var(--estuary); }
 
 .geocode-bar {
-  position: absolute; top: 14px; right: 14px; z-index: 22;
+  position: absolute; top: 14px; right: 14px; z-index: 30;   /* above the empty-state overlay */
   background: rgba(255,255,255,0.96);
   border: 1px solid #e2e8f5; border-radius: 10px;
   padding: 6px 10px 6px 12px;
