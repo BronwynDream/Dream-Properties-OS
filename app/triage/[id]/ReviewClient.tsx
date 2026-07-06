@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { classifyBatch, setFileType, commitBatch, proposeMatches, decideMatch } from "../actions";
+import DiffPanel from "./DiffPanel";
+import { PropertyDiff } from "@/lib/diff";
 
 type Batch = {
   id: string;
@@ -86,12 +88,14 @@ export default function ReviewClient({
   docTypes,
   extractions,
   matches,
+  propertyDiff,
 }: {
   batch: Batch;
   files: FileRow[];
   docTypes: DocType[];
   extractions: Extraction[];
   matches: Match[];
+  propertyDiff: PropertyDiff | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -502,6 +506,8 @@ export default function ReviewClient({
             })}
           </div>
         )}
+
+        {propertyDiff && !committed && <DiffPanel diff={propertyDiff} />}
 
         <div style={{ marginTop: 40, display: "flex", alignItems: "center", gap: 12 }}>
           <h2 style={{ fontSize: 20, margin: 0 }}>Proposed fields</h2>

@@ -8,6 +8,44 @@ _Last updated: 2026-07-06_
 
 ---
 
+## BATCH DIFFER — "WHAT THIS BATCH ADDS" (2026-07-06)
+
+**Answers the "nugget in one file" concern**. Bronwyn worried that batch-level
+dedup would lose value — one folder might carry a unique document or a
+better field value that the other doesn't have. Rather than dedupe upstream,
+this ship exposes what a batch would ADD when it links to an existing
+property, so the reviewer can decide whether the incremental data is worth
+committing.
+
+- `lib/diff.ts` — types + normalisation. `normaliseFilename` collapses
+  whitespace / underscores / hyphens and strips extension + `(N)` copy
+  markers so "169 Links Photo (2).jpg" matches "169 Links Photo.jpg".
+- `app/triage/[id]/page.tsx` — server computes `PropertyDiff` when the
+  property target has a `link` decision. Fetches the linked property's
+  fields, existing `document_link` documents, and existing transfers +
+  agreements. Classifies each property field as `adds` (empty on record,
+  filled by this batch), `conflict` (both non-null and different),
+  `same`, or `empty`. Also detects whether this batch would create a
+  duplicate transfer (checks proposed agreement price+date against
+  existing transfers).
+- `app/triage/[id]/DiffPanel.tsx` — client render sitting between the
+  Matches panel and Proposed fields. Summary tiles (new files, duplicate
+  files, fields filled, field conflicts, existing transfers) + only-
+  changed-rows table for property field diffs + side-by-side New /
+  Duplicate file lists + an existing-transfers table with a warning
+  banner if this commit would spawn a new transfer.
+
+Not this ship (queued):
+- Actual dedupe on commit — right now the differ is informational; if you
+  commit the batch, duplicate documents still get created. Task #2 from
+  the earlier three-item list (document dedupe on attach) is the natural
+  companion.
+- Party-level diff (existing parties vs proposed). The Matches panel
+  already shows candidate parties independently, so this was deferred.
+- Selective per-file commit — skip specific files at commit time.
+
+---
+
 ## CONTENT-BASED RECLASSIFY (2026-07-06)
 
 **Fixes the Gas COC problem** — files whose filename was uninformative (like
