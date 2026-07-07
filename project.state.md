@@ -147,6 +147,103 @@ Also queued from earlier (smaller):
 
 ---
 
+## TRANSFER PICKER + DASHBOARD REDESIGN + MODERN TYPE (2026-07-07 evening)
+
+Big arc. Root fix for transfer duplication, a proper attention-first dashboard,
+whole-app type swap to modern sans, and title-deed → registered auto-advance.
+
+### Transfer picker at commit — root fix for "one listing, three transfers"
+- `0017_commit_transfer_link.sql`: `commit_batch` honours `p_fields.transfer.id`.
+  Verifies it belongs to the linked property (defensive), otherwise falls
+  through to creating a new one. Extends `match_candidate.target_kind` check
+  to include `'transfer'`. Backward compatible.
+- `linkTransfer` server action + `TransferPicker.tsx` client component. Shows
+  inside the Matches panel below the linked property row when the property
+  already has ≥1 transfer. Default is "Create a new transfer"; each existing
+  transfer is a clickable row with humanised status pill + date.
+- Property target changes wipe stale transfer picks (both `linkPropertyManually`
+  and `decideMatch` do the cleanup).
+
+### Registered advance on title-deed evidence
+- `0018_registered_advance.sql`: `commit_batch` now checks the batch for any
+  file classified as `title_deed`. If present, transfer status → `registered`
+  and `registered_date` coalesces (existing, then AoS transfer_date, then
+  today). Fires after the earlier `in_conveyancing` assignment so the deed
+  wins.
+- One-shot backfill included: every transfer where a title-deed doc is
+  already linked (via transfer or property) advances to `registered`.
+  Cleans up historical stuck-in-conveyancing records.
+
+### Merge transfers UI — retroactive cleanup tool
+- `0019_merge_transfers.sql`: `merge_transfers(winner, loser, reason)` RPC.
+  Same shape as `merge_properties` from 0013 — admin-gated, same-property
+  guard, unique-constraint clashes dedup'd on `transfer_party` / `fica` /
+  `document_link` before repoint, audit log written, loser deleted.
+- `MergeTransfer.tsx` on each transfer card in the Property Record.
+  Admin-only, appears when the property has more than one transfer.
+  Expandable picker + native confirm on the destructive action.
+
+### Dashboard redesign — attention-first, not KPI-first
+- Ripped out the 4 KPI tiles (the "template answer" the frontend-design
+  skill calls out). Hero now shows THE specific deal that needs
+  attention — transfer with the nearest transfer_date in in_conveyancing,
+  with a "N days to transfer" countdown as the payload. Falls back to
+  most-recent transfer, then to an empty invitation.
+- Three columns of work replace the KPIs: **Deals in flight** /
+  **Live listings** / **Waiting for review**. Column headers absorb the
+  count that used to live in the tile. Rows are actual things to look
+  at — Fraunces (later Inter) primary + mono secondary + a right-aligned
+  payload chip (countdown / price / tier). Column dividers carry a
+  2px vertical gold-tideline whisper at the top, so the signature
+  repeats and consistently means "primary axis of attention".
+- Cut: "Live database, live map, live pipeline" marketing tagline, the
+  4 KPI tiles, and the AMBER pill leaking on recent-activity rows.
+
+### Type: modern all-sans across the app
+- Simon read Fraunces as dated. Swapped whole-app to **Inter** (display +
+  body) + **JetBrains Mono** (utility). Loaded fresh weights (300-800 for
+  Inter, 400-700 for JetBrains Mono). Dropped Fraunces + Hanken + Spline
+  Sans Mono from the font-load altogether.
+- Display sizes got weight bumps 600 → 700/800 and tighter tracking
+  (-0.025 to -0.04em) so Inter reads intentional at large sizes — Fraunces
+  at 600 was heavier than Inter at 600 without the compensation.
+- 51 CSS references + 6 inline-styled components (TransferPicker,
+  PropertyAttach, DiffPanel, PairCard, MapView) all updated.
+
+### Real-data cleanup as we went
+- Suburb backfill for pre-fallback commits — patched every property with
+  a missing suburb where the address contained a seeded suburb name.
+- Bronwyn's admin role — delete+reinvite had left her `app_user` row
+  orphaned. Rebound to her new `auth.users.id` with role='admin'.
+- Two rounds of transfer merge SQL (before and after property merges
+  on `/dupes`). Consolidated 3 Oupad × 3, Plot A4 × 2, 15 Eagles Way ×
+  multiple into single rows.
+- Listing dedupe SQL — after property merges, the survivor had duplicate
+  live listings. Kept newest per (property_id, asking_price, status).
+
+### Queued for next session (order)
+1. **Cascade dedupe on `merge_properties`** — when properties merge, also
+   collapse duplicate transfers and live listings on the survivor.
+   Tonight's SQL block for the listing/transfer residue should never be
+   needed again after this. Small ship.
+2. **/dupes callout on Dashboard** — surface pair counts on the Overview
+   so Bronwyn is driven to review rather than the tool being hidden
+   behind a nav tab.
+3. **`/dupes` threshold defaults + per-pair confidence display** — catch
+   borderline pairs like the two 6 Bowden variants (address strings
+   differed too much for 0.5 trigram), but with clearer confidence
+   surfacing so low-score noise doesn't dominate.
+4. Bulk extract on `/triage` (~1h)
+5. Bulk commit on `/triage` (~half day)
+6. Doc revision dedupe (optional)
+7. Custom Dream Mapbox Studio style (still Simon's court)
+
+Also: `merge_listings` RPC + browser button on Property Record is a
+natural counterpart to `merge_transfers`. Not urgent — the auto-cascade
+in #1 covers most cases.
+
+---
+
 ## EVENING ARC — DESIGN PASS + REAL-DATA FIXES (2026-07-06 evening)
 
 Second big block of the day. Everything that shipped between "map is live"
