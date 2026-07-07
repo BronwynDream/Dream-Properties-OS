@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import TopBar from "@/app/components/TopBar";
+import MergeTransfer from "./MergeTransfer";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +22,13 @@ export default async function PropertyRecord({
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
+
+  const { data: profile } = await supabase
+    .from("app_user")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+  const isAdmin = profile?.role === "admin";
 
   const { data: prop } = await supabase
     .from("property")
@@ -385,6 +393,24 @@ export default async function PropertyRecord({
                     </div>
                   ))}
                 </div>
+              )}
+
+              {/* Admin-only merge control. Shown when there's at least one other
+                  transfer on this property to fold into. */}
+              {isAdmin && transfers.length > 1 && (
+                <MergeTransfer
+                  loserId={t.id}
+                  loserName={t.name}
+                  propertyId={prop.id}
+                  candidates={transfers
+                    .filter((c: any) => c.id !== t.id)
+                    .map((c: any) => ({
+                      id: c.id,
+                      name: c.name,
+                      status: c.status ?? null,
+                      transferDate: c.transfer_date ?? null,
+                    }))}
+                />
               )}
               </div>
             </div>
