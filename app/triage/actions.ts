@@ -194,6 +194,9 @@ export async function proposeMatches(batchId: string, rows: FieldRow[]) {
 // "link" sets that row to 'link' and clears siblings so a mind-change is one click.
 // "create" marks every candidate row for the target as 'create'.
 // "reset" returns every row for the target to 'undecided'.
+//
+// Side-effect: any decision change on the property target invalidates the
+// transfer picker (a picked transfer belongs to the OLD property choice).
 export async function decideMatch(
   batchId: string,
   targetRef: string,
@@ -224,6 +227,16 @@ export async function decideMatch(
       .update({ decision: "link", decided_at: new Date().toISOString() })
       .eq("id", candidateId);
   }
+
+  // Any property decision change wipes a stale transfer pick.
+  if (targetRef === "property") {
+    await supabase
+      .from("match_candidate")
+      .delete()
+      .eq("batch_id", batchId)
+      .eq("extracted_ref", "transfer");
+  }
+
   revalidatePath(`/triage/${batchId}`);
 }
 
@@ -242,6 +255,11 @@ export async function commitBatch(batchId: string, rows: FieldRow[]) {
   for (const d of (decided ?? []) as { extracted_ref: string; candidate_id: string }[]) {
     if (d.extracted_ref === "property") {
       fields.property.id = d.candidate_id;
+    } else if (d.extracted_ref === "transfer") {
+      // Explicit transfer picked by the reviewer — commit_batch verifies it
+      // belongs to the linked property before using it.
+      if (!fields.transfer) fields.transfer = {};
+      fields.transfer.id = d.candidate_id;
     } else {
       const m = d.extracted_ref.match(/^(seller|purchaser)_(\d+)$/);
       if (!m) continue;
@@ -436,6 +454,10 @@ export async function searchProperties(q: string): Promise<PropertyHit[]> {
 // choice) and inserts a fresh match_candidate with decision='link' pointing at
 // the chosen property. commit_batch reads that row and skips its match-or-create
 // path, attaching straight to the existing property.
+//
+// Also wipes any transfer-picker decision on this batch — if the reviewer
+// changed the property, any prior transfer pick belongs to the old property
+// and is stale.
 export async function linkPropertyManually(
   batchId: string,
   propertyId: string,
@@ -446,7 +468,7 @@ export async function linkPropertyManually(
     .from("match_candidate")
     .delete()
     .eq("batch_id", batchId)
-    .eq("extracted_ref", "property");
+    .in("extracted_ref", ["property", "transfer"]);
   await supabase.from("match_candidate").insert({
     batch_id: batchId,
     target_kind: "property",
@@ -457,6 +479,40 @@ export async function linkPropertyManually(
     decision: "link",
     decided_at: new Date().toISOString(),
   });
+  revalidatePath(`/triage/${batchId}`);
+  return { ok: true as const };
+}
+
+// Attach the batch's transfer target to a specific existing transfer on the
+// linked property. When set, commit_batch skips creating a new transfer and
+// uses this one — parties / agreements / documents accrete onto it instead.
+// The 'create' case is the absence of any transfer match_candidate row (the
+// default), so linkTransfer with transferId = null / 'new' clears the target.
+export async function linkTransfer(
+  batchId: string,
+  transferId: string | null,
+  label: string | null,
+) {
+  const supabase = createClient();
+  // Always wipe existing transfer decisions first — one target, one decision.
+  await supabase
+    .from("match_candidate")
+    .delete()
+    .eq("batch_id", batchId)
+    .eq("extracted_ref", "transfer");
+
+  if (transferId) {
+    await supabase.from("match_candidate").insert({
+      batch_id: batchId,
+      target_kind: "transfer",
+      extracted_ref: "transfer",
+      candidate_id: transferId,
+      candidate_label: label ?? "Existing transfer",
+      score: 1.0,
+      decision: "link",
+      decided_at: new Date().toISOString(),
+    });
+  }
   revalidatePath(`/triage/${batchId}`);
   return { ok: true as const };
 }

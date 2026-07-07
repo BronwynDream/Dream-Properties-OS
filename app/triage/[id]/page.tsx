@@ -64,6 +64,7 @@ export default async function BatchReview({
   // property, compute what this batch would add / conflict with, so Bronwyn
   // can see the "nugget" before committing.
   let propertyDiff: PropertyDiff | null = null;
+  let linkedPropertyTransfers: LinkedTransfer[] = [];
   const linkedProperty = (matches ?? []).find(
     (m: any) => m.extracted_ref === "property" && m.decision === "link" && m.candidate_id,
   );
@@ -75,6 +76,21 @@ export default async function BatchReview({
       files ?? [],
       extractions ?? [],
     );
+
+    // Fetch existing transfers on the linked property — feeds the transfer
+    // picker so the reviewer can attach this batch to one instead of spawning
+    // a new transfer row on every commit.
+    const { data: propTransfers } = await supabase
+      .from("transfer")
+      .select("id, name, status, transfer_date, created_at")
+      .eq("property_id", linkedProperty.candidate_id)
+      .order("created_at", { ascending: false });
+    linkedPropertyTransfers = ((propTransfers ?? []) as any[]).map((t) => ({
+      id: t.id,
+      name: t.name,
+      status: t.status ?? null,
+      transferDate: t.transfer_date ?? null,
+    }));
   }
 
   return (
@@ -87,10 +103,18 @@ export default async function BatchReview({
         extractions={extractions ?? []}
         matches={matches ?? []}
         propertyDiff={propertyDiff}
+        linkedPropertyTransfers={linkedPropertyTransfers}
       />
     </>
   );
 }
+
+export type LinkedTransfer = {
+  id: string;
+  name: string;
+  status: string | null;
+  transferDate: string | null;
+};
 
 async function computePropertyDiff(
   supabase: any,

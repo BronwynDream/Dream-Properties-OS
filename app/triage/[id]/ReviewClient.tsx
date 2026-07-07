@@ -6,6 +6,8 @@ import Link from "next/link";
 import { classifyBatch, setFileType, commitBatch, proposeMatches, decideMatch } from "../actions";
 import DiffPanel from "./DiffPanel";
 import PropertyAttach from "./PropertyAttach";
+import TransferPicker from "./TransferPicker";
+import type { LinkedTransfer } from "./page";
 import { PropertyDiff } from "@/lib/diff";
 
 type Batch = {
@@ -90,6 +92,7 @@ export default function ReviewClient({
   extractions,
   matches,
   propertyDiff,
+  linkedPropertyTransfers,
 }: {
   batch: Batch;
   files: FileRow[];
@@ -97,6 +100,7 @@ export default function ReviewClient({
   extractions: Extraction[];
   matches: Match[];
   propertyDiff: PropertyDiff | null;
+  linkedPropertyTransfers: LinkedTransfer[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -534,6 +538,23 @@ export default function ReviewClient({
                 </div>
                 <PropertyAttach batchId={batch.id} />
               </div>
+            )}
+
+            {/* Transfer picker — only shown when a property is linked AND it
+                already has transfers. Prevents the "one listing, three transfer
+                rows" pattern by letting the reviewer commit into an existing
+                transfer rather than always spawning a new one. */}
+            {propertyDiff && linkedPropertyTransfers.length > 0 && (
+              <TransferPicker
+                batchId={batch.id}
+                transfers={linkedPropertyTransfers}
+                selectedTransferId={
+                  matches.find(
+                    (m) => m.extracted_ref === "transfer" && m.decision === "link",
+                  )?.candidate_id ?? null
+                }
+                propertyLabel={propertyDiff.propertyLabel}
+              />
             )}
           </div>
         )}
