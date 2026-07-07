@@ -16,17 +16,19 @@ html, body {
   padding: 0;
   background: var(--mist);
   color: var(--ink);
-  font-family: "Hanken Grotesk", system-ui, -apple-system, sans-serif;
+  font-family: "Inter", -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
 h1, h2, .display {
-  font-family: "Fraunces", Georgia, serif;
+  font-family: "Inter", -apple-system, sans-serif;
   color: var(--estuary);
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: -0.025em;
 }
+h1 { letter-spacing: -0.035em; }
 
-.mono { font-family: "Spline Sans Mono", ui-monospace, monospace; }
+.mono { font-family: "JetBrains Mono", ui-monospace, monospace; }
 
 /* Gold tideline — the signature Estuary element */
 .tideline {
@@ -58,7 +60,7 @@ h1, h2, .display {
   padding: 28px 28px 22px;
 }
 .card-head .eyebrow {
-  font-family: "Spline Sans Mono", ui-monospace, monospace;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
   font-size: 11px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -113,15 +115,15 @@ button.primary:disabled { opacity: 0.6; cursor: default; }
   padding: 18px 28px;
 }
 .app-head .eyebrow {
-  font-family: "Spline Sans Mono", ui-monospace, monospace;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
   font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--gold); margin: 0;
 }
-.app-head h1 { color: var(--white); margin: 2px 0 0; font-size: 22px; }
+.app-head h1 { color: var(--white); margin: 2px 0 0; font-size: 22px; font-weight: 700; letter-spacing: -0.03em; }
 .app-body { padding: 32px 28px; max-width: 900px; }
 .pill {
   display: inline-block; padding: 3px 10px; border-radius: 999px;
   background: var(--mist); color: var(--estuary); font-size: 12px; font-weight: 600;
-  font-family: "Spline Sans Mono", ui-monospace, monospace; text-transform: uppercase; letter-spacing: 0.08em;
+  font-family: "JetBrains Mono", ui-monospace, monospace; text-transform: uppercase; letter-spacing: 0.08em;
 }
 button.ghost {
   background: transparent; color: var(--white); border: 1px solid rgba(255,255,255,0.5);
@@ -149,13 +151,13 @@ button.ghost:hover { background: rgba(255,255,255,0.12); }
   transition: border-color 0.15s, background 0.15s;
 }
 .dropzone:hover { border-color: var(--gold); background: #fffdf6; }
-.dropzone strong { font-family: "Fraunces", Georgia, serif; color: var(--estuary); font-size: 18px; }
+.dropzone strong { font-family: "Inter", -apple-system, sans-serif; color: var(--estuary); font-size: 18px; }
 .dropzone span { color: #5b6885; font-size: 13px; }
 .dz-msg { margin-top: 14px; color: var(--estuary); font-weight: 600; font-size: 14px; }
 
 /* Queue table */
 table.queue { width: 100%; border-collapse: collapse; margin-top: 28px; background: var(--white); border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(15,42,99,0.06); }
-table.queue th { text-align: left; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: #6b78a0; padding: 12px 14px; border-bottom: 2px solid var(--mist); font-family: "Spline Sans Mono", monospace; }
+table.queue th { text-align: left; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: #6b78a0; padding: 12px 14px; border-bottom: 2px solid var(--mist); font-family: "JetBrains Mono", monospace; }
 table.queue td { padding: 12px 14px; border-bottom: 1px solid var(--mist); font-size: 14px; }
 table.queue td.strong { font-weight: 600; color: var(--estuary); }
 .tier { padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; text-transform: uppercase; }
@@ -176,7 +178,7 @@ table.queue td.strong { font-weight: 600; color: var(--estuary); }
   margin-top: 30px; background: #fffdf6; border: 1px solid #eddfb6;
   border-left: 3px solid var(--gold); border-radius: 10px; padding: 16px 18px;
 }
-.note-box strong { color: var(--estuary); font-family: "Fraunces", Georgia, serif; }
+.note-box strong { color: var(--estuary); font-family: "Inter", -apple-system, sans-serif; }
 .note-box p { color: #5b6885; font-size: 14px; line-height: 1.6; margin: 8px 0 0; }
 
 .ghost-dark {
@@ -188,7 +190,7 @@ table.queue td.strong { font-weight: 600; color: var(--estuary); }
 
 .extract-groups { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; margin-top: 12px; }
 .extract-card { background: var(--white); border: 1px solid #e2e8f5; border-radius: 12px; padding: 14px 16px; }
-.extract-card h3 { margin: 0 0 8px; font-size: 14px; text-transform: capitalize; color: var(--estuary); font-family: "Spline Sans Mono", monospace; letter-spacing: 0.04em; }
+.extract-card h3 { margin: 0 0 8px; font-size: 14px; text-transform: capitalize; color: var(--estuary); font-family: "JetBrains Mono", monospace; letter-spacing: 0.04em; }
 table.kv { width: 100%; border-collapse: collapse; }
 table.kv td { padding: 5px 4px; font-size: 13px; border-bottom: 1px solid var(--mist); vertical-align: top; }
 table.kv td.k { color: #8090b5; width: 45%; font-size: 11px; }
@@ -213,7 +215,7 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
 .record-head-date {
   margin: 8px 0 0; font-size: 11.5px;
   color: rgba(255,255,255,0.66);
-  font-family: "Spline Sans Mono", monospace; letter-spacing: 0.05em;
+  font-family: "JetBrains Mono", monospace; letter-spacing: 0.05em;
 }
 .record-head-date b { color: var(--white); font-weight: 600; }
 
@@ -223,7 +225,7 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
   display: inline-flex; align-items: center; gap: 8px;
   padding: 6px 12px 6px 10px;
   border-radius: 999px;
-  font-family: "Spline Sans Mono", ui-monospace, monospace;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
   font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
   white-space: nowrap;
 }
@@ -257,19 +259,19 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
 .cadastral-item:first-child { border-left: 0; }
 .cadastral-label {
   display: block;
-  font-family: "Spline Sans Mono", ui-monospace, monospace;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
   font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
   color: #8090b5; margin-bottom: 6px;
 }
 .cadastral-value {
   display: block;
-  font-family: "Fraunces", Georgia, serif;
-  font-size: 18px; font-weight: 600; color: var(--estuary);
-  letter-spacing: -0.01em; line-height: 1.15;
+  font-family: "Inter", -apple-system, sans-serif;
+  font-size: 18px; font-weight: 700; color: var(--estuary);
+  letter-spacing: -0.025em; line-height: 1.15;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .cadastral-value.mono {
-  font-family: "Spline Sans Mono", ui-monospace, monospace;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
   font-size: 13px; font-weight: 600; letter-spacing: 0.02em;
 }
 .cadastral-item.is-empty .cadastral-value { color: #b3bdd6; opacity: 0.7; }
@@ -301,7 +303,7 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
   gap: 8px;
 }
 .timeline-year {
-  font-family: "Spline Sans Mono", ui-monospace, monospace;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
   font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
   color: var(--estuary);
 }
@@ -313,15 +315,15 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
 }
 .transfer-card { background: var(--white); border: 1px solid #e2e8f5; border-radius: 12px; padding: 18px; margin-top: 16px; box-shadow: 0 4px 20px rgba(15,42,99,0.05); }
 .transfer-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
-.transfer-head b { font-family: "Fraunces", Georgia, serif; color: var(--estuary); font-size: 17px; }
+.transfer-head b { font-family: "Inter", -apple-system, sans-serif; color: var(--estuary); font-size: 17px; }
 .transfer-cols { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 18px; }
-.col-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: #8090b5; font-family: "Spline Sans Mono", monospace; margin: 0 0 8px; }
+.col-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: #8090b5; font-family: "JetBrains Mono", monospace; margin: 0 0 8px; }
 .party-line { font-size: 14px; margin-bottom: 6px; color: var(--ink); }
 .party-line b { color: var(--estuary); }
 .muted { color: #9aa6c4; font-size: 13px; }
 .member-list { margin: 4px 0 0; padding-left: 16px; font-size: 13px; color: #5b6885; }
 .milestones { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 6px; }
-.ms-chip { background: var(--mist); color: var(--estuary); border-radius: 999px; padding: 3px 10px; font-size: 11px; font-family: "Spline Sans Mono", monospace; }
+.ms-chip { background: var(--mist); color: var(--estuary); border-radius: 999px; padding: 3px 10px; font-size: 11px; font-family: "JetBrains Mono", monospace; }
 @media (max-width: 640px) { .transfer-cols { grid-template-columns: 1fr; } }
 .doc-list { margin-top: 14px; border-top: 1px solid var(--mist); padding-top: 12px; }
 .doc-chips { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -339,7 +341,7 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
 .doc-group { margin-top: 14px; }
 .doc-group:first-child { margin-top: 4px; }
 .doc-group-title {
-  font-family: "Spline Sans Mono", ui-monospace, monospace;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
   font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
   color: #6b78a0; margin: 0 0 6px;
   display: flex; align-items: baseline; gap: 8px;
@@ -352,7 +354,7 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
 .doc-group-count {
   color: var(--estuary);
   font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em;
-  font-family: "Spline Sans Mono", monospace;
+  font-family: "JetBrains Mono", monospace;
 }
 /* FICA is protected — subtle red ring across the whole category so the
    reader knows this section is different in kind. */
@@ -428,13 +430,13 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
   background: linear-gradient(140deg, #E2B458, #B07E22);
   color: var(--estuary);
   display: grid; place-items: center;
-  font-family: "Fraunces", Georgia, serif; font-weight: 700; font-size: 16px;
-  letter-spacing: -0.02em;
+  font-family: "Inter", -apple-system, sans-serif; font-weight: 800; font-size: 16px;
+  letter-spacing: -0.04em;
 }
 .topbar-brand-text { display: flex; flex-direction: column; line-height: 1.1; }
-.topbar-brand-name { font-family: "Fraunces", Georgia, serif; font-size: 15px; font-weight: 600; }
+.topbar-brand-name { font-family: "Inter", -apple-system, sans-serif; font-size: 15px; font-weight: 700; letter-spacing: -0.02em; }
 .topbar-brand-sub {
-  font-family: "Spline Sans Mono", ui-monospace, monospace;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
   font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
   color: rgba(255,255,255,0.6);
 }
@@ -457,7 +459,7 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
   max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .topbar-who-role {
-  font-family: "Spline Sans Mono", ui-monospace, monospace;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
   font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
   padding: 3px 8px; border-radius: 4px; font-weight: 700;
 }
@@ -489,13 +491,13 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
 }
 .page-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; margin-bottom: 20px; }
 .page-head .eyebrow {
-  font-family: "Spline Sans Mono", ui-monospace, monospace;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
   font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
   color: var(--gold); margin: 0 0 6px;
 }
 .page-head h1 {
-  font-family: "Fraunces", Georgia, serif;
-  color: var(--estuary); margin: 0; font-size: 28px; letter-spacing: -0.01em;
+  font-family: "Inter", -apple-system, sans-serif;
+  color: var(--estuary); margin: 0; font-size: 32px; font-weight: 700; letter-spacing: -0.035em;
 }
 .page-head .sub { font-size: 13px; color: #5b6885; margin: 6px 0 0; max-width: 520px; }
 
@@ -515,15 +517,15 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
 }
 .dash-hero-body { flex: 1; min-width: 0; }
 .dash-hero-eyebrow {
-  font-family: "Spline Sans Mono", ui-monospace, monospace;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
   font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
   color: var(--gold); margin: 0 0 8px;
 }
 .dash-hero-address {
-  font-family: "Fraunces", Georgia, serif;
+  font-family: "Inter", -apple-system, sans-serif;
   color: var(--estuary);
-  font-size: clamp(28px, 3.5vw, 38px);
-  font-weight: 600; letter-spacing: -0.015em; line-height: 1.1;
+  font-size: clamp(30px, 3.8vw, 42px);
+  font-weight: 700; letter-spacing: -0.04em; line-height: 1.05;
   margin: 0;
 }
 .dash-hero-tideline {
@@ -532,20 +534,20 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
   border-radius: 1px;
 }
 .dash-hero-suburb {
-  font-family: "Spline Sans Mono", ui-monospace, monospace;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
   font-size: 12px; letter-spacing: 0.08em; color: #6b78a0; margin: 0 0 14px;
 }
 .dash-hero-meta {
   display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
 }
 .dash-hero-payload {
-  font-family: "Hanken Grotesk", sans-serif;
+  font-family: "Inter", sans-serif;
   font-size: 14px; color: #6b78a0;
 }
 .dash-hero-payload b {
-  font-family: "Fraunces", Georgia, serif;
-  font-size: 22px; color: var(--estuary); font-weight: 600;
-  font-variant-numeric: tabular-nums; letter-spacing: -0.01em;
+  font-family: "Inter", -apple-system, sans-serif;
+  font-size: 22px; color: var(--estuary); font-weight: 700;
+  font-variant-numeric: tabular-nums; letter-spacing: -0.03em;
   margin-right: 3px;
 }
 .dash-hero-cta {
@@ -590,14 +592,14 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
   margin-bottom: 12px;
 }
 .dash-col-head h2 {
-  font-family: "Spline Sans Mono", ui-monospace, monospace;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
   font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
   color: var(--estuary); margin: 0; font-weight: 700;
 }
 .dash-col-count {
-  font-family: "Fraunces", Georgia, serif;
-  font-size: 22px; font-weight: 600; color: var(--estuary);
-  letter-spacing: -0.02em; line-height: 1;
+  font-family: "Inter", -apple-system, sans-serif;
+  font-size: 22px; font-weight: 700; color: var(--estuary);
+  letter-spacing: -0.03em; line-height: 1;
   font-variant-numeric: tabular-nums;
 }
 .dash-col-list { list-style: none; margin: 0; padding: 0; }
@@ -623,13 +625,13 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
   display: flex; flex-direction: column; gap: 2px;
 }
 .dash-row-primary {
-  font-family: "Fraunces", Georgia, serif;
+  font-family: "Inter", -apple-system, sans-serif;
   font-size: 14.5px; font-weight: 600; color: var(--estuary);
-  letter-spacing: -0.005em; line-height: 1.2;
+  letter-spacing: -0.015em; line-height: 1.2;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .dash-row-secondary {
-  font-family: "Spline Sans Mono", ui-monospace, monospace;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
   font-size: 10.5px; letter-spacing: 0.04em;
   color: #8090b5;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -637,7 +639,7 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
 .dash-row-right { flex-shrink: 0; }
 
 .dash-days {
-  font-family: "Spline Sans Mono", ui-monospace, monospace;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
   font-size: 12px; font-weight: 600; letter-spacing: 0.02em;
   color: var(--estuary);
   padding: 3px 8px; border-radius: 6px;
@@ -649,9 +651,10 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
 .dash-days.muted { background: transparent; color: #9aa6c4; font-weight: 500; }
 
 .dash-price {
-  font-family: "Fraunces", Georgia, serif;
-  font-size: 14px; font-weight: 600; color: var(--estuary);
+  font-family: "Inter", -apple-system, sans-serif;
+  font-size: 14px; font-weight: 700; color: var(--estuary);
   font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
 }
 
 @media (max-width: 900px) {
@@ -668,7 +671,7 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
   display: flex; align-items: baseline; justify-content: space-between;
   margin: 36px 0 12px;
 }
-.section-head h2 { margin: 0; font-family: "Fraunces", Georgia, serif; color: var(--estuary); font-size: 20px; }
+.section-head h2 { margin: 0; font-family: "Inter", -apple-system, sans-serif; color: var(--estuary); font-size: 20px; }
 .section-head .link { color: var(--navy); font-size: 13px; font-weight: 600; text-decoration: none; }
 .section-head .link:hover { text-decoration: underline; }
 
@@ -686,7 +689,7 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
 }
 .activity-row:last-child { border-bottom: 0; }
 .activity-row .when {
-  font-family: "Spline Sans Mono", ui-monospace, monospace;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
   font-size: 11px; color: #8090b5; letter-spacing: 0.04em;
 }
 .activity-row .what { font-size: 14px; color: var(--ink); }
@@ -712,7 +715,7 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
 }
 .map-rail section { padding: 14px 16px; border-bottom: 1px solid var(--mist); }
 .map-rail h3 {
-  font-family: "Spline Sans Mono", ui-monospace, monospace;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
   font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em;
   color: #6b78a0; font-weight: 700; margin: 0 0 10px;
 }
@@ -774,8 +777,8 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
 }
 .listing-item:hover { background: #F6F8FC; }
 .listing-item .bar { background: var(--m-fill); border-radius: 2px; }
-.listing-item .nm { font-family: "Fraunces", Georgia, serif; font-size: 14px; color: var(--estuary); font-weight: 600; line-height: 1.2; }
-.listing-item .pr { font-family: "Spline Sans Mono", ui-monospace, monospace; font-size: 11px; color: #6b78a0; margin-top: 2px; }
+.listing-item .nm { font-family: "Inter", -apple-system, sans-serif; font-size: 14px; color: var(--estuary); font-weight: 600; line-height: 1.2; }
+.listing-item .pr { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 11px; color: #6b78a0; margin-top: 2px; }
 .listing-item .meta { font-size: 11px; color: #8090b5; margin-top: 2px; }
 .listing-item.active { background: #EEF0F8; }
 
@@ -799,7 +802,7 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
 .price-pin .badge {
   background: var(--m-fill);
   color: var(--m-ink);
-  font-family: "Spline Sans Mono", ui-monospace, monospace;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
   font-size: 12px; font-weight: 700; letter-spacing: 0.01em; white-space: nowrap;
   padding: 5px 10px 4px;
   border-radius: 999px;
@@ -864,7 +867,7 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
   max-width: 460px; text-align: center;
   box-shadow: 0 20px 60px rgba(0,0,0,0.35);
 }
-.map-empty-card h2 { font-family: "Fraunces", Georgia, serif; color: var(--estuary); font-size: 22px; margin: 0 0 8px; }
+.map-empty-card h2 { font-family: "Inter", -apple-system, sans-serif; color: var(--estuary); font-size: 22px; margin: 0 0 8px; }
 .map-empty-card p { color: #5b6885; font-size: 14px; line-height: 1.6; margin: 0 0 16px; }
 
 /* Right slide-in preview card */
@@ -896,17 +899,17 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
 .map-preview .close:hover { background: #dfe5f2; }
 .map-preview .mandate-line { display: flex; gap: 6px; margin-bottom: 10px; }
 .map-preview .m-chip {
-  font-family: "Spline Sans Mono", ui-monospace, monospace;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
   font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
   padding: 3px 9px; border-radius: 5px;
   background: var(--m-fill); color: var(--m-ink);
 }
-.map-preview .addr { font-family: "Fraunces", Georgia, serif; color: var(--estuary); font-size: 22px; margin: 0; line-height: 1.15; letter-spacing: -0.01em; }
-.map-preview .suburb { font-family: "Spline Sans Mono", ui-monospace, monospace; font-size: 11px; color: #8090b5; margin: 4px 0 0; letter-spacing: 0.04em; }
+.map-preview .addr { font-family: "Inter", -apple-system, sans-serif; color: var(--estuary); font-size: 22px; margin: 0; line-height: 1.15; letter-spacing: -0.01em; }
+.map-preview .suburb { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 11px; color: #8090b5; margin: 4px 0 0; letter-spacing: 0.04em; }
 
 .map-preview .body { padding: 16px 22px 22px; }
 .map-preview .price {
-  font-family: "Fraunces", Georgia, serif; font-size: 26px; font-weight: 600;
+  font-family: "Inter", -apple-system, sans-serif; font-size: 26px; font-weight: 600;
   color: var(--ink); margin: 0; letter-spacing: -0.01em;
   font-variant-numeric: tabular-nums;
   display: inline-block; padding-bottom: 6px;
@@ -916,11 +919,11 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
   content: ""; position: absolute; left: 0; bottom: 0; width: 34px; height: 2px;
   background: linear-gradient(90deg, var(--gold), transparent);
 }
-.map-preview .price-sub { font-size: 11px; color: #8090b5; margin: 2px 0 0; font-family: "Spline Sans Mono", ui-monospace, monospace; }
+.map-preview .price-sub { font-size: 11px; color: #8090b5; margin: 2px 0 0; font-family: "JetBrains Mono", ui-monospace, monospace; }
 
 .pv-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 18px; }
 .pv-cell { background: var(--mist); border-radius: 10px; padding: 10px 12px; }
-.pv-cell .lbl { font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: #6b78a0; font-family: "Spline Sans Mono", ui-monospace, monospace; }
+.pv-cell .lbl { font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: #6b78a0; font-family: "JetBrains Mono", ui-monospace, monospace; }
 .pv-cell .val { font-size: 14px; color: var(--estuary); font-weight: 600; margin-top: 3px; }
 .pv-cta { display: block; margin-top: 20px; background: var(--navy); color: var(--white); text-decoration: none; text-align: center; padding: 11px; border-radius: 9px; font-weight: 600; font-size: 14px; }
 .pv-cta:hover { background: var(--estuary); }

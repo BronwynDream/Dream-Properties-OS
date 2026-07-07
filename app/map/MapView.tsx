@@ -503,7 +503,7 @@ export default function MapView({
                 </div>
 
                 {selectedProperty.listingHeadline && (
-                  <p style={{ marginTop: 20, fontFamily: "Fraunces, Georgia, serif", color: "var(--estuary)", fontSize: 14, lineHeight: 1.5 }}>
+                  <p style={{ marginTop: 20, fontFamily: "Inter, -apple-system, sans-serif", color: "var(--estuary)", fontSize: 14, lineHeight: 1.5 }}>
                     {selectedProperty.listingHeadline}
                   </p>
                 )}

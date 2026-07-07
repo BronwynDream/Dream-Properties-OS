@@ -221,7 +221,7 @@ export default function DiffPanel({ diff }: { diff: PropertyDiff }) {
 }
 
 const sectionHeading: React.CSSProperties = {
-  fontFamily: "Fraunces, Georgia, serif",
+  fontFamily: "Inter, -apple-system, sans-serif",
   fontSize: 15,
   color: "#0F2A63",
   margin: "22px 0 10px",
@@ -244,7 +244,7 @@ const thStyle: React.CSSProperties = {
   color: "#6b78a0",
   padding: "10px 12px",
   borderBottom: "1px solid #EDF0F8",
-  fontFamily: "'Spline Sans Mono', monospace",
+  fontFamily: "'JetBrains Mono', monospace",
 };
 
 function SummaryTile({
@@ -272,7 +272,7 @@ function SummaryTile({
     >
       <div
         style={{
-          fontFamily: "'Spline Sans Mono', monospace",
+          fontFamily: "'JetBrains Mono', monospace",
           fontSize: 10,
           letterSpacing: "0.1em",
           textTransform: "uppercase",
@@ -284,7 +284,7 @@ function SummaryTile({
       </div>
       <div
         style={{
-          fontFamily: "Fraunces, Georgia, serif",
+          fontFamily: "Inter, -apple-system, sans-serif",
           fontSize: 22,
           fontWeight: 600,
           color: colours.fg,
@@ -313,7 +313,7 @@ function FileList({
     <div style={{ background: "#fff", border: "1px solid #e2e8f5", borderRadius: 8, padding: 12 }}>
       <div
         style={{
-          fontFamily: "'Spline Sans Mono', monospace",
+          fontFamily: "'JetBrains Mono', monospace",
           fontSize: 11,
           letterSpacing: "0.08em",
           textTransform: "uppercase",
@@ -338,7 +338,7 @@ function FileList({
                 padding: "5px 9px",
                 borderRadius: 6,
                 fontSize: 12,
-                fontFamily: "'Spline Sans Mono', monospace",
+                fontFamily: "'JetBrains Mono', monospace",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
                 whiteSpace: "nowrap",

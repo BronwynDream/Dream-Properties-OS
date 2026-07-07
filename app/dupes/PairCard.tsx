@@ -129,7 +129,7 @@ export default function PairCard({ pair }: { pair: Pair }) {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
         <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
           <span className={`tier ${scoreClass(pair.score)}`}>{pair.score.toFixed(2)}</span>
-          <span style={{ color: "#6b78a0", fontSize: 12, fontFamily: '"Spline Sans Mono", monospace' }}>
+          <span style={{ color: "#6b78a0", fontSize: 12, fontFamily: '"JetBrains Mono", monospace' }}>
             {pair.a_id.slice(0, 8)} ↔ {pair.b_id.slice(0, 8)}
           </span>
         </div>
