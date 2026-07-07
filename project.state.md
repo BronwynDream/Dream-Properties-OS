@@ -66,16 +66,20 @@ the design-pass section below. Remaining queue: bulk migration throughput
 - Reports "committed X, skipped Y for review" with a table of skips.
 - ~half day.
 
-**5. Transfer picker at commit time** (queued 2026-07-06 evening after
-the 15 Eagles Way 3-transfer mess)
-- When a batch links to a property that already has one or more transfers,
-  offer a third option beyond "auto-decide" and "create new": "attach to
-  this existing transfer". Same shape as the property-attach flow — search
-  or pick from the existing transfers on the linked property.
-- Root fix: stops commits creating a fresh transfer every time. Bronwyn's
-  "one listing, three folders trickled in" workflow no longer produces
-  three identical transfer rows on one property.
-- Small; ~1-2 hours.
+**~~5. Transfer picker at commit time — SHIPPED 2026-07-07~~**
+- `0017_commit_transfer_link.sql`: `commit_batch` reads
+  `p_fields.transfer.id`; if set (and the transfer belongs to the linked
+  property — defensive check), commits into it instead of creating a
+  new one. Extends `match_candidate.target_kind` check to include
+  `'transfer'`. Backward compatible.
+- `linkTransfer(batchId, transferId | null, label)` server action +
+  `TransferPicker.tsx` client component. Renders inside the Matches
+  panel below the linked property row when the property has ≥1
+  existing transfer. Default is "Create a new transfer"; each existing
+  transfer is a clickable row with humanised status pill and date.
+- Property target changes wipe stale transfer picks
+  (`linkPropertyManually` + `decideMatch`).
+- Needs 0017 applied to Bon Bon's Database before test.
 
 **6. Merge transfers UI on the Property Record** (queued 2026-07-06 evening)
 - Small "Merge into another transfer…" button on each transfer card in
