@@ -500,41 +500,168 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
 .page-head .sub { font-size: 13px; color: #5b6885; margin: 6px 0 0; max-width: 520px; }
 
 /* =========================================================================
-   KPI tiles (dashboard)
+   Dashboard — hero + three columns of work
+   Replaces the old KPI-tile pattern. Signature is the gold tideline: it
+   appears under the topbar, under the hero address, and as vertical tint on
+   the column dividers — always meaning "primary axis of attention".
    ========================================================================= */
-.kpi-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 14px;
-}
-.kpi-tile {
+.dash-hero {
   background: var(--white);
   border: 1px solid #e2e8f5;
-  border-radius: 14px;
-  padding: 18px 20px;
-  position: relative;
+  border-radius: 16px;
+  padding: 26px 32px;
+  display: flex; align-items: center; gap: 32px;
+  box-shadow: 0 4px 20px rgba(15,42,99,0.05);
+}
+.dash-hero-body { flex: 1; min-width: 0; }
+.dash-hero-eyebrow {
+  font-family: "Spline Sans Mono", ui-monospace, monospace;
+  font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--gold); margin: 0 0 8px;
+}
+.dash-hero-address {
+  font-family: "Fraunces", Georgia, serif;
+  color: var(--estuary);
+  font-size: clamp(28px, 3.5vw, 38px);
+  font-weight: 600; letter-spacing: -0.015em; line-height: 1.1;
+  margin: 0;
+}
+.dash-hero-tideline {
+  height: 2px; margin: 12px 0 12px; padding: 0;
+  background: linear-gradient(90deg, var(--gold) 0%, transparent 42%);
+  border-radius: 1px;
+}
+.dash-hero-suburb {
+  font-family: "Spline Sans Mono", ui-monospace, monospace;
+  font-size: 12px; letter-spacing: 0.08em; color: #6b78a0; margin: 0 0 14px;
+}
+.dash-hero-meta {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+}
+.dash-hero-payload {
+  font-family: "Hanken Grotesk", sans-serif;
+  font-size: 14px; color: #6b78a0;
+}
+.dash-hero-payload b {
+  font-family: "Fraunces", Georgia, serif;
+  font-size: 22px; color: var(--estuary); font-weight: 600;
+  font-variant-numeric: tabular-nums; letter-spacing: -0.01em;
+  margin-right: 3px;
+}
+.dash-hero-cta {
+  background: var(--navy); color: var(--white); text-decoration: none;
+  padding: 12px 20px; border-radius: 10px;
+  font-weight: 600; font-size: 14px; white-space: nowrap;
+  transition: background 0.12s;
+}
+.dash-hero-cta:hover { background: var(--estuary); }
+
+.dash-hero-empty .dash-hero-address { color: #8090b5; font-weight: 500; }
+.dash-hero-empty .dash-hero-eyebrow { color: #6b78a0; }
+
+/* Three columns of work */
+.dash-work {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  margin-top: 32px;
+  background: var(--white);
+  border: 1px solid #e2e8f5;
+  border-radius: 16px;
   overflow: hidden;
   box-shadow: 0 4px 20px rgba(15,42,99,0.05);
 }
-.kpi-tile::before {
-  content: ""; position: absolute; left: 20px; right: 20px; top: 62px; height: 2px;
-  background: linear-gradient(90deg, var(--gold) 0%, transparent 60%);
-  opacity: 0.7;
+.dash-col {
+  padding: 20px 22px 8px;
+  border-left: 1px solid var(--mist);
+  position: relative;
+  min-width: 0;
 }
-.kpi-tile .label {
+.dash-col:first-child { border-left: 0; }
+/* The column divider carries a whisper of the gold tideline motif at the top,
+   linking it back to the hero + topbar signature. */
+.dash-col:not(:first-child)::before {
+  content: ""; position: absolute; left: -1px; top: 18px; width: 2px; height: 34px;
+  background: linear-gradient(180deg, var(--gold), transparent);
+  opacity: 0.55;
+}
+.dash-col-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  margin-bottom: 12px;
+}
+.dash-col-head h2 {
   font-family: "Spline Sans Mono", ui-monospace, monospace;
-  font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase;
-  color: #6b78a0; margin: 0 0 6px;
+  font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--estuary); margin: 0; font-weight: 700;
 }
-.kpi-tile .value {
+.dash-col-count {
   font-family: "Fraunces", Georgia, serif;
-  font-size: 34px; font-weight: 600; color: var(--estuary); letter-spacing: -0.02em;
-  line-height: 1; margin: 0;
+  font-size: 22px; font-weight: 600; color: var(--estuary);
+  letter-spacing: -0.02em; line-height: 1;
   font-variant-numeric: tabular-nums;
 }
-.kpi-tile .foot { font-size: 12px; color: #6b78a0; margin: 14px 0 0; }
-.kpi-tile a { color: var(--navy); text-decoration: none; font-weight: 600; font-size: 12px; }
-.kpi-tile a:hover { text-decoration: underline; }
+.dash-col-list { list-style: none; margin: 0; padding: 0; }
+.dash-col-empty {
+  padding: 14px 0 20px;
+}
+.dash-col-empty p {
+  font-size: 13px; color: #6b78a0; margin: 0 0 10px; line-height: 1.5;
+}
+
+.dash-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--mist);
+  text-decoration: none;
+  color: var(--ink);
+  transition: color 0.12s;
+}
+.dash-col-list li:last-child .dash-row { border-bottom: 0; }
+.dash-row:hover .dash-row-primary { color: var(--navy); }
+.dash-row-body {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column; gap: 2px;
+}
+.dash-row-primary {
+  font-family: "Fraunces", Georgia, serif;
+  font-size: 14.5px; font-weight: 600; color: var(--estuary);
+  letter-spacing: -0.005em; line-height: 1.2;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.dash-row-secondary {
+  font-family: "Spline Sans Mono", ui-monospace, monospace;
+  font-size: 10.5px; letter-spacing: 0.04em;
+  color: #8090b5;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.dash-row-right { flex-shrink: 0; }
+
+.dash-days {
+  font-family: "Spline Sans Mono", ui-monospace, monospace;
+  font-size: 12px; font-weight: 600; letter-spacing: 0.02em;
+  color: var(--estuary);
+  padding: 3px 8px; border-radius: 6px;
+  background: var(--mist);
+}
+.dash-days.urgent {
+  background: #fbefd9; color: #7A5814;
+}
+.dash-days.muted { background: transparent; color: #9aa6c4; font-weight: 500; }
+
+.dash-price {
+  font-family: "Fraunces", Georgia, serif;
+  font-size: 14px; font-weight: 600; color: var(--estuary);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 900px) {
+  .dash-work { grid-template-columns: 1fr; }
+  .dash-col { border-left: 0; border-top: 1px solid var(--mist); }
+  .dash-col:first-child { border-top: 0; }
+  .dash-col:not(:first-child)::before { display: none; }
+  .dash-hero { flex-direction: column; align-items: flex-start; }
+  .dash-hero-cta { width: 100%; text-align: center; }
+}
 
 /* Section heading + recent activity strip */
 .section-head {
