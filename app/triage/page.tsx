@@ -5,6 +5,7 @@ import TopBar from "@/app/components/TopBar";
 import DropZone from "./DropZone";
 import QueueActions from "./QueueActions";
 import BulkExtract from "./BulkExtract";
+import BulkCommit from "./BulkCommit";
 export const dynamic = "force-dynamic";
 
 type QueueRow = {
@@ -79,6 +80,18 @@ export default async function TriagePage() {
                     b.file_count > 0,
                 )
                 .map((b) => b.id)}
+            />
+            <BulkCommit
+              candidates={queue
+                .filter(
+                  (b) =>
+                    b.tier === "green" &&
+                    b.status !== "committed" &&
+                    b.status !== "uploaded" &&
+                    b.proposed_count > 0 &&
+                    b.open_matches === 0,
+                )
+                .map((b) => ({ id: b.id, label: b.label }))}
             />
           </div>
         )}

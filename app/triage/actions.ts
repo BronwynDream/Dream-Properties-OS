@@ -517,6 +517,26 @@ export async function linkTransfer(
   return { ok: true as const };
 }
 
+// Commit a batch by ID — same as commitBatch but fetches the extraction rows
+// from the DB rather than accepting them as an arg. Used by the bulk-commit
+// path where the client iterates through eligible batches without having
+// their extraction rows pre-loaded.
+export async function commitBatchById(batchId: string) {
+  const supabase = createClient();
+  const { data: extractions } = await supabase
+    .from("extraction")
+    .select("target_table, target_field, entity_hint, proposed_value")
+    .eq("batch_id", batchId)
+    .eq("status", "proposed");
+  const rows: FieldRow[] = (extractions ?? []).map((e: any) => ({
+    target_table: e.target_table,
+    target_field: e.target_field,
+    entity_hint: e.entity_hint,
+    value: e.proposed_value ?? "",
+  }));
+  return commitBatch(batchId, rows);
+}
+
 // Manual correction of a single file's detected document type.
 export async function setFileType(fileId: string, batchId: string, docTypeId: string) {
   const supabase = createClient();
