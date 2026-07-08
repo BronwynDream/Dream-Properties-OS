@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import TopBar from "@/app/components/TopBar";
 import DropZone from "./DropZone";
 import QueueActions from "./QueueActions";
+import BulkExtract from "./BulkExtract";
 export const dynamic = "force-dynamic";
 
 type QueueRow = {
@@ -55,9 +56,29 @@ export default async function TriagePage() {
         <DropZone />
 
         {!notReady && queue.length > 0 && (
-          <div style={{ marginTop: 20, display: "flex", justifyContent: "flex-end" }}>
+          <div
+            style={{
+              marginTop: 20,
+              display: "flex",
+              justifyContent: "flex-end",
+              gap: 12,
+              alignItems: "flex-start",
+              flexWrap: "wrap",
+            }}
+          >
             <QueueActions
               hasUnnamed={queue.some((b) => /^dropped files/i.test(b.label))}
+            />
+            <BulkExtract
+              candidateIds={queue
+                .filter(
+                  (b) =>
+                    b.proposed_count === 0 &&
+                    b.status !== "committed" &&
+                    b.status !== "uploaded" &&
+                    b.file_count > 0,
+                )
+                .map((b) => b.id)}
             />
           </div>
         )}
