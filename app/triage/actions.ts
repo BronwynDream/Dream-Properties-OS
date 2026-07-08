@@ -2,16 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { classifyFilename, JURISTIC_CODES } from "@/lib/classify";
+import { classifyFilename } from "@/lib/classify";
+import { classifyBatchWithClient } from "@/lib/classify-batch";
 import { reshapeFields } from "@/lib/extract";
 import { normaliseFilename } from "@/lib/diff";
-
-type DocType = {
-  id: string;
-  code: string;
-  category: string;
-  is_pii_default: boolean;
-};
 
 // Derive a human batch name from a document filename (strip type keywords + extension).
 function deriveLabel(filename: string): string {
@@ -41,85 +35,12 @@ const NAME_RANK = [
   "lightstone_report",
 ];
 
-// Classify every file in a batch by filename, set PII from the doc type, then score
-// the batch tier (red = juristic/manual; green = agreement + FICA present; amber = else).
+// Classify every file in a batch by filename, set PII from the doc type, then
+// score the batch tier. Thin wrapper around the shared helper so the intake
+// webhook (service-role client, no cookies) can run the same logic.
 export async function classifyBatch(batchId: string) {
   const supabase = createClient();
-
-  const { data: types } = await supabase
-    .from("document_type")
-    .select("id, code, category, is_pii_default");
-  const byCode = new Map<string, DocType>(
-    ((types ?? []) as DocType[]).map((t) => [t.code, t]),
-  );
-
-  const { data: allFiles } = await supabase
-    .from("ingest_file")
-    .select("id, original_filename, byte_size")
-    .eq("batch_id", batchId);
-
-  // De-duplicate: same filename + size ingested twice (folder had .eml AND loose copies).
-  const seen = new Set<string>();
-  const dupeIds: string[] = [];
-  const files: { id: string; original_filename: string }[] = [];
-  for (const f of allFiles ?? []) {
-    const key = `${f.original_filename}::${f.byte_size ?? ""}`;
-    if (seen.has(key)) dupeIds.push(f.id);
-    else {
-      seen.add(key);
-      files.push({ id: f.id, original_filename: f.original_filename });
-    }
-  }
-  if (dupeIds.length) await supabase.from("ingest_file").delete().in("id", dupeIds);
-
-  const { data: batchRow } = await supabase
-    .from("ingest_batch")
-    .select("label")
-    .eq("id", batchId)
-    .single();
-
-  const seenCategories = new Set<string>();
-  let juristic = false;
-  let labelCandidate: string | null = null;
-  let bestRank = Infinity;
-
-  for (const f of files ?? []) {
-    const code = classifyFilename(f.original_filename);
-    const t = byCode.get(code) ?? byCode.get("other");
-    if (t) {
-      seenCategories.add(t.category);
-      if (JURISTIC_CODES.has(code)) juristic = true;
-      const rank = NAME_RANK.indexOf(code);
-      if (rank !== -1 && rank < bestRank) {
-        const d = deriveLabel(f.original_filename);
-        if (d.length > 3) {
-          labelCandidate = d;
-          bestRank = rank;
-        }
-      }
-      await supabase
-        .from("ingest_file")
-        .update({
-          detected_doc_type_id: t.id,
-          is_pii: t.is_pii_default,
-          classification_confidence: code === "other" ? 0.3 : 0.9,
-          status: "classified",
-        })
-        .eq("id", f.id);
-    }
-  }
-
-  const hasAgreement = seenCategories.has("agreement");
-  const hasFica = seenCategories.has("fica");
-  const tier = juristic ? "red" : hasAgreement && hasFica ? "green" : "amber";
-
-  const update: Record<string, unknown> = { tier, status: "in_review" };
-  if (batchRow && GENERIC_LABEL.test(batchRow.label) && labelCandidate) {
-    update.label = labelCandidate;
-  }
-
-  await supabase.from("ingest_batch").update(update).eq("id", batchId);
-
+  await classifyBatchWithClient(batchId, supabase);
   revalidatePath(`/triage/${batchId}`);
   revalidatePath("/triage");
 }

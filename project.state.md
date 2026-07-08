@@ -4,7 +4,159 @@ Running log of what's decided, built, and next. Updated at the end of each worki
 session. `PROJECT.md` remains the canonical business/design doc; this file is the
 "where are we right now" companion.
 
-_Last updated: 2026-07-06_
+_Last updated: 2026-07-08_
+
+---
+
+## INTAKE + LIGHTSTONE TAKE-ON + TEAM SCREEN (2026-07-08)
+
+Full day of arcs closing the "how does work enter the system?" question. Four
+migrations (0021–0024), one new webhook, one new admin screen. Property
+intake is now: forward the email, records get created, everything shows up
+in /triage. Team access is now: Directors invite from the app, no Supabase
+Studio round-trip.
+
+### Lightstone take-on wiring — search + propertyId capture (morning)
+Continuation of the Lightstone adapter shell from 2026-07-07. Simon then
+extended `live.ts` with the actual Azure API Management gateway calls
+(lspsearch/v1 + lspdata/v1), added `AddressCandidate` + `PropertyRef.propertyId`
+to the adapter interface, and taught the stub to return one obvious sample
+candidate. My side wired the app around it:
+
+- **`0021_lightstone_property_id.sql`** — `property.lightstone_property_id
+  bigint` nullable + partial index. Reused for every future Property Data
+  facet call so the live adapter doesn't have to re-resolve address text.
+  lng/lat already existed (0015).
+- **`/api/lightstone/search`** — admin-gated POST. Calls
+  `getLightstoneAdapter().searchAddress(query)`. Returns `{ ok, source,
+  candidates }`; `source` reflects whether the live env vars are set so the
+  UI can badge SAMPLE.
+- **NewPropertyForm** now has a compact "Lightstone lookup" panel above the
+  address fields. Type an address → Search → clickable candidate list →
+  picking one prefills the address (strips `[SAMPLE]`), matches the suburb
+  dropdown by name, and captures the propertyId as a badge with a `clear`
+  link.
+- **`createProperty`** accepts `lightstone_property_id`, `latitude`,
+  `longitude`, `suburb_name`. Server-side fallback: if only a suburb name
+  arrives, resolves it against the `suburb` table with `ilike` — never
+  invents a row.
+- **`/api/lightstone`** now passes `propertyId: prop.lightstone_property_id`
+  into the ref. Structured-field coalesce expanded to: `title_deed_no`,
+  `extent_sqm`, `lat`, `lng`, `suburb_id` (via `ilike` name lookup), and
+  `erf_number` (inserts an `erf` row if none matches). Never overwrites
+  non-null. `town`/`municipality`/`province`/`postal_code`/`estate_name`/
+  `scheme_name` are dropped — the full raw JSON stays on the document row.
+  Filename map now handles `application/json → "json"` for the live adapter's
+  per-facet responses.
+
+### Property intake email — Postmark inbound webhook (afternoon)
+Bronwyn's ergonomic path: forward a mandate email to
+`intake@dreamproperties.app`, get a triage batch tied to a property record
+with all attachments already classified. Zero clicks required.
+
+- **`0022_intake_email.sql`** — `ingest_batch.sender_email` and
+  `postmark_message_id` (unique index for retry idempotency).
+  `v_triage_queue` refreshed to expose `source` + `sender_email`.
+  `ingest_batch.source` already existed (0007) so `'email'` is a valid
+  value out of the box.
+- **`lib/supabase/service.ts`** — `createServiceClient()` reads
+  `SUPABASE_SERVICE_ROLE_KEY`. Server-only; never touches the browser
+  bundle. Used for webhook writes that have no user session (RLS would
+  otherwise block them).
+- **`lib/classify-batch.ts`** — factored `classifyBatch`'s internals into
+  `classifyBatchWithClient(batchId, supabase)` so the webhook can pass its
+  service client in. The `classifyBatch` server action in
+  `app/triage/actions.ts` now thin-wraps it.
+- **`/api/intake/email`** — URL token auth (constant-time compare against
+  `INTAKE_WEBHOOK_TOKEN`). Postmark JSON parser. Sender allow-list against
+  `app_user.email` (case-insensitive). MessageID dedupe returns the
+  existing batch on retries. Creates property, batch, uploads
+  `email-body.txt` + attachments (base64-decoded, 20 MB cap) to `staging`,
+  runs classify. Skips auto-extract — Bronwyn triggers with the same
+  bulk-extract button she uses on drag-drop batches (extract's auth
+  refactor deferred as unnecessary scope).
+- **`/triage` list** — new gold pill `via email` next to the folder name
+  for `source='email'` rows; tooltip shows sender.
+
+### Intake router — subject prefix + fuzzy match on both paths (afternoon)
+Follow-up ship after Simon's "does the property record update as more
+info arrives?" question. Answer: it didn't. Now it does. Also opened
+the intake to client-first onboarding.
+
+- **`0023_intake_router.sql`** — `ingest_batch.party_id` (nullable FK).
+  `match_property_by_address(q, min_sim)` + `match_party_by_name(q, min_sim)`
+  RPCs — pg_trgm similarity, top 5 results. `v_triage_queue` refreshed to
+  expose `party_id`.
+- **Webhook subject parser** — strips `Fwd:`/`Re:` prefixes first, then
+  detects `Property:` / `Client:` / `Contact:`. No prefix → property
+  (backwards compat).
+- **Fuzzy resolution** — `resolveProperty` (threshold 0.55 against
+  `primary_address`) and `resolveParty` (0.60 against `party.display_name`).
+  Above threshold → batch tied to existing row and the commitBatch fallback
+  puts new docs on that record. Below → new row created. Weaker matches
+  ignored; /dupes handles the residue.
+- **`/triage` list** — client-intake rows show `client via email` in the
+  same gold treatment. Tooltip distinguishes property vs client intent
+  plus sender. `/triage/[id]` didn't need changes — the review page was
+  already generic enough to render a party-only batch (no property diff,
+  just files + label = "Client · Name").
+
+### Team & Access screen — /team (evening)
+Directors can now invite and manage team members from the browser. Was
+Supabase Studio work; is now app work. Also lays down the vocabulary that
+"admin = Director" in Dream tone.
+
+- **`0024_app_user_profile.sql`** — `app_user.job_title` + `phone`.
+  Distinct from `role` so Vanessa can be an Agent with title "Sales &
+  Marketing" without the two agreeing.
+- **`app/team/roles.ts`** — `ROLE_LABEL` (`admin → "Director"`),
+  `ROLE_ACCESS` (one-liners per role used verbatim in the access-map
+  panel), `ROLE_PILL` (palette tuned for the white table — topbar's
+  `.role-*` classes were built for the dark navy strip).
+- **`app/team/actions.ts`** — `requireAdmin()` gate on both writes.
+  `updateTeamMember` only patches fields explicitly passed (never nulls
+  a non-null by accident). Self-lockout: a Director can't demote or
+  deactivate themselves. `inviteTeamMember` runs
+  `service.auth.admin.inviteUserByEmail(email, { redirectTo })`, then
+  upserts the `app_user` row on the returned auth id — profile lands
+  immediately so the invitee shows in the staff table before they've
+  clicked through.
+- **`/team` page** — server component, `dynamic = "force-dynamic"`.
+  Admin-gated with a polite "Directors only" panel for non-admins (never
+  500s). Invite CTA + staff table (one `TeamRow` per member: name/email,
+  title + phone editable inline, role select, FFC, transfers-led count
+  from `transfer.lead_agent_user_id`, active toggle, per-row Save). Access
+  map below the table with pill + one-line description per role.
+- **`TopBarClient.tsx`** — `Team` tab added, `adminOnly: true`.
+- **Reuses** `SUPABASE_SERVICE_ROLE_KEY` (already set for the intake
+  webhook). Optional `NEXT_PUBLIC_SITE_URL` so the invite email lands
+  people at `/login`.
+
+### Ship checklist (four migrations, four env vars)
+Apply in Bon Bon's DB in order: **0021 → 0022 → 0023 → 0024**.
+Vercel env vars needed:
+- `SUPABASE_SERVICE_ROLE_KEY` (used by both intake webhook + /team invites)
+- `INTAKE_WEBHOOK_TOKEN` (generate: `openssl rand -hex 32`)
+- `NEXT_PUBLIC_SITE_URL=https://dreamproperties.app` (invite redirect)
+- `LIGHTSTONE_API_BASE` + `LIGHTSTONE_API_KEY` — when the subscription
+  becomes active (still stub-behind-env until then; nothing to do today).
+
+Postmark setup: create an inbound stream, webhook URL
+`https://dreamproperties.app/api/intake/email?token=<TOKEN>`, then MX
+`intake` at Postmark's inbound host.
+
+### Not built this arc (scope kept tight)
+- Auto-extract in the intake webhook. Would need `/api/extract` refactored
+  to accept a service-role bypass. Bronwyn uses her existing bulk-extract
+  button on inbound batches; not a real pain point yet.
+- Party-batch commit path — a client batch that reaches commit today
+  routes docs through the existing commitBatch flow (parties get linked
+  via extraction match_candidates). If a client-batch-specific commit
+  helper is needed later, it's a thin server action that just promotes
+  files to documents linked to the party.
+- Reply email confirming triage URL. Postmark outbound is easy to add
+  when the intake flow proves out with Bronwyn.
+- Custom Dream Mapbox Studio style (still Simon's court).
 
 ---
 

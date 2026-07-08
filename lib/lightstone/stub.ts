@@ -1,4 +1,5 @@
 import type {
+  AddressCandidate,
   FetchResult,
   FetchedProduct,
   LightstoneAdapter,
@@ -65,6 +66,27 @@ function sampleStructured(code: ProductCode, ref: PropertyRef): StructuredFields
 export class StubLightstoneAdapter implements LightstoneAdapter {
   listProducts(): Product[] {
     return PRODUCTS;
+  }
+
+  // SAMPLE address search — returns one obviously-fake candidate so the take-on
+  // "type an address → pick a match" flow is demoable without live Lightstone.
+  async searchAddress(query: string): Promise<AddressCandidate[]> {
+    const q = query?.trim();
+    if (!q) return [];
+    return [
+      {
+        propertyId: 999001,
+        addressString: `[SAMPLE] ${q}`,
+        streetName: q,
+        suburb: "Leisure Isle",
+        town: "Knysna",
+        municipality: "Knysna",
+        province: "Western Cape",
+        postCode: "6571",
+        relevanceScore: 1,
+        raw: { sample: true, query: q },
+      },
+    ];
   }
 
   async fetchProducts(

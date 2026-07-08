@@ -3,14 +3,23 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 
-// Create a new property from the take-on flow. Address is required; suburb,
-// erf, deed are optional. Returns the new property id so the caller can
-// redirect straight to /properties/[id] and start dragging documents onto it.
+// Create a new property from the take-on flow. Address is required; everything
+// else is optional. Returns the new property id so the caller can redirect
+// straight to /properties/[id] and start dragging documents onto it.
+//
+// Lightstone integration: if the agent picked a candidate from Property Search,
+// we get lightstone_property_id + normalised address parts (lat/lng, suburb
+// name). We coalesce those onto the row so the very first Fetch-from-Lightstone
+// call on this property skips the address re-resolve.
 export async function createProperty(input: {
   primary_address: string;
   suburb_id?: string | null;
   erf_number?: string | null;
   title_deed_no?: string | null;
+  lightstone_property_id?: number | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  suburb_name?: string | null;
 }) {
   const supabase = createClient();
   const {
@@ -23,13 +32,33 @@ export async function createProperty(input: {
     return { ok: false as const, error: "Address is required (at least 3 characters)." };
   }
 
+  // If the caller passed a suburb name (from Lightstone) but no explicit id,
+  // try to resolve it against the seeded suburb list. Never invents rows.
+  let suburbId: string | null = input.suburb_id ?? null;
+  const suburbName = (input.suburb_name ?? "").trim();
+  if (!suburbId && suburbName) {
+    const { data: match } = await supabase
+      .from("suburb")
+      .select("id")
+      .ilike("name", suburbName)
+      .maybeSingle();
+    if (match?.id) suburbId = match.id;
+  }
+
+  const insertRow: Record<string, unknown> = {
+    primary_address: address,
+    suburb_id: suburbId,
+    title_deed_no: (input.title_deed_no ?? "").trim() || null,
+  };
+  if (input.lightstone_property_id != null) {
+    insertRow.lightstone_property_id = input.lightstone_property_id;
+  }
+  if (input.latitude != null) insertRow.lat = input.latitude;
+  if (input.longitude != null) insertRow.lng = input.longitude;
+
   const { data: newProp, error } = await supabase
     .from("property")
-    .insert({
-      primary_address: address,
-      suburb_id: input.suburb_id ?? null,
-      title_deed_no: (input.title_deed_no ?? "").trim() || null,
-    })
+    .insert(insertRow)
     .select("id")
     .single();
 

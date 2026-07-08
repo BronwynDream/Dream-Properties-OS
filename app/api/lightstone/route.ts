@@ -52,7 +52,9 @@ export async function POST(request: Request) {
 
   const { data: prop } = await supabase
     .from("property")
-    .select("id, primary_address, title_deed_no, extent_sqm, erven:erf(erf_number)")
+    .select(
+      "id, primary_address, title_deed_no, extent_sqm, suburb_id, lat, lng, lightstone_property_id, erven:erf(erf_number)",
+    )
     .eq("id", propertyId)
     .single();
   if (!prop) return NextResponse.json({ error: "property not found" }, { status: 404 });
@@ -61,6 +63,9 @@ export async function POST(request: Request) {
     address: prop.primary_address ?? undefined,
     erf: (prop.erven as any[])?.[0]?.erf_number ?? undefined,
     deed: prop.title_deed_no ?? undefined,
+    // Preferred by the live adapter — every Property Data facet endpoint
+    // takes this as the {id} path segment, so it skips the address resolve.
+    propertyId: prop.lightstone_property_id ?? undefined,
   };
 
   const adapter = getLightstoneAdapter();
@@ -97,10 +102,12 @@ export async function POST(request: Request) {
       const docTypeId = typeRow?.id ?? null;
       const isPii = typeRow?.is_pii_default ?? false;
 
-      // Build a safe filename from the title.
+      // Build a safe filename from the title. The live adapter stores raw
+      // Property Data JSON responses per facet, so json is a real case here.
       const ext =
-        p.documentMime === "application/pdf" ? "pdf" :
-        p.documentMime === "text/plain"     ? "txt" :
+        p.documentMime === "application/pdf"  ? "pdf"  :
+        p.documentMime === "application/json" ? "json" :
+        p.documentMime === "text/plain"       ? "txt"  :
         "bin";
       const safeSlug = p.documentTitle
         .replace(/[/\\?%*:|"<>]/g, "-")
@@ -155,19 +162,62 @@ export async function POST(request: Request) {
       });
 
       // Structured-field coalesce — never overwrite non-null property fields.
+      // Fields the property table can accept:
+      //   title_deed_no, extent_sqm, suburb_id (via suburb name lookup),
+      //   lat, lng. Everything else on StructuredFields (town, municipality,
+      //   province, postal_code, estate_name, scheme_name) has no dedicated
+      //   column and is dropped — the full JSON body is on the document row
+      //   for anyone who wants to inspect it.
       if (p.structuredFields) {
+        const sf = p.structuredFields;
         const updates: Record<string, any> = {};
-        if (p.structuredFields.title_deed_no && !prop.title_deed_no) {
-          updates.title_deed_no = p.structuredFields.title_deed_no;
+        if (sf.title_deed_no && !prop.title_deed_no) {
+          updates.title_deed_no = sf.title_deed_no;
         }
-        if (p.structuredFields.extent_sqm && !prop.extent_sqm) {
-          updates.extent_sqm = p.structuredFields.extent_sqm;
+        if (sf.extent_sqm && prop.extent_sqm == null) {
+          updates.extent_sqm = sf.extent_sqm;
+        }
+        if (sf.latitude != null && prop.lat == null) {
+          updates.lat = sf.latitude;
+        }
+        if (sf.longitude != null && prop.lng == null) {
+          updates.lng = sf.longitude;
+        }
+        // Suburb: name → suburb_id via ilike. Skip if property already has one.
+        if (sf.suburb && !prop.suburb_id) {
+          const { data: sub } = await supabase
+            .from("suburb")
+            .select("id")
+            .ilike("name", sf.suburb.trim())
+            .maybeSingle();
+          if (sub?.id) updates.suburb_id = sub.id;
         }
         if (Object.keys(updates).length > 0) {
           await supabase.from("property").update(updates).eq("id", propertyId);
           // Update the local reference so subsequent products in this same
           // call see the newly-filled values and don't fight over them.
           Object.assign(prop, updates);
+        }
+
+        // Erf: insert into the erf table if we got an erf number and the
+        // property doesn't already have one recorded. Never overwrites.
+        if (sf.erf_number) {
+          const erfNum = String(sf.erf_number).trim();
+          if (erfNum) {
+            const { data: existingErven } = await supabase
+              .from("erf")
+              .select("erf_number")
+              .eq("property_id", propertyId);
+            const hasIt = (existingErven ?? []).some(
+              (e: any) => String(e.erf_number).trim() === erfNum,
+            );
+            if (!hasIt) {
+              await supabase.from("erf").insert({
+                property_id: propertyId,
+                erf_number: erfNum,
+              });
+            }
+          }
         }
 
         // Owners → party + property_ownership_history. Uses coalesce match:

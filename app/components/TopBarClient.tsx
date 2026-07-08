@@ -11,6 +11,7 @@ const TABS: Tab[] = [
   { href: "/properties", label: "Properties" },
   { href: "/triage", label: "Triage" },
   { href: "/dupes", label: "Dupes", adminOnly: true },
+  { href: "/team", label: "Team", adminOnly: true },
 ];
 
 export default function TopBarClient({

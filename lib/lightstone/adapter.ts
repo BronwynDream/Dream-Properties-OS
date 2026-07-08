@@ -26,11 +26,35 @@ export type Product = {
 };
 
 // The property being looked up. All fields optional; the adapter uses whichever
-// it can — deed is most reliable, then erf, then address.
+// it can — a Lightstone propertyId is most reliable (captured at take-on via
+// address search), then deed, then erf, then a free-text address the live
+// adapter will resolve to a propertyId on the fly.
 export type PropertyRef = {
   address?: string;
   erf?: string;
   deed?: string;
+  // Lightstone "Defined Property Layer" id — the numeric key Property Search
+  // returns and every Property Data facet endpoint takes as {id}.
+  propertyId?: number;
+};
+
+// One match returned by Property Search (lspsearch/v1/address). The propertyId
+// is the join key into Property Data; the rest is a normalised address we can
+// use to pre-fill / de-duplicate a new property record at take-on.
+export type AddressCandidate = {
+  propertyId: number;
+  addressString: string;
+  streetNumber?: string;
+  streetName?: string;
+  suburb?: string;
+  town?: string;
+  municipality?: string;
+  province?: string;
+  postCode?: string;
+  estateName?: string;
+  schemeName?: string;
+  relevanceScore?: number;
+  raw: unknown;
 };
 
 // Structured fields the adapter parses out of the returned document, ready
@@ -45,6 +69,16 @@ export type OwnerFact = {
 export type StructuredFields = {
   title_deed_no?: string;
   extent_sqm?: number;
+  erf_number?: string;
+  suburb?: string;
+  town?: string;
+  municipality?: string;
+  province?: string;
+  postal_code?: string;
+  estate_name?: string;
+  scheme_name?: string;
+  latitude?: number;
+  longitude?: number;
   owners?: OwnerFact[];
 };
 
@@ -66,6 +100,10 @@ export type FetchResult = {
 
 export interface LightstoneAdapter {
   listProducts(): Product[];
+  // Property Search: free-text address → candidate properties (each with a
+  // propertyId). Used at take-on so the agent types an address, picks the
+  // match, and we capture the propertyId + a normalised address.
+  searchAddress(query: string): Promise<AddressCandidate[]>;
   fetchProducts(
     ref: PropertyRef,
     productCodes: ProductCode[],

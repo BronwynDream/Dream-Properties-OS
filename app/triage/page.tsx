@@ -20,6 +20,10 @@ type QueueRow = {
   confirmed_count: number;
   open_matches: number;
   created_at: string;
+  source: string | null;
+  sender_email: string | null;
+  property_id: string | null;
+  party_id: string | null;
 };
 
 export default async function TriagePage() {
@@ -127,6 +131,34 @@ export default async function TriagePage() {
                     <Link href={`/triage/${b.id}`} className="row-link">
                       {b.label}
                     </Link>
+                    {b.source === "email" && (
+                      <span
+                        title={
+                          (b.party_id
+                            ? "Client intake"
+                            : "Property intake") +
+                          (b.sender_email
+                            ? ` · forwarded by ${b.sender_email}`
+                            : "")
+                        }
+                        style={{
+                          marginLeft: 8,
+                          padding: "2px 7px",
+                          borderRadius: 999,
+                          background: "rgba(200,160,50,0.10)",
+                          border: "1px solid rgba(200,160,50,0.35)",
+                          color: "#7A5814",
+                          fontFamily:
+                            "'JetBrains Mono', ui-monospace, monospace",
+                          fontSize: 10,
+                          letterSpacing: "0.08em",
+                          textTransform: "uppercase",
+                          verticalAlign: "middle",
+                        }}
+                      >
+                        {b.party_id ? "client via email" : "via email"}
+                      </span>
+                    )}
                   </td>
                   <td>
                     <span className="pill">{b.status}</span>
