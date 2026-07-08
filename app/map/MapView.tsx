@@ -5,6 +5,7 @@ import mapboxgl from "mapbox-gl";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { geocodeMissingProperties } from "./actions";
+import RefreshDreamButton from "./RefreshDreamButton";
 
 export type MapProperty = {
   id: string;
@@ -500,6 +501,8 @@ export default function MapView({
             />
             Split duplicate pins by source
           </label>
+
+          {isAdmin && <RefreshDreamButton />}
         </section>
 
         <section>
