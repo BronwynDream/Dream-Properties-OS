@@ -3,6 +3,9 @@ import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import TopBar from "@/app/components/TopBar";
 import MergeTransfer from "./MergeTransfer";
+import DropZone from "@/app/triage/DropZone";
+import LightstoneFetch from "./LightstoneFetch";
+import { PRODUCTS as LIGHTSTONE_PRODUCTS } from "@/lib/lightstone";
 
 export const dynamic = "force-dynamic";
 
@@ -237,6 +240,68 @@ export default async function PropertyRecord({
             </div>
           ))}
         </div>
+
+        {/* Sample-data banner — surfaces whenever Lightstone stub results are
+            attached to this record so nobody mistakes the SAMPLE placeholder
+            for a real Deeds-Office issue. */}
+        {docs.some((d) => d.title.startsWith("[SAMPLE]")) && (
+          <div
+            style={{
+              marginTop: 20,
+              padding: "12px 16px",
+              background: "#fbefd9",
+              border: "1px solid #eddfb6",
+              borderLeft: "3px solid var(--gold)",
+              borderRadius: 10,
+              fontSize: 13,
+              color: "#7A5814",
+            }}
+          >
+            <b>SAMPLE DATA</b> — Lightstone is not yet connected to Dream OS.
+            Documents on this record labelled <code>[SAMPLE]</code> are placeholders from
+            the stub adapter and will be replaced by real Lightstone data once the
+            live adapter is switched on.
+          </div>
+        )}
+
+        {/* Take on documents — drop this property's folder here, everything
+            goes into one batch tied to this property and auto-extracts. */}
+        <section style={{ marginTop: 32 }}>
+          <div
+            className="section-head"
+            style={{ marginBottom: 12, alignItems: "flex-end" }}
+          >
+            <h2 style={{ fontSize: 20, margin: 0 }}>Take on documents</h2>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <span
+                className="mono"
+                style={{
+                  fontSize: 11,
+                  color: "#8090b5",
+                  letterSpacing: "0.08em",
+                  textTransform: "uppercase",
+                }}
+              >
+                Everything lands on this record
+              </span>
+              <LightstoneFetch
+                propertyId={prop.id}
+                products={LIGHTSTONE_PRODUCTS.map((p) => ({
+                  code: p.code,
+                  label: p.label,
+                  description: p.description,
+                }))}
+              />
+            </div>
+          </div>
+          <DropZone
+            propertyId={prop.id}
+            overrideLabel={prop.primary_address ?? "Take-on"}
+            autoExtract
+            variant="compact"
+            redirectToBatch
+          />
+        </section>
 
         {uniquePhotos.length > 0 && (
           <section className="photo-strip">

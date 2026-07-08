@@ -270,6 +270,23 @@ export async function commitBatch(batchId: string, rows: FieldRow[]) {
     }
   }
 
+  // Property take-on fallback: when a batch was created scoped to a property
+  // (drop zone on /properties/[id]), ingest_batch.property_id is set from
+  // creation and no match_candidate 'link' decision exists. Read the batch's
+  // pre-assigned property so commit_batch links to it instead of creating
+  // a new record. The match-candidate 'link' decision takes precedence when
+  // both are set — the reviewer's explicit choice wins.
+  if (!fields.property.id) {
+    const { data: batchRow } = await supabase
+      .from("ingest_batch")
+      .select("property_id")
+      .eq("id", batchId)
+      .single();
+    if (batchRow?.property_id) {
+      fields.property.id = batchRow.property_id;
+    }
+  }
+
   // Suburb fallback: if the LLM extracted an address but not a suburb
   // (very common — LLMs treat "6 Bowden Park, Leisure Isle, Knysna" as one
   // string), scan the extracted address for a seeded suburb name.
