@@ -24,76 +24,140 @@ export type MapProperty = {
   transferCount: number;
 };
 
+export type SourceKey =
+  | "dream_os"
+  | "dream_website"
+  | "property24"
+  | "private_property";
+
+export type ExternalRef = {
+  id: string;
+  source: "dream_website" | "property24" | "private_property";
+  sourceRef: string;
+  url: string | null;
+  headline: string | null;
+  price: number | null;
+  addressRaw: string | null;
+  suburb: string | null;
+  imageUrl: string | null;
+  agencyName: string | null;
+  lat: number | null;
+  lng: number | null;
+};
+
+// One merged pin = one physical listing, potentially spanning multiple sources.
+// `our` is set when we own the underlying property; `externals` lists every
+// portal / feed row that resolved to this same listing. Every merged pin has
+// a stable key (prop-<id> / grp-<uuid> / ext-<id>) so the map can maintain
+// its markers across re-renders.
+export type MergedPin = {
+  key: string;
+  lng: number;
+  lat: number;
+  matchedPropertyId: string | null;
+  our: MapProperty | null;
+  externals: ExternalRef[];
+  sources: SourceKey[];
+  representative: {
+    address: string;
+    price: number | null;
+    suburb: string | null;
+    mandateType: string; // exclusive|sole|joint|open|none|market
+  };
+};
+
 type Stats = { total: number; geocoded: number; missing: number };
+
+export type BudgetSummary = {
+  used: number;
+  budget: number;
+  softWarnPct: number;
+  pctUsed: number;
+  monthKey: string;
+  alertedSoft: boolean;
+  alertedHard: boolean;
+};
 
 const KNYSNA_CENTRE: [number, number] = [23.0479, -34.0363];
 
 const MANDATE_ORDER = ["exclusive", "sole", "joint", "under_offer", "open", "none"] as const;
 
-// Basemap options. Satellite Streets first because for property work it's the
-// killer — you see the actual roof, pool, land, plus street labels for orientation.
+const SOURCE_ORDER: SourceKey[] = [
+  "dream_os",
+  "dream_website",
+  "property24",
+  "private_property",
+];
+
+// Label + short code for each source. `code` shows on the pin's source stack
+// (compact letters/dots); `label` shows in the rail chips and preview panel.
+const SOURCE_META: Record<SourceKey, { label: string; code: string }> = {
+  dream_os:         { label: "Our listings",       code: "OS" },
+  dream_website:    { label: "Dream website",      code: "DW" },
+  property24:       { label: "Property24",         code: "P24" },
+  private_property: { label: "Private Property",   code: "PP" },
+};
+
 const BASEMAPS = [
   {
     id: "satellite",
     label: "Satellite",
     style: "mapbox://styles/mapbox/satellite-streets-v12",
   },
-  {
-    id: "streets",
-    label: "Streets",
-    style: "mapbox://styles/mapbox/streets-v12",
-  },
-  {
-    id: "light",
-    label: "Light",
-    style: "mapbox://styles/mapbox/light-v11",
-  },
+  { id: "streets", label: "Streets", style: "mapbox://styles/mapbox/streets-v12" },
+  { id: "light",   label: "Light",   style: "mapbox://styles/mapbox/light-v11" },
 ] as const;
 
 type BasemapId = (typeof BASEMAPS)[number]["id"];
 
 function formatPrice(n: number | null): string {
-  if (n == null) return "—";
+  if (n == null) return "POR";
   if (n >= 1_000_000) return `R ${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `R ${(n / 1_000).toFixed(0)}k`;
   return `R ${n}`;
 }
-
 function formatFullPrice(n: number | null): string {
   if (n == null) return "Price on request";
   return `R ${n.toLocaleString("en-ZA")}`;
 }
 
-
 export default function MapView({
   properties,
+  mergedPins,
   isAdmin,
   mapboxToken,
   stats,
+  budget,
 }: {
   properties: MapProperty[];
+  mergedPins: MergedPin[];
   isAdmin: boolean;
   mapboxToken: string;
   stats: Stats;
+  budget?: BudgetSummary | null;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<Record<string, mapboxgl.Marker>>({});
 
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [enabledMandates, setEnabledMandates] = useState<Set<string>>(
     () => new Set(MANDATE_ORDER),
   );
+  // Sources filter — all four available. P24 + PP will be empty until those
+  // adapters land, but the chips render so the mental model is stable.
+  const [enabledSources, setEnabledSources] = useState<Set<SourceKey>>(
+    () => new Set<SourceKey>(["dream_os", "dream_website", "property24", "private_property"]),
+  );
+  const [splitDupes, setSplitDupes] = useState(false);
   const [basemap, setBasemap] = useState<BasemapId>("satellite");
   const [pending, startTransition] = useTransition();
   const [geocodeMsg, setGeocodeMsg] = useState<string | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
 
-  // Trim defensively — pasted env vars sometimes carry trailing \n or spaces,
-  // and Mapbox rejects those silently.
   const cleanToken = (mapboxToken ?? "").trim();
 
-  // Group + count by mandate for the filter chips.
+  // Counts for the rail chips.
   const mandateCounts = useMemo(() => {
     const m = new Map<string, number>();
     for (const p of properties) {
@@ -102,24 +166,42 @@ export default function MapView({
     return m;
   }, [properties]);
 
+  const sourceCounts = useMemo(() => {
+    const m = new Map<SourceKey, number>();
+    for (const s of SOURCE_ORDER) m.set(s, 0);
+    for (const pin of mergedPins) {
+      for (const s of pin.sources) m.set(s, (m.get(s) ?? 0) + 1);
+    }
+    return m;
+  }, [mergedPins]);
+
+  // A merged pin is visible if:
+  //   - AT LEAST ONE of its sources is enabled, AND
+  //   - if it has an `our` record, its mandate is enabled (so mandate chips
+  //     still work as a filter on our own stock);
+  //   - if it has no `our` record (market-only), the mandate filter doesn't
+  //     apply (there's nothing to filter on).
+  const visiblePins = useMemo(() => {
+    return mergedPins.filter((pin) => {
+      const anySource = pin.sources.some((s) => enabledSources.has(s));
+      if (!anySource) return false;
+      if (pin.our && !enabledMandates.has(pin.our.mandateType)) return false;
+      return true;
+    });
+  }, [mergedPins, enabledMandates, enabledSources]);
+
   const visibleProperties = useMemo(
     () => properties.filter((p) => enabledMandates.has(p.mandateType)),
     [properties, enabledMandates],
   );
 
-  const plottable = useMemo(
-    () => visibleProperties.filter((p) => p.lng != null && p.lat != null),
-    [visibleProperties],
-  );
+  const selectedPin =
+    mergedPins.find((p) => p.key === selectedKey) ?? null;
 
-  const selectedProperty = properties.find((p) => p.id === selectedId) ?? null;
-
-  // Set up the map on mount. If no token is configured, render an empty state
-  // instead of initialising Mapbox with a broken client.
+  // Map init.
   useEffect(() => {
     if (!containerRef.current) return;
     if (!cleanToken) return;
-    // WebGL check — Safari can disable it.
     if (!mapboxgl.supported()) {
       setMapError("This browser doesn't support WebGL (Mapbox requires it).");
       return;
@@ -150,14 +232,9 @@ export default function MapView({
       setMapError(msg);
     });
 
-    // Container-size safety: if the map's container is 0 tall at mount (common
-    // when the parent layout hasn't settled yet), Mapbox creates a 0-sized
-    // canvas and tiles never appear even though they download fine.
     map.resize();
     requestAnimationFrame(() => map.resize());
     const resizeTimer = setTimeout(() => map.resize(), 200);
-
-    // Also watch for future resizes (window resize, layout shift).
     const ro = new ResizeObserver(() => map.resize());
     if (containerRef.current) ro.observe(containerRef.current);
 
@@ -177,9 +254,6 @@ export default function MapView({
     };
   }, [cleanToken]);
 
-  // Basemap swap — setStyle keeps HTML markers, popups, and controls in place
-  // (they're not part of the style), so no marker re-add needed. Guarded so we
-  // don't setStyle on the initial mount before mapRef is populated.
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -188,13 +262,78 @@ export default function MapView({
     map.setStyle(target);
   }, [basemap]);
 
-  // Sync markers to the plottable set. Rebuild on filter change or data change.
+  // Split-duplicates mode: expand each merged pin into one pin per source.
+  // The split rows sit at the same coord with a tiny angular offset so the
+  // clicks don't overlap perfectly.
+  type RenderPin = {
+    id: string;                 // marker id (merged key, or key + source)
+    lng: number;
+    lat: number;
+    mergedKey: string;          // for selection: always the merged pin's key
+    label: string;              // price string
+    styleClass: string;         // CSS class for the price-pin
+    sourcesShown: SourceKey[];  // which source stack to render
+  };
+
+  const renderPins: RenderPin[] = useMemo(() => {
+    const out: RenderPin[] = [];
+    for (const pin of visiblePins) {
+      const activeSources = pin.sources.filter((s) => enabledSources.has(s));
+      if (activeSources.length === 0) continue;
+
+      if (!splitDupes || activeSources.length === 1) {
+        const styleClass = pin.our
+          ? `mandate-${pin.our.mandateType}`
+          : "market";
+        out.push({
+          id: pin.key,
+          lng: pin.lng,
+          lat: pin.lat,
+          mergedKey: pin.key,
+          label: formatPrice(pin.representative.price),
+          styleClass,
+          sourcesShown: activeSources,
+        });
+        continue;
+      }
+
+      // Split mode — render one pin per active source, fanned around the coord.
+      const n = activeSources.length;
+      const radius = 0.00025;   // ~28 m at Knysna latitude
+      activeSources.forEach((s, i) => {
+        const angle = (i / n) * Math.PI * 2;
+        const dLng = Math.cos(angle) * radius;
+        const dLat = Math.sin(angle) * radius;
+        let price: number | null = null;
+        let styleClass = "market";
+        if (s === "dream_os" && pin.our) {
+          price = pin.our.askingPrice;
+          styleClass = `mandate-${pin.our.mandateType}`;
+        } else {
+          const ext = pin.externals.find((e) => e.source === s);
+          price = ext?.price ?? null;
+          styleClass = "market";
+        }
+        out.push({
+          id: `${pin.key}::${s}`,
+          lng: pin.lng + dLng,
+          lat: pin.lat + dLat,
+          mergedKey: pin.key,
+          label: formatPrice(price),
+          styleClass,
+          sourcesShown: [s],
+        });
+      });
+    }
+    return out;
+  }, [visiblePins, enabledSources, splitDupes]);
+
+  // Sync markers to renderPins.
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
-    // Remove markers not in the current visible set.
-    const wantIds = new Set(plottable.map((p) => p.id));
+    const wantIds = new Set(renderPins.map((r) => r.id));
     for (const [id, marker] of Object.entries(markersRef.current)) {
       if (!wantIds.has(id)) {
         marker.remove();
@@ -202,59 +341,85 @@ export default function MapView({
       }
     }
 
-    // Add/update markers for visible properties.
-    for (const p of plottable) {
-      if (markersRef.current[p.id]) continue;
+    for (const rp of renderPins) {
+      if (markersRef.current[rp.id]) {
+        // Reposition existing marker (split-mode fan may have moved it).
+        markersRef.current[rp.id].setLngLat([rp.lng, rp.lat]);
+        continue;
+      }
 
       const el = document.createElement("div");
-      el.className = `price-pin mandate-${p.mandateType}${p.askingPrice == null ? " por" : ""}`;
+      el.className = `price-pin ${rp.styleClass}${rp.label === "POR" ? " por" : ""}`;
 
       const badge = document.createElement("span");
       badge.className = "badge";
-      badge.textContent = p.askingPrice == null ? "POR" : formatPrice(p.askingPrice);
+      badge.textContent = rp.label;
       el.appendChild(badge);
+
+      // Source stack (small letters) — only rendered when >1 source and not in split mode.
+      if (rp.sourcesShown.length > 1) {
+        const stack = document.createElement("span");
+        stack.className = "source-stack";
+        for (const s of rp.sourcesShown) {
+          const dot = document.createElement("span");
+          dot.className = `source-dot source-${s}`;
+          dot.textContent = SOURCE_META[s].code;
+          dot.title = SOURCE_META[s].label;
+          stack.appendChild(dot);
+        }
+        el.appendChild(stack);
+      }
 
       const pointer = document.createElement("span");
       pointer.className = "pointer";
       el.appendChild(pointer);
 
-      el.addEventListener("click", () => setSelectedId(p.id));
+      el.addEventListener("click", () => setSelectedKey(rp.mergedKey));
 
       const marker = new mapboxgl.Marker({ element: el, anchor: "bottom" })
-        .setLngLat([p.lng!, p.lat!])
+        .setLngLat([rp.lng, rp.lat])
         .addTo(map);
 
-      markersRef.current[p.id] = marker;
+      markersRef.current[rp.id] = marker;
     }
 
-    // Fit view once — only if we have markers and this is the first render.
-    if (plottable.length > 0 && Object.keys(markersRef.current).length === plottable.length) {
+    if (renderPins.length > 0 && Object.keys(markersRef.current).length === renderPins.length) {
       const bounds = new mapboxgl.LngLatBounds();
-      for (const p of plottable) bounds.extend([p.lng!, p.lat!]);
+      for (const rp of renderPins) bounds.extend([rp.lng, rp.lat]);
       map.fitBounds(bounds, { padding: 80, maxZoom: 14, duration: 0 });
     }
-  }, [plottable]);
+  }, [renderPins]);
 
   // Active pin styling.
   useEffect(() => {
     for (const [id, marker] of Object.entries(markersRef.current)) {
       const el = marker.getElement();
-      if (id === selectedId) el.classList.add("active");
+      const rp = renderPins.find((r) => r.id === id);
+      if (rp && rp.mergedKey === selectedKey) el.classList.add("active");
       else el.classList.remove("active");
     }
-    if (selectedId && mapRef.current) {
-      const p = properties.find((x) => x.id === selectedId);
-      if (p && p.lng != null && p.lat != null) {
-        mapRef.current.easeTo({ center: [p.lng, p.lat], duration: 350 });
-      }
+    if (selectedPin && mapRef.current) {
+      mapRef.current.easeTo({
+        center: [selectedPin.lng, selectedPin.lat],
+        duration: 350,
+      });
     }
-  }, [selectedId, properties]);
+  }, [selectedKey, renderPins, selectedPin]);
 
   function toggleMandate(m: string) {
     setEnabledMandates((prev) => {
       const next = new Set(prev);
       if (next.has(m)) next.delete(m);
       else next.add(m);
+      return next;
+    });
+  }
+
+  function toggleSource(s: SourceKey) {
+    setEnabledSources((prev) => {
+      const next = new Set(prev);
+      if (next.has(s)) next.delete(s);
+      else next.add(s);
       return next;
     });
   }
@@ -291,6 +456,52 @@ export default function MapView({
           </div>
         </section>
 
+        {isAdmin && budget && <SpendMeter budget={budget} />}
+
+        <section>
+          <h3>Sources</h3>
+          <div className="source-chips">
+            {SOURCE_ORDER.map((s) => {
+              const on = enabledSources.has(s);
+              const count = sourceCounts.get(s) ?? 0;
+              return (
+                <button
+                  key={s}
+                  className={`source-chip source-${s} ${on ? "on" : ""}`}
+                  onClick={() => toggleSource(s)}
+                  type="button"
+                  title={SOURCE_META[s].label}
+                >
+                  <span className="code">{SOURCE_META[s].code}</span>
+                  <span>{SOURCE_META[s].label}</span>
+                  <span style={{ color: "#8090b5", marginLeft: 2 }}>{count}</span>
+                </button>
+              );
+            })}
+          </div>
+          <label
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              marginTop: 10,
+              fontSize: 12,
+              color: "var(--estuary)",
+              cursor: "pointer",
+              fontWeight: 500,
+              margin: 0,
+              paddingTop: 8,
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={splitDupes}
+              onChange={(e) => setSplitDupes(e.target.checked)}
+            />
+            Split duplicate pins by source
+          </label>
+        </section>
+
         <section>
           <h3>Mandate</h3>
           <div className="mandate-chips">
@@ -314,7 +525,7 @@ export default function MapView({
         </section>
 
         <section style={{ padding: "10px 0 0", borderBottom: "none" }}>
-          <h3 style={{ padding: "0 16px" }}>Listings ({visibleProperties.length})</h3>
+          <h3 style={{ padding: "0 16px" }}>Our listings ({visibleProperties.length})</h3>
         </section>
 
         <div className="listing-scroll">
@@ -326,9 +537,9 @@ export default function MapView({
           {visibleProperties.map((p) => (
             <button
               key={p.id}
-              className={`listing-item mandate-${p.mandateType} ${selectedId === p.id ? "active" : ""}`}
-              onClick={() => setSelectedId(p.id)}
-              style={{ background: selectedId === p.id ? "#EEF0F8" : undefined, border: 0, textAlign: "left", width: "100%" }}
+              className={`listing-item mandate-${p.mandateType} ${selectedKey === `prop-${p.id}` ? "active" : ""}`}
+              onClick={() => setSelectedKey(`prop-${p.id}`)}
+              style={{ background: selectedKey === `prop-${p.id}` ? "#EEF0F8" : undefined, border: 0, textAlign: "left", width: "100%" }}
             >
               <span className="bar" />
               <span>
@@ -373,7 +584,7 @@ export default function MapView({
           </div>
         )}
 
-        {plottable.length > 0 && (
+        {renderPins.length > 0 && (
           <div className="map-legend">
             {MANDATE_ORDER.filter((m) => (mandateCounts.get(m) ?? 0) > 0).map((m) => (
               <div key={m} className={`row mandate-${m}`}>
@@ -381,6 +592,10 @@ export default function MapView({
                 <span style={{ textTransform: "capitalize" }}>{m.replace("_", " ")}</span>
               </div>
             ))}
+            <div className="row market">
+              <span className="sw" />
+              <span>Market only</span>
+            </div>
           </div>
         )}
 
@@ -412,13 +627,13 @@ export default function MapView({
             <b>Mapbox error:</b> {mapError}
           </div>
         )}
-        {mapboxToken && stats.total === 0 && (
+        {mapboxToken && stats.total === 0 && mergedPins.length === 0 && (
           <div className="map-empty">
             <div className="map-empty-card">
-              <h2>No properties yet</h2>
+              <h2>No properties or market listings yet</h2>
               <p>
-                Commit a batch from Triage and it will land here. The map plots any property
-                with coordinates on file.
+                Commit a batch from Triage, or wait for tonight's scraper run to
+                surface market listings.
               </p>
               <Link href="/triage" className="cta" style={{ display: "inline-block" }}>
                 Open Triage →
@@ -426,7 +641,7 @@ export default function MapView({
             </div>
           </div>
         )}
-        {stats.total > 0 && plottable.length === 0 && stats.missing === stats.total && (
+        {stats.total > 0 && renderPins.length === 0 && stats.missing === stats.total && (
           <div className="map-empty">
             <div className="map-empty-card">
               <h2>No coordinates on file</h2>
@@ -443,79 +658,325 @@ export default function MapView({
           </div>
         )}
 
-        <aside className={`map-preview ${selectedProperty ? "on" : ""}`}>
-          {selectedProperty && (
-            <>
-              <div className="head">
-                <button
-                  type="button"
-                  className="close"
-                  onClick={() => setSelectedId(null)}
-                  aria-label="Close preview"
-                >
-                  ×
-                </button>
-                <div className={`mandate-line mandate-${selectedProperty.mandateType}`}>
-                  <span className="m-chip">
-                    {selectedProperty.mandateRaw ?? "No mandate"}
-                  </span>
-                  {selectedProperty.listingStatus && (
-                    <span className="m-chip" style={{ background: "var(--mist)", color: "var(--estuary)" }}>
-                      {selectedProperty.listingStatus}
-                    </span>
-                  )}
-                </div>
-                <h2 className="addr">{selectedProperty.address}</h2>
-                {selectedProperty.suburb && (
-                  <p className="suburb">{selectedProperty.suburb}</p>
-                )}
-              </div>
-
-              <div className="body">
-                <p className="price">{formatFullPrice(selectedProperty.askingPrice)}</p>
-                <p className="price-sub">Asking price</p>
-
-                <div className="pv-grid">
-                  <div className="pv-cell">
-                    <div className="lbl">Extent</div>
-                    <div className="val">
-                      {selectedProperty.extentSqm ? `${selectedProperty.extentSqm} m²` : "—"}
-                    </div>
-                  </div>
-                  <div className="pv-cell">
-                    <div className="lbl">Title deed</div>
-                    <div className="val mono" style={{ fontSize: 12 }}>
-                      {selectedProperty.titleDeed ?? "—"}
-                    </div>
-                  </div>
-                  <div className="pv-cell">
-                    <div className="lbl">Transfers</div>
-                    <div className="val">{selectedProperty.transferCount}</div>
-                  </div>
-                  <div className="pv-cell">
-                    <div className="lbl">Latest transfer</div>
-                    <div className="val" style={{ fontSize: 12 }}>
-                      {selectedProperty.transferStatus
-                        ? selectedProperty.transferStatus.replace(/_/g, " ")
-                        : "—"}
-                    </div>
-                  </div>
-                </div>
-
-                {selectedProperty.listingHeadline && (
-                  <p style={{ marginTop: 20, fontFamily: "Inter, -apple-system, sans-serif", color: "var(--estuary)", fontSize: 14, lineHeight: 1.5 }}>
-                    {selectedProperty.listingHeadline}
-                  </p>
-                )}
-
-                <Link href={`/properties/${selectedProperty.id}`} className="pv-cta">
-                  Open property record →
-                </Link>
-              </div>
-            </>
-          )}
+        <aside className={`map-preview ${selectedPin ? "on" : ""}`}>
+          {selectedPin && <PreviewPanel pin={selectedPin} onClose={() => setSelectedKey(null)} />}
         </aside>
       </div>
     </div>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// Spend meter — admins only. Tints amber at ≥80% of budget, red at ≥100%.
+// Reads a server-computed snapshot so we don't do a client-side count query.
+// -----------------------------------------------------------------------------
+
+function SpendMeter({ budget }: { budget: BudgetSummary }) {
+  const pct = budget.pctUsed;
+  const state: "ok" | "warn" | "hit" =
+    pct >= 100 ? "hit" : pct >= 80 ? "warn" : "ok";
+
+  const palette = {
+    ok:   { fg: "var(--estuary)", bar: "var(--navy)",  bg: "#fbfcfe", ring: "#d7deef" },
+    warn: { fg: "#7A5814",        bar: "#C8A032",       bg: "rgba(200,160,50,0.06)", ring: "rgba(200,160,50,0.4)" },
+    hit:  { fg: "#8b1a1a",        bar: "#8b1a1a",       bg: "#fdecec", ring: "#f3c2c2" },
+  }[state];
+
+  const label =
+    state === "hit"  ? "Budget reached · pulls paused" :
+    state === "warn" ? `At ${pct}% of monthly budget` :
+                        `${pct}% of monthly budget`;
+
+  return (
+    <section>
+      <h3>Lightstone spend</h3>
+      <div
+        style={{
+          padding: 12,
+          margin: "0 16px",
+          borderRadius: 10,
+          border: `1px solid ${palette.ring}`,
+          background: palette.bg,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "baseline",
+            gap: 6,
+            fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+            color: palette.fg,
+          }}
+        >
+          <span style={{ fontSize: 18, fontWeight: 700, letterSpacing: "-0.02em" }}>
+            {budget.used}
+          </span>
+          <span style={{ fontSize: 12, color: "#7a86a8" }}>
+            / {budget.budget} calls
+          </span>
+        </div>
+        <div
+          style={{
+            marginTop: 8,
+            height: 4,
+            width: "100%",
+            background: "#eef1f8",
+            borderRadius: 999,
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              width: `${Math.min(100, pct)}%`,
+              height: "100%",
+              background: palette.bar,
+              transition: "width 0.25s",
+            }}
+          />
+        </div>
+        <div
+          style={{
+            marginTop: 6,
+            fontSize: 11,
+            color: palette.fg,
+            fontWeight: 500,
+          }}
+        >
+          {label}
+        </div>
+        <div
+          style={{
+            marginTop: 2,
+            fontSize: 10,
+            color: "#7a86a8",
+            fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+            letterSpacing: "0.04em",
+          }}
+        >
+          {budget.monthKey} · warn at {budget.softWarnPct}%
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// Preview panel — shape depends on whether the pin is ours, market-only, or
+// merged across sources.
+// -----------------------------------------------------------------------------
+
+function PreviewPanel({ pin, onClose }: { pin: MergedPin; onClose: () => void }) {
+  const our = pin.our;
+  const externals = pin.externals;
+  const hasMultipleSources = pin.sources.length > 1;
+
+  // Compare prices across sources; if the range spans more than 5% we flag it.
+  const priceQuotes: { source: SourceKey; price: number | null; url: string | null }[] = [];
+  if (our) priceQuotes.push({ source: "dream_os", price: our.askingPrice, url: null });
+  for (const e of externals) priceQuotes.push({ source: e.source, price: e.price, url: e.url });
+
+  const withPrice = priceQuotes.filter((q) => q.price != null) as { source: SourceKey; price: number; url: string | null }[];
+  let priceMismatch = false;
+  if (withPrice.length > 1) {
+    const min = Math.min(...withPrice.map((q) => q.price));
+    const max = Math.max(...withPrice.map((q) => q.price));
+    if (max > 0 && (max - min) / max > 0.05) priceMismatch = true;
+  }
+
+  return (
+    <>
+      <div className="head">
+        <button
+          type="button"
+          className="close"
+          onClick={onClose}
+          aria-label="Close preview"
+        >
+          ×
+        </button>
+        <div className={`mandate-line mandate-${pin.representative.mandateType}`}>
+          <span className="m-chip">
+            {our ? (our.mandateRaw ?? "No mandate") : "Market listing"}
+          </span>
+          {our?.listingStatus && (
+            <span
+              className="m-chip"
+              style={{ background: "var(--mist)", color: "var(--estuary)" }}
+            >
+              {our.listingStatus}
+            </span>
+          )}
+        </div>
+        <h2 className="addr">{pin.representative.address}</h2>
+        {pin.representative.suburb && (
+          <p className="suburb">{pin.representative.suburb}</p>
+        )}
+        {hasMultipleSources && (
+          <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+            {pin.sources.map((s) => (
+              <span
+                key={s}
+                className={`source-dot source-${s}`}
+                title={SOURCE_META[s].label}
+                style={{ position: "static" }}
+              >
+                {SOURCE_META[s].code}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="body">
+        {/* Our-property block */}
+        {our ? (
+          <>
+            <p className="price">{formatFullPrice(our.askingPrice)}</p>
+            <p className="price-sub">Our asking price</p>
+
+            <div className="pv-grid">
+              <div className="pv-cell">
+                <div className="lbl">Extent</div>
+                <div className="val">
+                  {our.extentSqm ? `${our.extentSqm} m²` : "—"}
+                </div>
+              </div>
+              <div className="pv-cell">
+                <div className="lbl">Title deed</div>
+                <div className="val mono" style={{ fontSize: 12 }}>
+                  {our.titleDeed ?? "—"}
+                </div>
+              </div>
+              <div className="pv-cell">
+                <div className="lbl">Transfers</div>
+                <div className="val">{our.transferCount}</div>
+              </div>
+              <div className="pv-cell">
+                <div className="lbl">Latest transfer</div>
+                <div className="val" style={{ fontSize: 12 }}>
+                  {our.transferStatus ? our.transferStatus.replace(/_/g, " ") : "—"}
+                </div>
+              </div>
+            </div>
+
+            {our.listingHeadline && (
+              <p style={{ marginTop: 20, fontFamily: "Inter, -apple-system, sans-serif", color: "var(--estuary)", fontSize: 14, lineHeight: 1.5 }}>
+                {our.listingHeadline}
+              </p>
+            )}
+          </>
+        ) : (
+          <>
+            <p className="price">{formatFullPrice(pin.representative.price)}</p>
+            <p className="price-sub">Market listing</p>
+            {externals[0]?.headline && (
+              <p style={{ marginTop: 12, fontFamily: "Inter, -apple-system, sans-serif", color: "var(--estuary)", fontSize: 14, lineHeight: 1.5 }}>
+                {externals[0].headline}
+              </p>
+            )}
+          </>
+        )}
+
+        {/* Per-source table when merged */}
+        {(hasMultipleSources || externals.length > 0) && (
+          <div style={{ marginTop: 24 }}>
+            <p
+              style={{
+                fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                fontSize: 10,
+                letterSpacing: "0.14em",
+                textTransform: "uppercase",
+                color: "var(--gold)",
+                margin: "0 0 8px",
+              }}
+            >
+              Also listed on
+            </p>
+            <ul
+              style={{
+                listStyle: "none",
+                margin: 0,
+                padding: 0,
+                display: "flex",
+                flexDirection: "column",
+                gap: 6,
+              }}
+            >
+              {externals.map((e) => (
+                <li
+                  key={e.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "8px 10px",
+                    borderRadius: 8,
+                    border: "1px solid #e2e8f5",
+                    background: "#fbfcfe",
+                  }}
+                >
+                  <span
+                    className={`source-dot source-${e.source}`}
+                    style={{ position: "static", flexShrink: 0 }}
+                  >
+                    {SOURCE_META[e.source as SourceKey].code}
+                  </span>
+                  <span
+                    style={{
+                      fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                      fontSize: 12,
+                      color: priceMismatch ? "#a24700" : "var(--estuary)",
+                      fontWeight: 600,
+                      minWidth: 80,
+                    }}
+                  >
+                    {formatFullPrice(e.price)}
+                  </span>
+                  <span style={{ fontSize: 11, color: "#7a86a8", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {e.agencyName ?? SOURCE_META[e.source as SourceKey].label}
+                  </span>
+                  {e.url && (
+                    <a
+                      href={e.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        fontSize: 12,
+                        color: "var(--navy)",
+                        textDecoration: "none",
+                        fontWeight: 600,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      Open ↗
+                    </a>
+                  )}
+                </li>
+              ))}
+            </ul>
+            {priceMismatch && (
+              <p
+                style={{
+                  margin: "8px 0 0",
+                  fontSize: 11,
+                  color: "#a24700",
+                  fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                  letterSpacing: "0.04em",
+                  textTransform: "uppercase",
+                }}
+              >
+                Prices differ across sources
+              </p>
+            )}
+          </div>
+        )}
+
+        {pin.matchedPropertyId && (
+          <Link href={`/properties/${pin.matchedPropertyId}`} className="pv-cta">
+            Open property record →
+          </Link>
+        )}
+      </div>
+    </>
   );
 }

@@ -4,7 +4,152 @@ Running log of what's decided, built, and next. Updated at the end of each worki
 session. `PROJECT.md` remains the canonical business/design doc; this file is the
 "where are we right now" companion.
 
-_Last updated: 2026-07-08_
+_Last updated: 2026-07-08 evening_
+
+---
+
+## MARKET OVERLAYS + LIGHTSTONE COST CONTROLS (2026-07-08 evening)
+
+Second half of 2026-07-08. Two big arcs:
+  1. The map becomes a market map — Dream's own website is scraped nightly
+     into external_listing, merged with our stock into one pin per physical
+     listing, with per-source badges + a per-source preview panel. P24 + PP
+     adapters slot into the same table when their access opens.
+  2. Every billable Lightstone call is now gated by a monthly budget, cached
+     in market_property, and mirrored to a ledger. Cross 80% → Directors get
+     an email; cross 100% → pulls block and Directors get a second email.
+
+### Market overlays — external_listing + Dream scraper
+- **`0025_external_listing.sql`** — repo copy of the applied schema.
+  `listing_source` enum (dream_website / property24 / private_property),
+  `external_listing` table with source_ref, url, headline, address_raw,
+  price, bedrooms, image_url, lat/lng, lightstone_property_id,
+  matched_property_id, dedup_group_id, raw jsonb, first_seen/last_seen,
+  active. Unique (source, source_ref). RLS: staff read + admin write.
+- **`app/api/sources/dream/refresh`** — GET/POST scraper. Auth: bearer
+  CRON_SECRET (used by Vercel Cron) OR authenticated admin. Fetches
+  https://www.dreamknysna.co.za/knysna-properties/, regex-parses listing
+  URLs, fetches each page, extracts slug + og:title + price ("R 2,730,000"
+  → numeric) + address hint (og:description / h1 / image filename fallback)
+  + property_type guess. Upserts on (source, source_ref). Delist path
+  fetches active dream_website ids and deactivates the diff. Geocodes new
+  / changed rows via Mapbox (same Knysna-anchored pattern as
+  `app/map/actions.ts`). Ends every run with rebuildDedupAndMatch.
+- **`lib/external-listings/dedup.ts`** — union-find clustering: same
+  lightstone_property_id → same normalised address → within 20 m + price
+  within 15%. Reuses an existing dedup_group_id inside a cluster so uuids
+  don't shuffle between refreshes. Matches to our DB by lightstone id →
+  normalised address → 50 m proximity. Never overwrites a manually-set
+  matched_property_id (code note about a future override table).
+- **`lib/external-listings/geocode.ts`** — Mapbox forward-geocode helper
+  shared by the scraper and any future adapter.
+- **`vercel.json`** — one cron: `0 3 * * *` (03:00 UTC / 05:00 SAST) →
+  `/api/sources/dream/refresh`. Vercel Cron auto-attaches
+  `Authorization: Bearer $CRON_SECRET` when the env var is set.
+- **`app/map/page.tsx`** — fetches active external_listing alongside
+  property/listing/transfer data. Builds MergedPin[] server-side:
+  1) our properties with coords seed prop-{id} pins; 2) externals with
+  matched_property_id attach to that pin (adds to sources[]);
+  3) remaining externals with dedup_group_id cluster into grp-{uuid} pins;
+  4) singletons become ext-{id} pins. Externals without any coord anchor
+  are skipped (geocode fills them next run).
+- **`app/map/MapView.tsx`** — merged-pin rendering. New rail sections:
+  Sources chips (Our listings / Dream website / Property24 / Private
+  Property) with contribution counts + a "Split duplicate pins by source"
+  toggle that fans a merged pin into per-source markers at the same coord.
+  Pin styling: our stock keeps mandate colours, market-only pins get a
+  dashed white pill on grey pointer, merged pins carry a compact source
+  stack (`OS DW P24 PP`) beneath the price. Preview panel rebuilt:
+  our-property block on top when we own it, "Also listed on" per-source
+  table with price + agency + Open-arrow outbound link, and a "Prices
+  differ across sources" flag when the range spans >5%.
+- **CSS additions** — .source-chips, .source-chip.on, .source-stack,
+  .source-dot palettes (navy / gold / magenta / green), .price-pin.market
+  (dashed white).
+
+### Lightstone cost controls — gateway + cache + budget cap + alerts
+- **`0026_lightstone_cost_controls.sql`** — repo copy. Three tables:
+  * `lightstone_budget` singleton (id bool PK check id) with
+    monthly_call_budget (default 200), soft_warn_pct (default 80),
+    month_key, alerted_soft, alerted_hard.
+  * `lightstone_usage` ledger — every call lands one row (billable,
+    cache_hit, blocked, http_status, error, user_id, our_property_id,
+    lightstone_property_id, generated month_key). Partial index on
+    (month_key) where billable AND NOT cache_hit AND NOT blocked so the
+    "how many billable calls this month" count is O(1).
+  * `market_property` — per-facet json + per-facet fetched_at (address /
+    legal / land / owners / last_sale / comparables / avm).
+  RLS: budget + usage admin-only; market_property staff-read + admin-write.
+- **`lib/lightstone/gateway.ts`** — the single billable-Lightstone entry
+  point. `guardedGet(path, meta)` with meta.endpoint + optional billable
+  (default true) + userId / ourPropertyId / lightstonePropertyId context.
+  Month rollover: if `month_key` on the budget row is stale, reset it plus
+  both `alerted_*` flags BEFORE the count check. Non-billable calls skip
+  the meter but still ledger. Billable calls: count → block if >= cap
+  (insert `blocked=true, billable=false`, throw `BudgetReachedError`) →
+  otherwise do fetch, ledger the call, re-read count, fire notifyAdmins on
+  first cross of soft_warn_pct and hard cap (each once per month). Exports
+  `getBudgetSummary()` for the map spend meter.
+- **`lib/lightstone/live.ts`** — refactored. Every facet call now
+  routes through `billableFacet(path, { endpoint, lightstonePropertyId })`;
+  Property Search is `freeCall(...)` with `billable:false`. apiBase /
+  apiKey / raw fetch moved into gateway.ts.
+- **`lib/notify.ts`** — `notifyAdmins(subject, bodyText)`. Fetches active
+  admin emails (service role), sends via Resend REST (no SDK). Fail-soft:
+  logs to console and returns without throwing if RESEND_API_KEY or
+  NOTIFY_FROM aren't set, or if no active admins have emails.
+- **`lib/market/service.ts`** — cache-first `getMarketFacet(lsId, facet,
+  { force?, userId?, ourPropertyId? })`. Reads market_property, honours
+  per-facet freshness (permanent for deeds / ownership / last_sale /
+  comparables, 12 months for AVM), falls through to `guardedGet` on miss
+  or force. Cache hits get ledgered with `cache_hit=true` so admins see
+  the calls we saved. Upserts data + fetched_at back into market_property.
+  `invalidateMarketFacet(id, facet)` for the future "new registered
+  transfer" trigger.
+- **`/api/lightstone` + `/api/lightstone/search`** — both catch
+  `BudgetReachedError` and return **HTTP 429** with `code: "BUDGET_REACHED"`
+  and the actionable message ("ask a Director to raise it"). Other errors
+  still 502.
+- **Spend meter** — new SpendMeter section on the map rail, admins only.
+  Reads `getBudgetSummary()` server-side in page.tsx and hands the snapshot
+  to MapView. Shows used/budget, a progress bar, the month key, the warn
+  threshold. Palette shifts: navy on mist → gold at ≥80% → deep-red at
+  ≥100% ("Budget reached · pulls paused").
+
+### Ship checklist
+Applied migrations already: **0025 + 0026** (both live in Bon Bon's DB).
+Vercel env vars to add now:
+- **CRON_SECRET** — `openssl rand -hex 32`. Vercel Cron auto-sends this as
+  `Authorization: Bearer …` on every scheduled invocation.
+- **RESEND_API_KEY** — from resend.com after verifying dreamproperties.app.
+- **NOTIFY_FROM** — verified sender, e.g. `Dream OS <alerts@dreamproperties.app>`.
+- **LIGHTSTONE_API_BASE** + **LIGHTSTONE_API_KEY** — set only when
+  Lightstone opens the subscription.
+
+Nothing else on the human side: cron self-registers when vercel.json
+deploys, first scheduled run is 05:00 SAST the day after deploy. Or fire
+a manual scrape:
+```
+curl -X POST -H "Authorization: Bearer $CRON_SECRET" \
+  https://dreamproperties.app/api/sources/dream/refresh
+```
+Response returns `{ upserted, delisted, geocoded, matched, groups, errors }`.
+
+### Not built this arc (parked)
+- Property24 + Private Property adapters. They'll write into
+  external_listing under the appropriate source; the dedup pass already
+  handles cross-source clustering. Slot when access opens.
+- Manual override table for matched_property_id (currently the code
+  respects any non-null match but a dedicated table is the durable
+  version).
+- Market screen consuming `getMarketFacet`. The cache is warm as soon as
+  someone does a Fetch on a property; the UI to browse cached facets on
+  demand (deeds history, AVM chart, comparables) is a follow-up.
+- "New registered transfer → invalidate deeds/ownership/last_sale/
+  comparables" trigger. `invalidateMarketFacet` exists; wiring it to
+  transfer status is future.
+- Refresh button in take-on Fetch modal to force-bypass the cache — the
+  server already accepts `force:true`; UI wiring is small.
 
 ---
 

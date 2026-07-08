@@ -11,6 +11,7 @@ import type {
   StructuredFields,
 } from "./adapter";
 import { PRODUCTS } from "./products";
+import { guardedGet } from "./gateway";
 
 // Live Lightstone adapter — talks to the Lightstone Azure API Management
 // gateway. Two APIs are used, chained:
@@ -45,42 +46,25 @@ import { PRODUCTS } from "./products";
 const SEARCH_PREFIX = "/lspsearch/v1";
 const DATA_PREFIX = "/lspdata/v1";
 
-function apiBase(): string {
-  const b = process.env.LIGHTSTONE_API_BASE;
-  if (!b) throw new Error("LIGHTSTONE_API_BASE is not set");
-  return b.replace(/\/+$/, "");
+// All calls to Lightstone are routed through guardedGet — the cost-control
+// gateway that reads/writes lightstone_budget + lightstone_usage. auth
+// headers, base URL, and error surfacing live there.
+//
+// Billable vs not:
+//   - Property Search (/lspsearch/v1/address) and /health/status are cheap
+//     or free per the current Lightstone rate card — billable: false.
+//   - Every Property Data facet (/lspdata/v1/property/{id}/...) is billable.
+type FacetMeta = {
+  endpoint: string;
+  lightstonePropertyId?: number;
+  userId?: string;
+  ourPropertyId?: string;
+};
+function billableFacet(path: string, meta: FacetMeta): Promise<any> {
+  return guardedGet(path, { ...meta, billable: true });
 }
-function apiKey(): string {
-  const k = process.env.LIGHTSTONE_API_KEY;
-  if (!k) throw new Error("LIGHTSTONE_API_KEY is not set");
-  return k;
-}
-
-async function lsGet(path: string): Promise<any> {
-  const res = await fetch(`${apiBase()}${path}`, {
-    method: "GET",
-    headers: {
-      "Ocp-Apim-Subscription-Key": apiKey(),
-      "Cache-Control": "no-cache",
-      Accept: "application/json",
-    },
-    cache: "no-store", // third-party gateway — never let Next cache data calls
-  });
-  const text = await res.text();
-  if (!res.ok) {
-    // Surface Lightstone's message + activityId — support traces by activityId.
-    let detail = text.slice(0, 300);
-    try {
-      const j = JSON.parse(text);
-      if (j?.message) {
-        detail = `${j.message}${j.activityId ? ` (activityId ${j.activityId})` : ""}`;
-      }
-    } catch {
-      /* keep raw text */
-    }
-    throw new Error(`Lightstone ${path} → HTTP ${res.status}: ${detail}`);
-  }
-  return text ? JSON.parse(text) : null;
+function freeCall(path: string, meta: FacetMeta): Promise<any> {
+  return guardedGet(path, { ...meta, billable: false });
 }
 
 // Try several candidate keys on an object; return the first non-empty value.
@@ -215,11 +199,15 @@ export class LiveLightstoneAdapter implements LightstoneAdapter {
     return PRODUCTS;
   }
 
-  // Property Search — free-text address → candidate properties.
+  // Property Search — free-text address → candidate properties. Marked
+  // billable:false; the Property Search endpoint is cheap/free per rate card.
   async searchAddress(query: string): Promise<AddressCandidate[]> {
     const q = query?.trim();
     if (!q) return [];
-    const data = await lsGet(`${SEARCH_PREFIX}/address?query=${encodeURIComponent(q)}`);
+    const data = await freeCall(
+      `${SEARCH_PREFIX}/address?query=${encodeURIComponent(q)}`,
+      { endpoint: "address_search" },
+    );
     const results: any[] = Array.isArray(data?.results) ? data.results : [];
     return results.map(mapCandidate).filter((c) => c.propertyId > 0);
   }
@@ -280,16 +268,20 @@ export class LiveLightstoneAdapter implements LightstoneAdapter {
 
   // Map one product code → one or more Property Data facet calls, returning the
   // combined raw JSON (stored as the document) and parsed StructuredFields.
+  // Every facet call is billable and goes through the gateway with the
+  // Lightstone propertyId in meta so the ledger can show per-property spend.
   private async fetchFacet(
     code: ProductCode,
     id: number,
   ): Promise<{ json: any; structuredFields?: StructuredFields }> {
     const P = `${DATA_PREFIX}/property/${id}`;
+    const m = (endpoint: string) => ({ endpoint, lightstonePropertyId: id });
+
     switch (code) {
       case "title_deed": {
         const [legal, land] = await Promise.all([
-          lsGet(`${P}/legal`).catch(() => null),
-          lsGet(`${P}/land`).catch(() => null),
+          billableFacet(`${P}/legal`, m("legal")).catch(() => null),
+          billableFacet(`${P}/land`, m("land")).catch(() => null),
         ]);
         return {
           json: { legal, land },
@@ -298,8 +290,8 @@ export class LiveLightstoneAdapter implements LightstoneAdapter {
       }
       case "deeds_search": {
         const [owners, address] = await Promise.all([
-          lsGet(`${P}/owners`).catch(() => null),
-          lsGet(`${P}/address`).catch(() => null),
+          billableFacet(`${P}/owners`, m("owners")).catch(() => null),
+          billableFacet(`${P}/address`, m("address")).catch(() => null),
         ]);
         return {
           json: { owners, address },
@@ -307,27 +299,27 @@ export class LiveLightstoneAdapter implements LightstoneAdapter {
         };
       }
       case "ownership": {
-        const owners = await lsGet(`${P}/owners`);
+        const owners = await billableFacet(`${P}/owners`, m("owners"));
         return { json: { owners }, structuredFields: parseOwners(owners) };
       }
       case "avm": {
         const [avm, avmrange] = await Promise.all([
-          lsGet(`${P}/avm`).catch(() => null),
-          lsGet(`${P}/avmrange`).catch(() => null),
+          billableFacet(`${P}/avm`, m("avm")).catch(() => null),
+          billableFacet(`${P}/avmrange`, m("avmrange")).catch(() => null),
         ]);
         return { json: { avm, avmrange } };
       }
       case "comparables": {
-        const comparables = await lsGet(`${P}/comparables`);
+        const comparables = await billableFacet(`${P}/comparables`, m("comparables"));
         return { json: { comparables } };
       }
       case "property_report": {
         const [address, legal, land, owners, municipal] = await Promise.all([
-          lsGet(`${P}/address`).catch(() => null),
-          lsGet(`${P}/legal`).catch(() => null),
-          lsGet(`${P}/land`).catch(() => null),
-          lsGet(`${P}/owners`).catch(() => null),
-          lsGet(`${P}/municipal`).catch(() => null),
+          billableFacet(`${P}/address`, m("address")).catch(() => null),
+          billableFacet(`${P}/legal`, m("legal")).catch(() => null),
+          billableFacet(`${P}/land`, m("land")).catch(() => null),
+          billableFacet(`${P}/owners`, m("owners")).catch(() => null),
+          billableFacet(`${P}/municipal`, m("municipal")).catch(() => null),
         ]);
         return {
           json: { address, legal, land, owners, municipal },

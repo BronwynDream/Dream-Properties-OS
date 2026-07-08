@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getLightstoneAdapter, type ProductCode } from "@/lib/lightstone";
+import { BudgetReachedError } from "@/lib/lightstone/gateway";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -73,6 +74,14 @@ export async function POST(request: Request) {
   try {
     result = await adapter.fetchProducts(ref, productCodes);
   } catch (e) {
+    // Budget cap: return 429 with the actionable message so the UI can show
+    // "ask a Director to raise it" without the reviewer parsing a 502.
+    if (e instanceof BudgetReachedError) {
+      return NextResponse.json(
+        { error: e.message, code: "BUDGET_REACHED" },
+        { status: 429 },
+      );
+    }
     return NextResponse.json(
       { error: (e as Error).message },
       { status: 502 },

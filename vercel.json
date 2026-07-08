@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/sources/dream/refresh",
+      "schedule": "0 3 * * *"
+    }
+  ]
+}

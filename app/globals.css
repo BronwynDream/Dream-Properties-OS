@@ -947,6 +947,79 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
 .geocode-bar button:hover { background: var(--estuary); }
 .geocode-bar button:disabled { opacity: 0.6; cursor: default; }
 
+/* Source chips (rail) — parallels .mandate-chip but keys off .source-<key>
+   for a neutral palette instead of the mandate colour vocabulary. */
+.source-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.source-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 9px 5px 7px;
+  border: 1px solid #d7deef; border-radius: 999px;
+  background: #fbfcfe; color: #6b78a0;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11px; cursor: pointer;
+}
+.source-chip .code {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 1px 5px; border-radius: 4px;
+  background: rgba(19,43,132,0.06); color: var(--estuary);
+  font-size: 9px; font-weight: 700; letter-spacing: 0.04em;
+}
+.source-chip.on {
+  background: var(--white); border-color: var(--navy); color: var(--estuary);
+  box-shadow: inset 0 0 0 1px var(--navy);
+}
+.source-chip.on .code { background: var(--navy); color: var(--white); }
+
+/* Source badge stack on a merged pin — small letter-blocks stacked under
+   the price pill so agents can see at a glance which portals this listing
+   is on without opening the preview. */
+.price-pin .source-stack {
+  display: flex; gap: 2px; margin-top: 3px;
+  filter: drop-shadow(0 1px 2px rgba(15,22,52,0.25));
+}
+.price-pin .source-dot {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 20px; height: 14px; padding: 0 4px;
+  border-radius: 3px; font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 8.5px; font-weight: 700; letter-spacing: 0.02em;
+  color: var(--white); position: relative;
+  box-shadow: 0 0 0 1.5px rgba(255,255,255,0.9);
+}
+.source-dot.source-dream_os         { background: var(--navy); }
+.source-dot.source-dream_website    { background: var(--gold); color: #3F2F0E; }
+.source-dot.source-property24       { background: #EB1E4E; }
+.source-dot.source-private_property { background: #16B36B; }
+
+/* Market-only pin — neutral so competitor listings don't compete visually
+   with our own stock. Same anatomy (badge + pointer), different palette. */
+.price-pin.market {
+  --m-fill: #6b78a0;
+  --m-ink: #ffffff;
+}
+.price-pin.market .badge {
+  background: var(--white);
+  color: #4a5573;
+  border: 1.5px dashed #b5c0d8;
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(15,22,52,0.2);
+}
+.price-pin.market .pointer {
+  border-top-color: #b5c0d8;
+}
+.price-pin.market.active .badge {
+  border-style: solid;
+  border-color: var(--navy);
+  color: var(--estuary);
+  box-shadow:
+    0 0 0 3px rgba(15,42,99,0.25),
+    0 4px 12px rgba(15,22,52,0.4);
+}
+
+.map-legend .row.market .sw {
+  background: var(--white);
+  border: 1.5px dashed #b5c0d8;
+}
+
 @media (max-width: 900px) {
   .map-shell { grid-template-columns: 1fr; }
   .map-rail { display: none; }

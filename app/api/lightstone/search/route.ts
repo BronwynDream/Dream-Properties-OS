@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getLightstoneAdapter } from "@/lib/lightstone";
+import { BudgetReachedError } from "@/lib/lightstone/gateway";
 
 export const runtime = "nodejs";
 
@@ -49,6 +50,12 @@ export async function POST(request: Request) {
     const candidates = await adapter.searchAddress(query);
     return NextResponse.json({ ok: true, source, candidates });
   } catch (e) {
+    if (e instanceof BudgetReachedError) {
+      return NextResponse.json(
+        { error: e.message, code: "BUDGET_REACHED", source },
+        { status: 429 },
+      );
+    }
     return NextResponse.json(
       { error: (e as Error).message, source },
       { status: 502 },

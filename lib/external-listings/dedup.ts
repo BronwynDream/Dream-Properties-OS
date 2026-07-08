@@ -1,0 +1,257 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { randomUUID } from "crypto";
+
+// Cluster + match every active external_listing.
+//
+// Called at the tail of every source refresh, so a single row that just
+// changed can drag its cluster into shape (e.g. a Property24 listing that
+// was matched by geo-proximity yesterday can be re-matched by lightstone id
+// when we scrape today's Dream page and learn the LS id).
+//
+// Cluster keys (checked in order for each active row):
+//   1. same lightstone_property_id → same group
+//   2. same normalised address       → same group
+//   3. within ~20 m AND price within 15% → same group
+// If any cluster member already has a dedup_group_id we reuse it; otherwise
+// we mint a new uuid.
+//
+// Match to our DB (only for rows with matched_property_id IS NULL so a
+// manual match is never overwritten — a future manual-override table can
+// harden this further):
+//   1. lightstone_property_id === property.lightstone_property_id
+//   2. normalised address === property.primary_address
+//   3. geo-proximity (~50 m)
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
+const CLUSTER_METERS = 20;
+const CLUSTER_PRICE_RATIO = 0.15;
+const MATCH_METERS = 50;
+
+type Row = {
+  id: string;
+  source: string;
+  address_raw: string | null;
+  price: number | null;
+  lat: number | null;
+  lng: number | null;
+  lightstone_property_id: number | null;
+  matched_property_id: string | null;
+  dedup_group_id: string | null;
+};
+
+type Prop = {
+  id: string;
+  primary_address: string | null;
+  lat: number | null;
+  lng: number | null;
+  lightstone_property_id: number | null;
+};
+
+// Collapse an address to a stable comparable form:
+//   - lowercase
+//   - drop punctuation
+//   - collapse whitespace
+//   - drop trailing ", knysna" / ", south africa" / postcode / province junk
+export function normaliseAddress(raw: string | null | undefined): string {
+  if (!raw) return "";
+  return raw
+    .toLowerCase()
+    .replace(/[,.]/g, " ")
+    .replace(/\bsouth africa\b/g, "")
+    .replace(/\bwestern cape\b/g, "")
+    .replace(/\b(6\d{3})\b/g, "") // Garden Route postal codes are 6xxx
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// Metres between two WGS84 points via haversine. Small enough that the flat-
+// earth approximation would work for Knysna-scale distances, but haversine is
+// only marginally more expensive and doesn't drift near the pole.
+function metresBetween(
+  a: { lat: number; lng: number },
+  b: { lat: number; lng: number },
+): number {
+  const R = 6_371_000;
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+  const dLng = ((b.lng - a.lng) * Math.PI) / 180;
+  const lat1 = (a.lat * Math.PI) / 180;
+  const lat2 = (b.lat * Math.PI) / 180;
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+// Union-find (path-compressed) — small and fine for our row counts.
+class Union {
+  parent = new Map<string, string>();
+  find(x: string): string {
+    let p = this.parent.get(x) ?? x;
+    if (p === x) {
+      this.parent.set(x, x);
+      return x;
+    }
+    p = this.find(p);
+    this.parent.set(x, p);
+    return p;
+  }
+  union(a: string, b: string) {
+    const ra = this.find(a);
+    const rb = this.find(b);
+    if (ra !== rb) this.parent.set(ra, rb);
+  }
+}
+
+export async function rebuildDedupAndMatch(
+  supabase: SupabaseClient,
+): Promise<{ clustered: number; matched: number; groups: number }> {
+  const { data: rowsData } = await supabase
+    .from("external_listing")
+    .select(
+      "id, source, address_raw, price, lat, lng, lightstone_property_id, matched_property_id, dedup_group_id",
+    )
+    .eq("active", true);
+  const rows = (rowsData ?? []) as Row[];
+  if (rows.length === 0) return { clustered: 0, matched: 0, groups: 0 };
+
+  const { data: propsData } = await supabase
+    .from("property")
+    .select("id, primary_address, lat, lng, lightstone_property_id");
+  const props = (propsData ?? []) as Prop[];
+
+  // ---- CLUSTERING ---------------------------------------------------------
+  const uf = new Union();
+  for (const r of rows) uf.find(r.id);
+
+  // Same lightstone id → same cluster
+  const byLs = new Map<number, string[]>();
+  for (const r of rows) {
+    if (r.lightstone_property_id == null) continue;
+    const list = byLs.get(r.lightstone_property_id) ?? [];
+    list.push(r.id);
+    byLs.set(r.lightstone_property_id, list);
+  }
+  for (const ids of byLs.values()) {
+    for (let i = 1; i < ids.length; i++) uf.union(ids[0], ids[i]);
+  }
+
+  // Same normalised address → same cluster
+  const byAddr = new Map<string, string[]>();
+  for (const r of rows) {
+    const n = normaliseAddress(r.address_raw);
+    if (n.length < 5) continue;
+    const list = byAddr.get(n) ?? [];
+    list.push(r.id);
+    byAddr.set(n, list);
+  }
+  for (const ids of byAddr.values()) {
+    for (let i = 1; i < ids.length; i++) uf.union(ids[0], ids[i]);
+  }
+
+  // Geo-proximity within CLUSTER_METERS AND price within CLUSTER_PRICE_RATIO
+  const geo = rows.filter((r) => r.lat != null && r.lng != null);
+  for (let i = 0; i < geo.length; i++) {
+    for (let j = i + 1; j < geo.length; j++) {
+      const a = geo[i];
+      const b = geo[j];
+      const d = metresBetween(
+        { lat: Number(a.lat), lng: Number(a.lng) },
+        { lat: Number(b.lat), lng: Number(b.lng) },
+      );
+      if (d > CLUSTER_METERS) continue;
+      if (a.price != null && b.price != null) {
+        const min = Math.min(a.price, b.price);
+        const max = Math.max(a.price, b.price);
+        if (max > 0 && (max - min) / max > CLUSTER_PRICE_RATIO) continue;
+      }
+      uf.union(a.id, b.id);
+    }
+  }
+
+  // Root → dedup_group_id. Prefer an already-assigned group id inside the
+  // cluster so pins don't reshuffle their uuids every refresh.
+  const clusterMembers = new Map<string, string[]>();
+  for (const r of rows) {
+    const root = uf.find(r.id);
+    const list = clusterMembers.get(root) ?? [];
+    list.push(r.id);
+    clusterMembers.set(root, list);
+  }
+  const groupIdFor = new Map<string, string>();
+  for (const [root, memberIds] of clusterMembers) {
+    const existing = memberIds
+      .map((id) => rows.find((r) => r.id === id)!.dedup_group_id)
+      .find((g) => !!g);
+    groupIdFor.set(root, existing ?? randomUUID());
+  }
+
+  // ---- MATCH TO OUR PROPERTIES --------------------------------------------
+  // Only for rows without a matched_property_id — a manually-set match is
+  // preserved. (When a manual-override table lands, that guard moves here.)
+  const propByLs = new Map<number, string>();
+  for (const p of props) {
+    if (p.lightstone_property_id != null) {
+      propByLs.set(Number(p.lightstone_property_id), p.id);
+    }
+  }
+  const propByAddr = new Map<string, string>();
+  for (const p of props) {
+    const n = normaliseAddress(p.primary_address);
+    if (n.length >= 5 && !propByAddr.has(n)) propByAddr.set(n, p.id);
+  }
+  const propsWithGeo = props.filter((p) => p.lat != null && p.lng != null);
+
+  function matchFor(r: Row): string | null {
+    if (r.lightstone_property_id != null) {
+      const hit = propByLs.get(Number(r.lightstone_property_id));
+      if (hit) return hit;
+    }
+    const n = normaliseAddress(r.address_raw);
+    if (n.length >= 5) {
+      const hit = propByAddr.get(n);
+      if (hit) return hit;
+    }
+    if (r.lat != null && r.lng != null) {
+      let best: { id: string; d: number } | null = null;
+      for (const p of propsWithGeo) {
+        const d = metresBetween(
+          { lat: Number(r.lat), lng: Number(r.lng) },
+          { lat: Number(p.lat!), lng: Number(p.lng!) },
+        );
+        if (d <= MATCH_METERS && (!best || d < best.d)) best = { id: p.id, d };
+      }
+      if (best) return best.id;
+    }
+    return null;
+  }
+
+  // ---- WRITE BACK ---------------------------------------------------------
+  let clustered = 0;
+  let matched = 0;
+  for (const r of rows) {
+    const root = uf.find(r.id);
+    const newGroup = groupIdFor.get(root)!;
+    const newMatch =
+      r.matched_property_id ?? matchFor(r) ?? null;
+
+    const changedGroup = r.dedup_group_id !== newGroup;
+    const changedMatch = r.matched_property_id !== newMatch;
+    if (!changedGroup && !changedMatch) continue;
+
+    const patch: Record<string, unknown> = {};
+    if (changedGroup) patch.dedup_group_id = newGroup;
+    if (changedMatch) patch.matched_property_id = newMatch;
+
+    await supabase.from("external_listing").update(patch).eq("id", r.id);
+
+    if (changedGroup) clustered++;
+    if (changedMatch && newMatch) matched++;
+  }
+
+  return {
+    clustered,
+    matched,
+    groups: new Set(groupIdFor.values()).size,
+  };
+}
