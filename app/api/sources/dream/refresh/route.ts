@@ -349,9 +349,6 @@ function parseDreamListing(url: string, html: string): DreamListing {
 
   const headline = firstMatch(html, /<meta property="og:title" content="([^"]+)"/i)
     ?? firstMatch(html, /<title>([^<]+)<\/title>/i);
-  const image_url =
-    firstMatch(html, /<meta property="og:image" content="([^"]+)"/i) ??
-    firstMatch(html, /<img[^>]+src="([^"]+\.(?:jpg|jpeg|png|webp))"/i);
 
   // Price: match "R 2,730,000" or "R2 730 000". Take the first that appears
   // in the visible body (not the head), by cropping the head off.
@@ -359,17 +356,45 @@ function parseDreamListing(url: string, html: string): DreamListing {
   const priceMatch = body.match(/R\s?[0-9][0-9,\s.]{4,}/);
   const price = priceMatch ? parsePriceZAR(priceMatch[0]) : null;
 
-  // Address heuristic — priority order:
-  //   1. og:description / meta description that starts with a street pattern
-  //   2. h1 / h2 that starts with a number
-  //   3. image filename ("26-Brenton-Hotel-01.jpg" → "26 Brenton Hotel")
+  // Collect every uploaded image on the page. Dream's uploaded photos live
+  // under /wp-content/uploads/ and are keyed by the sale property's real
+  // address (e.g. "26-Brenton-Hotel-11.jpg"). Meta/og tags are decorative on
+  // most listings and rarely include a usable street address, so the image
+  // filenames are the reliable address source.
+  const listingImages = collectListingImages(html);
+
+  // Address extraction — priority:
+  //   1. meta description / h1 / og:title if they start with a street number
+  //      (kept for future editorial changes on the site).
+  //   2. First listing image whose filename parses to a valid address pattern.
   const metaDesc = firstMatch(html, /<meta name="description" content="([^"]+)"/i);
   const h1 = firstMatch(html, /<h1[^>]*>([\s\S]*?)<\/h1>/i);
+
+  let addressImage: string | null = null;
+  let addressFromImage: string | null = null;
+  for (const img of listingImages) {
+    const cand = addressFromImageFilename(img);
+    if (cand) {
+      addressImage = img;
+      addressFromImage = cand;
+      break;
+    }
+  }
+
   const address_raw =
     pickAddressCandidate(metaDesc) ??
     pickAddressCandidate(stripTags(h1)) ??
     pickAddressCandidate(headline) ??
-    guessAddressFromImageFilename(image_url);
+    addressFromImage;
+
+  // Prefer the image the address came from — that's the actual property
+  // photo, not whatever WordPress picked for og:image (often the same, but
+  // when they differ, the filename-derived one is the right choice).
+  const image_url =
+    addressImage ??
+    firstMatch(html, /<meta property="og:image" content="([^"]+)"/i) ??
+    listingImages[0] ??
+    firstMatch(html, /<img[^>]+src="([^"]+\.(?:jpg|jpeg|png|webp))"/i);
 
   // Suburb sniff — Knysna suburb names Dream typically uses.
   const suburb = suburbFromText([address_raw, metaDesc, h1, headline].filter(Boolean).join(" "));
@@ -393,6 +418,8 @@ function parseDreamListing(url: string, html: string): DreamListing {
       metaDesc,
       priceMatch: priceMatch?.[0] ?? null,
       h1: cleanText(h1),
+      addressImage,
+      imageCount: listingImages.length,
     },
   };
 }
@@ -449,18 +476,67 @@ function pickAddressCandidate(text: string | null | undefined): string | null {
   return null;
 }
 
-// Fall-back: filename like "https://.../uploads/26-Brenton-Hotel-01.jpg" →
-// "26 Brenton Hotel"
-function guessAddressFromImageFilename(url: string | null | undefined): string | null {
+// Non-listing image filenames — logos, icons, template placeholders. These
+// live under wp-content/uploads too but never encode a property address.
+const NON_LISTING_ASSET = /(logo|icon|placeholder|avatar|favicon)/i;
+
+// Every listing photo URL on the page. Dream uploads them under
+// wp-content/uploads/YYYY/MM/... — regex the raw HTML rather than parse
+// DOM structure so a theme change doesn't silently break the collector.
+function collectListingImages(html: string): string[] {
+  const set = new Set<string>();
+  const re =
+    /https?:\/\/(?:www\.)?dreamknysna\.co\.za\/wp-content\/uploads\/[^"'\s)]+\.(?:jpg|jpeg|png|webp)/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html))) {
+    const url = m[0];
+    const filename = url.split("/").pop() ?? "";
+    if (NON_LISTING_ASSET.test(filename)) continue;
+    set.add(url);
+  }
+  return Array.from(set);
+}
+
+// Address-like filename patterns. Match against the cleaned stem.
+const STREET_NUMBER_PATTERN = /^\d+\s+[A-Za-z]/;
+const STAND_CODE_PATTERN    = /^[A-Za-z]{1,2}\d+\s+[A-Za-z]/;
+const BARE_PLACE_NAME       = /^[A-Za-z]+(?:\s+[A-Za-z]+)*$/;
+
+// Derive a street address from a Dream upload URL. Filenames are keyed
+// on the sale property's address by the agent when they upload — e.g.
+//   26-Brenton-Hotel-11.jpg    → "26 Brenton Hotel"
+//   B4-Pezula-Private-Estate-1 → "B4 Pezula Private Estate"
+//   Centreville-11.jpg         → "Centreville"
+// Rules: strip extension, strip trailing "-Annotated" AND trailing photo
+// index (looped so "-Annotated-3" strips both), convert dashes/underscores
+// to spaces, collapse whitespace. Accept the result if it matches a
+// street-number, an estate stand-code, or a bare place name (≥4 chars).
+function addressFromImageFilename(url: string | null | undefined): string | null {
   if (!url) return null;
   const file = url.split("/").pop() ?? "";
-  const stem = file.replace(/\.(?:jpg|jpeg|png|webp)$/i, "");
-  const cleaned = stem
-    .replace(/-\d{1,3}$/, "")     // trailing "-01"
+  let cleaned = file.replace(/\.(?:jpg|jpeg|png|webp)$/i, "");
+
+  // Strip trailing "-Annotated" and "-NNN" in either order, up to 3 rounds
+  // so "-Annotated-3" collapses to the base.
+  for (let i = 0; i < 3; i++) {
+    const prev = cleaned;
+    cleaned = cleaned
+      .replace(/-Annotated$/i, "")
+      .replace(/-\d{1,3}$/, "");
+    if (cleaned === prev) break;
+  }
+
+  cleaned = cleaned
     .replace(/[-_]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-  if (/^\d+\s+[A-Za-z]/.test(cleaned) && cleaned.length <= 60) return cleaned;
+
+  if (!cleaned || cleaned.length > 60) return null;
+
+  if (STREET_NUMBER_PATTERN.test(cleaned)) return cleaned;
+  if (STAND_CODE_PATTERN.test(cleaned)) return cleaned;
+  if (cleaned.length >= 4 && BARE_PLACE_NAME.test(cleaned)) return cleaned;
+
   return null;
 }
 
