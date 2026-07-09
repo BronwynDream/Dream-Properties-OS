@@ -5,8 +5,8 @@
 --   cadastral_import_cursor   singleton progress state (town cursor + offset)
 --   upsert_parcel(...)        RPC to insert/refresh one erf from GeoJSON
 --   snap_all_to_parcels()     bulk ST_Contains + ST_Centroid update
---   property.parcel_prcl_key       FK to cadastral_parcel — the parcel we snapped to
---   external_listing.parcel_prcl_key + geo_manual   same, plus the manual-override flag
+--   property.prcl_key       FK to cadastral_parcel — the parcel we snapped to
+--   external_listing.prcl_key + geo_manual   same, plus the manual-override flag
 
 -- ---------------------------------------------------------------------------
 -- Import cursor — one row, tracks progress through the Garden Route towns.
@@ -83,19 +83,19 @@ $$;
 -- FK columns — remember which parcel a property / listing was snapped to.
 -- ---------------------------------------------------------------------------
 alter table property
-  add column if not exists parcel_prcl_key text references cadastral_parcel(prcl_key);
+  add column if not exists prcl_key text references cadastral_parcel(prcl_key);
 
 -- external_listing needs both the FK and its own geo_manual flag, so the
 -- future Lightstone re-geocode / a manual override on a market listing
 -- can be respected the same way property.geo_manual is.
 alter table external_listing
-  add column if not exists parcel_prcl_key text references cadastral_parcel(prcl_key),
+  add column if not exists prcl_key text references cadastral_parcel(prcl_key),
   add column if not exists geo_manual      boolean not null default false;
 
 create index if not exists idx_property_parcel_key
-  on property(parcel_prcl_key) where parcel_prcl_key is not null;
+  on property(prcl_key) where prcl_key is not null;
 create index if not exists idx_external_listing_parcel_key
-  on external_listing(parcel_prcl_key) where parcel_prcl_key is not null;
+  on external_listing(prcl_key) where prcl_key is not null;
 
 -- ---------------------------------------------------------------------------
 -- Bulk snap: for every property + external_listing that has coords AND is
@@ -135,7 +135,7 @@ begin
   update property p set
     lng             = picked.clng,
     lat             = picked.clat,
-    parcel_prcl_key = picked.prcl_key
+    prcl_key = picked.prcl_key
   from picked
   where p.id = picked.pid;
   get diagnostics props_n = row_count;
@@ -163,7 +163,7 @@ begin
   update external_listing el set
     lng             = picked.clng,
     lat             = picked.clat,
-    parcel_prcl_key = picked.prcl_key
+    prcl_key = picked.prcl_key
   from picked
   where el.id = picked.eid;
   get diagnostics list_n = row_count;

@@ -224,17 +224,45 @@ async function run(request: Request) {
 
     const done = townIndex >= townLabels.length;
 
+    // On completion, run the erf-snap so records with coords + no manual
+    // override land on their real parcel centroid + carry the prcl_key.
+    // Failure here is non-fatal — the caller can rerun /api/cadastre/snap.
+    let snapped: { propertiesSnapped: number; listingsSnapped: number } | null = null;
+    if (done) {
+      try {
+        const { data: snapData, error: snapErr } = await service.rpc(
+          "snap_all_to_parcels",
+        );
+        if (snapErr) {
+          errors.push(`snap failed: ${snapErr.message}`);
+        } else {
+          const row = Array.isArray(snapData) ? snapData[0] : snapData;
+          snapped = {
+            propertiesSnapped: Number(row?.properties_snapped ?? 0),
+            listingsSnapped: Number(row?.listings_snapped ?? 0),
+          };
+        }
+      } catch (e) {
+        errors.push(`snap threw: ${(e as Error).message}`);
+      }
+    }
+
     return NextResponse.json({
       ok: true,
       done,
       importedThisRun,
       totalSoFar,
+      // Top-level cursor fields so the admin UI can render them without
+      // destructuring the nested object.
+      town: townLabels[townIndex] ?? null,
+      offset,
       cursor: {
         town: townLabels[townIndex] ?? null,
         townIndex,
         townTotal: townLabels.length,
         offset,
       },
+      snapped,
       errors,
     });
   } catch (e) {

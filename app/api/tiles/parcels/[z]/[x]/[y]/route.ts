@@ -50,7 +50,7 @@ export async function GET(
     if (data == null) {
       return new NextResponse(null, {
         status: 204,
-        headers: { "Cache-Control": "public, max-age=86400" },
+        headers: { "Cache-Control": "public, max-age=86400, s-maxage=86400" },
       });
     }
 
@@ -77,7 +77,7 @@ export async function GET(
     if (bytes.length === 0) {
       return new NextResponse(null, {
         status: 204,
-        headers: { "Cache-Control": "public, max-age=86400" },
+        headers: { "Cache-Control": "public, max-age=86400, s-maxage=86400" },
       });
     }
 
@@ -87,7 +87,7 @@ export async function GET(
       status: 200,
       headers: {
         "Content-Type": "application/vnd.mapbox-vector-tile",
-        "Cache-Control": "public, max-age=86400",
+        "Cache-Control": "public, max-age=86400, s-maxage=86400",
         "Access-Control-Allow-Origin": "*",
       },
     });
