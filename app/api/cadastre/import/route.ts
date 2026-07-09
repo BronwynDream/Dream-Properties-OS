@@ -33,21 +33,15 @@ const TIME_BUDGET_MS = 48_000;
 // parse + upsert.
 const CSG_TIMEOUT_MS = 35_000;
 
-// George's parcel geometries are dense — dropping page size to 200 combined
-// with the geometry-simplification params on the paging query (below) makes
-// each response a small fraction of what unsimplified paging returned.
+// Kept small so unsimplified geometry pages still fit inside the timeout.
+// DFFE rejects the geometry-simplification params (geometryPrecision,
+// maxAllowableOffset) with HTTP 400 "Failed to execute query", so we have
+// to page smaller instead of shipping smaller polygons.
 const PAGE_SIZE = 200;
 
 // Timeout retries cross batches — persisted on the cursor as
 // consecutive_fail. When it reaches this many, we advance anyway.
 const MAX_TIMEOUT_RETRIES = 3;
-
-// GeoJSON size shrinks massively when the DFFE service is asked to snap
-// parcel vertices to a coarse grid before returning them. 2 m in degrees
-// (~0.00002 at Knysna latitude) is invisible at any map zoom the layer is
-// rendered at (min 14), and turns a 400 KB page into a ~40 KB one.
-const GEOMETRY_PRECISION = "6";
-const MAX_ALLOWABLE_OFFSET = "0.00002";
 
 // Distinct-value discovery runs one query per keyword and unions the exact
 // MAJ_REGION labels the service actually holds. A single query with several
@@ -243,14 +237,13 @@ async function run(request: Request) {
       if (Date.now() - start > TIME_BUDGET_MS) break;
 
       const town = townLabels[townIndex];
-      // Paging query. Two shape decisions on top of what the DFFE portal
-      // expects:
-      //   - LIKE '<label>%' rather than = '<label>' tolerates trailing
-      //     whitespace / suffix variants the distinct query returns.
-      //   - geometryPrecision + maxAllowableOffset ask the service to
-      //     simplify each parcel polygon before returning it. Payload
-      //     size drops ~10× — a page of 200 that used to be 400 KB
-      //     of raw coords is ~40 KB after grid-snap.
+      // Paging query. Matches the confirmed-working DFFE shape:
+      //   - LIKE '<label>%' tolerates trailing whitespace / suffix variants.
+      //   - No geometryPrecision or maxAllowableOffset — DFFE rejects both
+      //     with HTTP 400 "Failed to execute query" (confirmed live).
+      //   - No orderByFields — the layer rejects orderBy on non-OBJECTID.
+      //     Upsert keys on prcl_key so any accidental page overlap is
+      //     idempotent.
       const url =
         CSG_BASE +
         "?" +
@@ -260,12 +253,6 @@ async function run(request: Request) {
           returnGeometry: "true",
           outSR: "4326",
           f: "geojson",
-          geometryPrecision: GEOMETRY_PRECISION,
-          maxAllowableOffset: MAX_ALLOWABLE_OFFSET,
-          // No orderByFields — some ArcGIS Server layers reject
-          // orderBy on non-OBJECTID columns and return an empty page.
-          // The upsert keys on prcl_key, so any accidental page overlap
-          // from the DFFE default order is idempotent.
           resultRecordCount: String(PAGE_SIZE),
           resultOffset: String(offset),
         }).toString();
