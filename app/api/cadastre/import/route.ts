@@ -132,6 +132,7 @@ async function run(request: Request) {
     //    labels, or after CSG updates their parcel set.
     const reqUrl = new URL(request.url);
     const wantsReset = reqUrl.searchParams.get("reset") === "1";
+    const wantsPeek = reqUrl.searchParams.get("peek") === "1";
     if (wantsReset) {
       const { error: resetErr } = await service
         .from("cadastral_import_cursor")
@@ -181,6 +182,32 @@ async function run(request: Request) {
         })
         .eq("id", true);
       return perr ? perr.message : null;
+    }
+
+    // ?peek=1 short-circuits: return current cursor state, no CSG calls,
+    // no upserts. Used by CadastreImport on mount to check whether a run
+    // is already in progress (so a stray "Import cadastre" click doesn't
+    // fresh-reset a cursor that was in the middle of a run).
+    if (wantsPeek) {
+      const done = townLabels.length > 0 && townIndex >= townLabels.length;
+      return NextResponse.json({
+        ok: true,
+        peek: true,
+        done,
+        importedThisRun: 0,
+        totalSoFar,
+        town: townLabels[townIndex] ?? null,
+        offset,
+        cursor: {
+          town: townLabels[townIndex] ?? null,
+          townIndex,
+          townTotal: townLabels.length,
+          offset,
+        },
+        discoveredLabels: townLabels,
+        snapped: null,
+        errors: [],
+      });
     }
 
     const errors: string[] = [];

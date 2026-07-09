@@ -48,6 +48,30 @@ export default function CadastreImport() {
     };
   }, []);
 
+  // Peek at the server cursor on mount. If a run is already in progress
+  // (totalSoFar > 0 && !done), restore the progress state so the panel
+  // shows Resume instead of the initial "Import cadastre" button —
+  // otherwise a router.refresh() from an unrelated action (like an
+  // Adjust-pin save) hides the in-flight state and a "Start" click
+  // would fire ?reset=1 by mistake.
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/cadastre/import?peek=1", { method: "POST" })
+      .then((r) => r.json())
+      .then((json: ImportResponse & { peek?: boolean }) => {
+        if (cancelled) return;
+        if (json?.peek && ((json.totalSoFar ?? 0) > 0 || json.done)) {
+          setProgress(json);
+        }
+      })
+      .catch(() => {
+        /* silent — peek is best-effort */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   async function runOne(reset: boolean): Promise<ImportResponse> {
     const url = reset ? "/api/cadastre/import?reset=1" : "/api/cadastre/import";
     const res = await fetch(url, {
