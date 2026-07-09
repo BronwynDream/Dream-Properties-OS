@@ -155,14 +155,42 @@ export default async function MapPage() {
       lng: e.lng != null ? Number(e.lng) : null,
     };
 
-    // Case 1 — matched to one of our properties.
-    if (e.matched_property_id && mergedByPropId.has(e.matched_property_id)) {
-      const pin = mergedByPropId.get(e.matched_property_id)!;
-      pin.externals.push(ref);
-      if (!pin.sources.includes(e.source as SourceKey)) {
-        pin.sources.push(e.source as SourceKey);
+    // Case 1 — matched to one of our properties. A matched listing collapses
+    // into that property's pin so the map reads as one entry per house.
+    // If the property has no coords itself (never geocoded), we seed a pin
+    // at the listing's coordinate — the listing's location is a good enough
+    // proxy for our record and the map merge still reads as "our stock,
+    // also on portal X" instead of a phantom market pin.
+    if (e.matched_property_id) {
+      let pin = mergedByPropId.get(e.matched_property_id);
+      if (!pin) {
+        const p = rows.find((r) => r.id === e.matched_property_id);
+        if (p && ref.lat != null && ref.lng != null) {
+          pin = {
+            key: `prop-${p.id}`,
+            lng: ref.lng,
+            lat: ref.lat,
+            matchedPropertyId: p.id,
+            our: p,
+            externals: [],
+            sources: ["dream_os"],
+            representative: {
+              address: p.address,
+              price: p.askingPrice,
+              suburb: p.suburb,
+              mandateType: p.mandateType,
+            },
+          };
+          mergedByPropId.set(p.id, pin);
+        }
       }
-      continue;
+      if (pin) {
+        pin.externals.push(ref);
+        if (!pin.sources.includes(e.source as SourceKey)) {
+          pin.sources.push(e.source as SourceKey);
+        }
+        continue;
+      }
     }
 
     // Case 2 — shares a dedup group with other externals.

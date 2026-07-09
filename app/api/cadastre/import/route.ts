@@ -30,22 +30,27 @@ const UA = "DreamOS/1.0 (+dreamproperties.app)";
 const TIME_BUDGET_MS = 48_000;
 const CSG_TIMEOUT_MS = 22_000;
 
-// Geometry-heavy GeoJSON pages of 1000 erven regularly bust the 22s CSG
-// timeout — 500 keeps every response comfortably inside it. The resumable
-// cursor handles the extra pages.
-const PAGE_SIZE = 500;
+// George's parcel geometries are particularly dense and busted the 22s CSG
+// timeout at 500. 250 keeps every response comfortably inside it. The
+// resumable cursor absorbs the extra pages.
+const PAGE_SIZE = 250;
+// Max retries on a single paging fetch before we fail-forward the cursor.
+// Two retries = up to three total attempts per page.
+const PAGE_MAX_RETRIES = 2;
 
 // Distinct-value discovery runs one query per keyword and unions the exact
 // MAJ_REGION labels the service actually holds. A single query with several
 // ORed LIKE clauses returns empty on the DFFE portal (confirmed live), so
 // per-keyword is the reliable shape.
+//
+// Order matters: KNYSNA first so Dream's core area imports before the big
+// slow towns. If the whole run is aborted (Vercel kill / network wobble),
+// the parcels Bronwyn actually needs are already in.
 const TOWN_KEYWORDS = [
   "KNYSNA",
   "SEDGEFIELD",
-  "PLETT",
+  "PLETTENBERG BAY",
   "GEORGE",
-  "WILDERNESS",
-  "GREAT BRAK RIVER",
 ];
 
 // Bounded per-fetch timeout so a slow CSG call can't burn the whole budget.
@@ -233,47 +238,97 @@ async function run(request: Request) {
           resultOffset: String(offset),
         }).toString();
 
+      // Retry up to PAGE_MAX_RETRIES times, then FAIL FORWARD — advance the
+      // cursor and log a warning so the auto-loop can't dead-lock on a
+      // slow / broken town. Two failure modes handled the same way:
+      //   - fetch throws / non-2xx  → log HTTP status / thrown message
+      //   - HTTP 200 with ArcGIS error object → log code + message
       let payload: any = null;
-      try {
-        const res = await fetchWithTimeout(url, CSG_TIMEOUT_MS);
-        if (!res.ok) {
-          errors.push(`${town}@${offset}: HTTP ${res.status}`);
+      let fetchError: string | null = null;
+      for (let attempt = 0; attempt <= PAGE_MAX_RETRIES; attempt++) {
+        try {
+          const res = await fetchWithTimeout(url, CSG_TIMEOUT_MS);
+          if (!res.ok) {
+            fetchError = `HTTP ${res.status}`;
+            payload = null;
+            continue;
+          }
+          const raw = await res.json();
+          if (raw && typeof raw === "object" && raw.error) {
+            const e = raw.error;
+            fetchError =
+              typeof e === "object"
+                ? `CSG error ${e.code ?? "?"}: ${e.message ?? "unknown"}`
+                : `CSG error ${String(e)}`;
+            payload = null;
+            continue;
+          }
+          payload = raw;
+          fetchError = null;
           break;
+        } catch (e) {
+          fetchError = (e as Error).message;
+          payload = null;
         }
-        payload = await res.json();
-      } catch (e) {
-        errors.push(`${town}@${offset}: ${(e as Error).message}`);
-        break;
       }
 
-      // ArcGIS returns an error object with the ok=200 status when the query
-      // itself is malformed / rejected. Surface it — silently returning zero
-      // features is what led to the "Done · 0 erven" false success.
-      if (payload && typeof payload === "object" && payload.error) {
-        const err = payload.error;
-        const msg =
-          typeof err === "object"
-            ? `${err.code ?? "?"}: ${err.message ?? "unknown"}${err.details ? ` — ${JSON.stringify(err.details).slice(0, 200)}` : ""}`
-            : String(err);
-        errors.push(`${town}@${offset}: CSG error ${msg} · URL: ${url}`);
-        break;
+      if (fetchError || payload == null) {
+        // Fail forward: never return with the cursor unchanged. If the first
+        // page failed, skip the whole town (chances are the label itself is
+        // bad / the town is broken for us). If a later page failed, skip
+        // just that page — the town might have more parcels waiting.
+        const before = { townIndex, offset };
+        if (offset === 0) {
+          townIndex++;
+          offset = 0;
+        } else {
+          offset += PAGE_SIZE;
+        }
+        errors.push(
+          `${town}@${before.offset}: ${fetchError ?? "no payload"} after ${PAGE_MAX_RETRIES + 1} attempts · advanced to ${townIndex >= townLabels.length ? "END" : `${townLabels[townIndex]}@${offset}`}`,
+        );
+        // Persist the advance so the next batch doesn't retry the same offset.
+        const { error: persistErr } = await service
+          .from("cadastral_import_cursor")
+          .update({
+            town_index: townIndex,
+            offset_in_town: offset,
+            total_imported: totalSoFar,
+            last_ran_at: new Date().toISOString(),
+          })
+          .eq("id", true);
+        if (persistErr) {
+          errors.push(`cursor advance failed: ${persistErr.message}`);
+          break;
+        }
+        continue;
       }
 
       const features: any[] = Array.isArray(payload?.features) ? payload.features : [];
 
-      // Empty first page is a red flag — the town label matched discovery but
-      // paging says the town has no parcels, which shouldn't happen for real
-      // Garden Route towns. Include the actual URL + a snippet of the payload
-      // so we can diagnose (missing 'features', ESRI-style attrs vs GeoJSON
-      // properties, exceededTransferLimit signal, ...) then BREAK instead
-      // of churning through the remaining towns — one bad first page is
-      // almost certainly a query problem that will repeat for every town.
+      // Empty first page: log the URL + payload snippet for diagnosis, then
+      // skip the town rather than looping (per fail-forward rule).
       if (features.length === 0 && offset === 0) {
         const snippet = JSON.stringify(payload ?? {}, null, 0).slice(0, 400);
         errors.push(
           `${town}@${offset}: 0 features on first page. URL: ${url} · payload keys: ${Object.keys(payload ?? {}).join(",")} · snippet: ${snippet}`,
         );
-        break;
+        townIndex++;
+        offset = 0;
+        const { error: persistErr } = await service
+          .from("cadastral_import_cursor")
+          .update({
+            town_index: townIndex,
+            offset_in_town: offset,
+            total_imported: totalSoFar,
+            last_ran_at: new Date().toISOString(),
+          })
+          .eq("id", true);
+        if (persistErr) {
+          errors.push(`cursor advance failed: ${persistErr.message}`);
+          break;
+        }
+        continue;
       }
       for (const f of features) {
         const props = (f?.properties ?? {}) as Record<string, any>;
@@ -392,7 +447,12 @@ async function run(request: Request) {
 // returnGeometry=false is mandatory or the service refuses DISTINCT.
 // -----------------------------------------------------------------------------
 async function discoverTownLabels(): Promise<string[]> {
-  const set = new Set<string>();
+  // Preserve keyword order in the returned array — KNYSNA's labels first,
+  // then SEDGEFIELD, then PLETTENBERG BAY, then GEORGE. An alphabetical
+  // sort would put GEORGE before KNYSNA, which is exactly what we don't
+  // want on a run that might get aborted midway.
+  const seen = new Set<string>();
+  const ordered: string[] = [];
 
   for (const keyword of TOWN_KEYWORDS) {
     const url =
@@ -432,10 +492,14 @@ async function discoverTownLabels(): Promise<string[]> {
     for (const f of json.features ?? []) {
       const label = f?.attributes?.MAJ_REGION;
       if (typeof label === "string" && label.trim().length > 0) {
-        set.add(label.trim());
+        const l = label.trim();
+        if (!seen.has(l)) {
+          seen.add(l);
+          ordered.push(l);
+        }
       }
     }
   }
 
-  return Array.from(set).sort();
+  return ordered;
 }

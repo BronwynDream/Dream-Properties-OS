@@ -36,6 +36,7 @@ type Row = {
   lat: number | null;
   lng: number | null;
   lightstone_property_id: number | null;
+  prcl_key: string | null;
   matched_property_id: string | null;
   dedup_group_id: string | null;
 };
@@ -46,6 +47,7 @@ type Prop = {
   lat: number | null;
   lng: number | null;
   lightstone_property_id: number | null;
+  prcl_key: string | null;
 };
 
 // Collapse an address to a stable comparable form:
@@ -63,6 +65,16 @@ export function normaliseAddress(raw: string | null | undefined): string {
     .replace(/\b(6\d{3})\b/g, "") // Garden Route postal codes are 6xxx
     .replace(/\s+/g, " ")
     .trim();
+}
+
+// Address tokens for the subset-match rule. "19 glenview" ⊆ "19 glenview road
+// the heads" means every token of the listing address appears in the
+// property address — used to bind a portal-scraped short address to the
+// canonical property record without a lightstone id.
+function addressTokens(raw: string | null | undefined): string[] {
+  const n = normaliseAddress(raw);
+  if (n.length === 0) return [];
+  return n.split(/\s+/).filter((t) => t.length > 0);
 }
 
 // Metres between two WGS84 points via haversine. Small enough that the flat-
@@ -109,7 +121,7 @@ export async function rebuildDedupAndMatch(
   const { data: rowsData } = await supabase
     .from("external_listing")
     .select(
-      "id, source, address_raw, price, lat, lng, lightstone_property_id, matched_property_id, dedup_group_id",
+      "id, source, address_raw, price, lat, lng, lightstone_property_id, prcl_key, matched_property_id, dedup_group_id",
     )
     .eq("active", true);
   const rows = (rowsData ?? []) as Row[];
@@ -117,7 +129,7 @@ export async function rebuildDedupAndMatch(
 
   const { data: propsData } = await supabase
     .from("property")
-    .select("id, primary_address, lat, lng, lightstone_property_id");
+    .select("id, primary_address, lat, lng, lightstone_property_id, prcl_key");
   const props = (propsData ?? []) as Prop[];
 
   // ---- CLUSTERING ---------------------------------------------------------
@@ -133,6 +145,19 @@ export async function rebuildDedupAndMatch(
     byLs.set(r.lightstone_property_id, list);
   }
   for (const ids of byLs.values()) {
+    for (let i = 1; i < ids.length; i++) uf.union(ids[0], ids[i]);
+  }
+
+  // Same prcl_key → same cluster. Cadastre-snapped rows on the same erf
+  // are unambiguously the same physical listing.
+  const byPrcl = new Map<string, string[]>();
+  for (const r of rows) {
+    if (!r.prcl_key) continue;
+    const list = byPrcl.get(r.prcl_key) ?? [];
+    list.push(r.id);
+    byPrcl.set(r.prcl_key, list);
+  }
+  for (const ids of byPrcl.values()) {
     for (let i = 1; i < ids.length; i++) uf.union(ids[0], ids[i]);
   }
 
@@ -189,17 +214,33 @@ export async function rebuildDedupAndMatch(
   // ---- MATCH TO OUR PROPERTIES --------------------------------------------
   // Only for rows without a matched_property_id — a manually-set match is
   // preserved. (When a manual-override table lands, that guard moves here.)
+  //
+  // Order (strongest → weakest):
+  //   1. lightstone id
+  //   2. prcl_key (same erf = same property, once the cadastre is loaded)
+  //   3. normalised address exact
+  //   4. token-subset ("19 glenview" ⊆ "19 glenview road the heads")
+  //   5. geo-proximity
   const propByLs = new Map<number, string>();
   for (const p of props) {
     if (p.lightstone_property_id != null) {
       propByLs.set(Number(p.lightstone_property_id), p.id);
     }
   }
+  const propByPrcl = new Map<string, string>();
+  for (const p of props) {
+    if (p.prcl_key && !propByPrcl.has(p.prcl_key)) propByPrcl.set(p.prcl_key, p.id);
+  }
   const propByAddr = new Map<string, string>();
   for (const p of props) {
     const n = normaliseAddress(p.primary_address);
     if (n.length >= 5 && !propByAddr.has(n)) propByAddr.set(n, p.id);
   }
+  // Pre-compute property token sets once — matchFor is O(rows × props) with
+  // this sub-loop but tokens are cheap and the row counts are small.
+  const propTokenSets: { id: string; tokens: Set<string> }[] = props
+    .map((p) => ({ id: p.id, tokens: new Set(addressTokens(p.primary_address)) }))
+    .filter((p) => p.tokens.size > 0);
   const propsWithGeo = props.filter((p) => p.lat != null && p.lng != null);
 
   function matchFor(r: Row): string | null {
@@ -207,10 +248,24 @@ export async function rebuildDedupAndMatch(
       const hit = propByLs.get(Number(r.lightstone_property_id));
       if (hit) return hit;
     }
+    if (r.prcl_key) {
+      const hit = propByPrcl.get(r.prcl_key);
+      if (hit) return hit;
+    }
     const n = normaliseAddress(r.address_raw);
     if (n.length >= 5) {
       const hit = propByAddr.get(n);
       if (hit) return hit;
+    }
+    // Token-subset: every listing token must appear in the property's tokens.
+    // "19 glenview" ⊆ "19 glenview road the heads" → match. Requires at
+    // least one house-number-shaped token to avoid "the heads" latching onto
+    // any Heads property.
+    const lt = addressTokens(r.address_raw);
+    if (lt.length >= 2 && lt.some((t) => /^\d/.test(t))) {
+      for (const p of propTokenSets) {
+        if (lt.every((t) => p.tokens.has(t))) return p.id;
+      }
     }
     if (r.lat != null && r.lng != null) {
       let best: { id: string; d: number } | null = null;
