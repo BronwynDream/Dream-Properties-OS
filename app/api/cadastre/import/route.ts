@@ -200,15 +200,23 @@ async function run(request: Request) {
       if (Date.now() - start > TIME_BUDGET_MS) break;
 
       const town = townLabels[townIndex];
+      // Use LIKE with a wildcard suffix rather than =. Discovery returns the
+      // stored MAJ_REGION string verbatim, but the DFFE service tolerates
+      // trailing whitespace / suffix variants on paging queries only via LIKE.
+      // A single ' is escaped as '' per Postgres/OGC style.
       const url =
         CSG_BASE +
         "?" +
         new URLSearchParams({
-          where: `MAJ_REGION = '${town.replace(/'/g, "''")}'`,
+          where: `MAJ_REGION LIKE '${town.replace(/'/g, "''")}%'`,
           outFields: "PARCEL_NO,TAG_VALUE,MAJ_REGION,MIN_REGION,PROVINCE,PRCL_KEY",
           returnGeometry: "true",
           outSR: "4326",
           f: "geojson",
+          // orderByFields makes resultOffset paging deterministic. Without it,
+          // some ArcGIS servers return the same first page repeatedly or drop
+          // rows across pages. PRCL_KEY is unique so this is a stable sort.
+          orderByFields: "PRCL_KEY",
           resultRecordCount: String(PAGE_SIZE),
           resultOffset: String(offset),
         }).toString();
@@ -226,7 +234,30 @@ async function run(request: Request) {
         break;
       }
 
+      // ArcGIS returns an error object with the ok=200 status when the query
+      // itself is malformed / rejected. Surface it — silently returning zero
+      // features is what led to the "Done · 0 erven" false success.
+      if (payload && typeof payload === "object" && payload.error) {
+        const err = payload.error;
+        const msg =
+          typeof err === "object"
+            ? `${err.code ?? "?"}: ${err.message ?? "unknown"}${err.details ? ` — ${JSON.stringify(err.details).slice(0, 200)}` : ""}`
+            : String(err);
+        errors.push(`${town}@${offset}: CSG error ${msg}`);
+        break;
+      }
+
       const features: any[] = Array.isArray(payload?.features) ? payload.features : [];
+
+      // Empty first page is a red flag — the town label matched discovery but
+      // paging says the town has no parcels, which shouldn't happen for real
+      // Garden Route towns. Log it and skip to the next town so the run
+      // doesn't loop forever on a bad label.
+      if (features.length === 0 && offset === 0) {
+        errors.push(
+          `${town}@${offset}: 0 features on first page (payload keys: ${Object.keys(payload ?? {}).join(",")})`,
+        );
+      }
       for (const f of features) {
         const props = (f?.properties ?? {}) as Record<string, any>;
         const prcl_key = String(props.PRCL_KEY ?? "").trim();
@@ -315,6 +346,9 @@ async function run(request: Request) {
         townTotal: townLabels.length,
         offset,
       },
+      // Surface the discovered labels so a false-empty run is diagnosable
+      // from the client — you can eyeball whether the labels look right.
+      discoveredLabels: townLabels,
       snapped,
       errors,
     });

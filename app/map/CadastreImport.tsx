@@ -25,6 +25,7 @@ type ImportResponse = {
     townTotal: number;
     offset: number;
   };
+  discoveredLabels?: string[];
   snapped?: {
     propertiesSnapped: number;
     listingsSnapped: number;
@@ -200,6 +201,29 @@ export default function CadastreImport() {
             </p>
           )}
 
+          {progress?.discoveredLabels && progress.discoveredLabels.length > 0 && (
+            <details style={{ marginTop: 6, fontSize: 11, color: "#8090b5" }}>
+              <summary style={{ cursor: "pointer" }}>
+                {progress.discoveredLabels.length} town label
+                {progress.discoveredLabels.length === 1 ? "" : "s"} discovered
+              </summary>
+              <ul
+                style={{
+                  margin: "6px 0 0 14px",
+                  padding: 0,
+                  lineHeight: 1.4,
+                  fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                }}
+              >
+                {progress.discoveredLabels.map((l, i) => (
+                  <li key={i} style={{ marginBottom: 2 }}>
+                    {JSON.stringify(l)}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+
           {progress?.errors && progress.errors.length > 0 && (
             <details style={{ marginTop: 6, fontSize: 11, color: "#8090b5" }}>
               <summary style={{ cursor: "pointer" }}>
@@ -207,7 +231,7 @@ export default function CadastreImport() {
                 {progress.errors.length === 1 ? "" : "s"}
               </summary>
               <ul style={{ margin: "6px 0 0 14px", padding: 0, lineHeight: 1.4 }}>
-                {progress.errors.slice(0, 5).map((e, i) => (
+                {progress.errors.slice(0, 10).map((e, i) => (
                   <li key={i} style={{ marginBottom: 3 }}>
                     {e}
                   </li>
