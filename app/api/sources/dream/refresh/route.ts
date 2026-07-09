@@ -19,10 +19,12 @@ export const maxDuration = 60;
 // Cloudflare + WordPress — 4 in flight is polite and finishes the 12
 // pages in ~3s wall-clock.
 const FETCH_CONCURRENCY = 4;
-// Geocode budget per run. Mapbox forward-geocode is ~250ms; 8 keeps us
-// well under maxDuration and any surplus rides the next run — active=true
-// stays intact, so the pin just appears late.
-const MAX_GEOCODES_PER_RUN = 8;
+// Geocode budget per run. Mapbox forward-geocode is ~250ms; 60 fits the
+// Hobby 60s ceiling with room for the parse + upsert + dedup passes
+// (~15s of margin on a full-fresh run). For sources with hundreds of
+// listings (P24, PP) this still deferrs the surplus; Dream's ~12
+// clears in one run every time.
+const MAX_GEOCODES_PER_RUN = 60;
 
 // GET/POST /api/sources/dream/refresh
 //
@@ -96,6 +98,41 @@ async function run(request: Request) {
   try {
     const service = createServiceClient();
     const runAt = new Date();
+
+    // One-time cleanup — null lat/lng on every historical dream_website row
+    // whose current coordinates fall outside the Garden Route bbox. Before
+    // the bbox guard was added, Mapbox occasionally resolved short addresses
+    // to Cape Town / Paarl / Durban, and those old pins persist on the map
+    // even after we tighten the guard. This pass runs on every refresh so
+    // any future misresolve gets cleaned up automatically the next night.
+    let cleanedStale = 0;
+    {
+      const { data: coordsRows } = await service
+        .from("external_listing")
+        .select("id, lat, lng")
+        .eq("source", "dream_website")
+        .not("lat", "is", null)
+        .not("lng", "is", null);
+      const outOfBoxIds: string[] = [];
+      for (const r of (coordsRows ?? []) as { id: string; lat: number; lng: number }[]) {
+        const c = { lat: Number(r.lat), lng: Number(r.lng) };
+        if (!Number.isFinite(c.lat) || !Number.isFinite(c.lng)) continue;
+        if (!inGardenRoute(c)) outOfBoxIds.push(r.id);
+      }
+      if (outOfBoxIds.length > 0) {
+        const { error: cErr } = await service
+          .from("external_listing")
+          .update({ lat: null, lng: null })
+          .in("id", outOfBoxIds);
+        if (cErr) {
+          // Non-fatal — the run keeps going; parked rows still won't plot.
+          // eslint-disable-next-line no-console
+          console.warn(`[dream-scraper] cleanup nullify failed: ${cErr.message}`);
+        } else {
+          cleanedStale = outOfBoxIds.length;
+        }
+      }
+    }
 
     let indexHtml: string;
     try {
@@ -234,20 +271,24 @@ async function run(request: Request) {
       }
     }
 
-    // Geocode new/changed rows via Mapbox — capped so we can't blow the
-    // Hobby maxDuration on a first-time run that geocodes every listing.
-    // Surplus rows keep active=true; the next run picks them up because
-    // their lat/lng are still null (missingCoords => back in the queue).
+    // Geocode new/changed rows via Mapbox.
     //
-    // Two guards on every hit:
+    // Guards on every hit:
     //   - Garden Route bbox (inGardenRoute) — drops results in Cape Town /
     //     Gqeberha / Durban that Mapbox occasionally returns for short
     //     addresses even under a proximity bias.
     //   - Centroid fallback — when a specific address fails or falls
-    //     out-of-box AND the scraper knows the suburb / area, drop the pin
-    //     at the estate/suburb centroid. Better a slightly-imprecise pin
-    //     than none at all for an estate-code listing like "F24 Thesen".
+    //     out-of-box AND the address / suburb points at a known estate or
+    //     town, drop the pin at that centroid. Better a slightly-imprecise
+    //     pin than none for an estate-code listing like "F24 Thesen".
+    //   - Null-on-park — genuinely unresolvable rows have their lat/lng
+    //     explicitly nulled so a stale pin can NEVER outlive an address
+    //     change or a tightened guard.
+    //
+    // The per-run cap only fires when the queue is genuinely large (P24 /
+    // PP will hit it). Dream's ~12 clears in a single run — no deferral.
     let geocoded = 0;
+    let centroidFallback = 0;
     let deferredGeocode = 0;
     let parked = 0;
     const token = mapboxToken();
@@ -261,21 +302,39 @@ async function run(request: Request) {
           token,
           suburb: g.suburb,
         });
+        let usedCentroid = false;
         if (coords && !inGardenRoute(coords)) coords = null;
         if (!coords) {
           const fallback = centroidForArea(g.address, g.suburb);
-          if (fallback) coords = fallback;
+          if (fallback) {
+            coords = fallback;
+            usedCentroid = true;
+          }
         }
+
         if (!coords) {
+          // Explicit null so a stale in-box pin from a prior run can't
+          // survive a changed / tightened result.
+          const { error: nErr } = await service
+            .from("external_listing")
+            .update({ lat: null, lng: null })
+            .eq("id", g.id);
+          if (nErr) errors.push(`park nullify ${g.id}: ${nErr.message}`);
           parked++;
           continue;
         }
+
         const { error: gErr } = await service
           .from("external_listing")
           .update({ lat: coords.lat, lng: coords.lng })
           .eq("id", g.id);
-        if (gErr) errors.push(`geocode save ${g.id}: ${gErr.message}`);
-        else geocoded++;
+        if (gErr) {
+          errors.push(`geocode save ${g.id}: ${gErr.message}`);
+        } else if (usedCentroid) {
+          centroidFallback++;
+        } else {
+          geocoded++;
+        }
       }
     }
 
@@ -296,10 +355,12 @@ async function run(request: Request) {
     return NextResponse.json({
       ok: true,
       upserted,
-      delisted,
       geocoded,
+      centroid_fallback: centroidFallback,
       parked,
+      delisted,
       deferredGeocode,
+      cleanedStale,
       ...dedupSummary,
       errors,
     });

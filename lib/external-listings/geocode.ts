@@ -41,23 +41,30 @@ export function inGardenRoute(coords: LngLat): boolean {
 // like "F24 Thesen" or "B4 Pezula Private Estate" but the area is known.
 // Coordinates are approximate — good enough to land the pin in the right
 // polygon on the map; the geocode itself is exact when it succeeds.
+// Rough centroids for estates + towns Dream sells across. Aliased entries
+// (e.g. "Thesen" → same coords as "Thesen Islands") let the address-string
+// scanner catch filename-abbreviated forms like "F24 Thesen" without
+// needing the full estate name in the address.
 export const GARDEN_ROUTE_CENTROIDS: Record<string, LngLat> = {
-  "Knysna":            { lng: 23.0479, lat: -34.0363 },
-  "Leisure Isle":      { lng: 23.0725, lat: -34.049  },
-  "The Heads":         { lng: 23.081,  lat: -34.081  },
-  "Belvidere":         { lng: 22.976,  lat: -34.03   },
-  "Brenton":           { lng: 23.0227, lat: -34.08   },
-  "Brenton on Sea":    { lng: 23.0227, lat: -34.08   },
-  "Pezula":            { lng: 23.108,  lat: -34.07   },
-  "Simola":            { lng: 23.04,   lat: -33.982  },
-  "Thesen Islands":    { lng: 23.043,  lat: -34.048  },
-  "Eastford":          { lng: 22.986,  lat: -34.008  },
-  "Centreville":       { lng: 22.995,  lat: -34.018  },
-  "Sedgefield":        { lng: 22.81,   lat: -34.025  },
-  "Plettenberg Bay":   { lng: 23.376,  lat: -34.053  },
-  "Plett":             { lng: 23.376,  lat: -34.053  },
-  "George":            { lng: 22.46,   lat: -33.963  },
-  "Wilderness":        { lng: 22.58,   lat: -33.99   },
+  "Knysna":              { lng: 23.0479, lat: -34.0363 },
+  "Leisure Isle":        { lng: 23.0725, lat: -34.049  },
+  "The Heads":           { lng: 23.081,  lat: -34.081  },
+  "Belvidere":           { lng: 22.976,  lat: -34.03   },
+  "Brenton on Sea":      { lng: 23.0227, lat: -34.08   },
+  "Brenton":             { lng: 23.0227, lat: -34.08   },
+  "Pezula Private Estate": { lng: 23.108, lat: -34.07  },
+  "Pezula":              { lng: 23.108,  lat: -34.07   },
+  "Simola":              { lng: 23.04,   lat: -33.982  },
+  "Thesen Islands":      { lng: 23.043,  lat: -34.048  },
+  "Thesen":              { lng: 23.043,  lat: -34.048  },
+  "Eastford Glen":       { lng: 22.986,  lat: -34.008  },
+  "Eastford":            { lng: 22.986,  lat: -34.008  },
+  "Centreville":         { lng: 22.995,  lat: -34.018  },
+  "Sedgefield":          { lng: 22.81,   lat: -34.025  },
+  "Plettenberg Bay":     { lng: 23.376,  lat: -34.053  },
+  "Plett":               { lng: 23.376,  lat: -34.053  },
+  "George":              { lng: 22.46,   lat: -33.963  },
+  "Wilderness":          { lng: 22.58,   lat: -33.99   },
 };
 
 // Look up a centroid by suburb name first (most reliable — the scraper has
