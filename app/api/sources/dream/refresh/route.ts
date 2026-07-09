@@ -5,9 +5,19 @@ import { rebuildDedupAndMatch } from "@/lib/external-listings/dedup";
 import { geocodeAddress, mapboxToken } from "@/lib/external-listings/geocode";
 
 export const runtime = "nodejs";
-// Scraping 30–50 listing pages with per-item Mapbox geocode + dedup pass
-// can take ~1–3 min. Give it Vercel Pro's ceiling.
-export const maxDuration = 300;
+// Vercel Hobby silently clamps to 60s — anything higher gets truncated
+// mid-request, taking the JSON response with it. Stay in the plan's cap
+// and cover the tail by deferring surplus geocodes to the next run.
+export const maxDuration = 60;
+
+// Concurrent fetch pool for listing pages. Dream's site sits behind
+// Cloudflare + WordPress — 4 in flight is polite and finishes the 12
+// pages in ~3s wall-clock.
+const FETCH_CONCURRENCY = 4;
+// Geocode budget per run. Mapbox forward-geocode is ~250ms; 8 keeps us
+// well under maxDuration and any surplus rides the next run — active=true
+// stays intact, so the pin just appears late.
+const MAX_GEOCODES_PER_RUN = 8;
 
 // GET/POST /api/sources/dream/refresh
 //
@@ -75,139 +85,198 @@ async function run(request: Request) {
   const gate = await authorised(request);
   if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status });
 
-  const service = createServiceClient();
-  const runAt = new Date();
-
-  let indexHtml: string;
+  // Top-level try/catch so the client ALWAYS receives JSON. Without this a
+  // late throw becomes an HTML error page the RefreshDreamButton can't parse,
+  // and the manual trigger fails silently.
   try {
-    indexHtml = await fetchText(INDEX_URL);
+    const service = createServiceClient();
+    const runAt = new Date();
+
+    let indexHtml: string;
+    try {
+      indexHtml = await fetchText(INDEX_URL);
+    } catch (e) {
+      return NextResponse.json(
+        { ok: false, error: `index fetch failed: ${(e as Error).message}` },
+        { status: 502 },
+      );
+    }
+
+    const listingUrls = extractListingUrls(indexHtml);
+
+    // Zero-state: a WordPress theme change or Cloudflare interstitial would
+    // cut this to zero. Return an explicit note so the next Vercel log line
+    // says exactly what happened — silence is the wrong signal here.
+    if (listingUrls.length === 0) {
+      return NextResponse.json({
+        ok: true,
+        upserted: 0,
+        delisted: 0,
+        geocoded: 0,
+        clustered: 0,
+        matched: 0,
+        groups: 0,
+        errors: [],
+        note: "no listing links found at index — selector may be stale",
+      });
+    }
+
+    const errors: string[] = [];
+    const parsed: DreamListing[] = [];
+
+    // Concurrent fetch pool — small worker set drains the URL queue.
+    const urlQueue = [...listingUrls];
+    async function worker() {
+      for (;;) {
+        const url = urlQueue.shift();
+        if (!url) return;
+        try {
+          const html = await fetchText(url);
+          const item = parseDreamListing(url, html);
+          if (item.source_ref) parsed.push(item);
+        } catch (e) {
+          errors.push(`${url}: ${(e as Error).message}`);
+        }
+      }
+    }
+    await Promise.all(
+      Array.from({ length: Math.min(FETCH_CONCURRENCY, listingUrls.length) }, () =>
+        worker(),
+      ),
+    );
+
+    // Upsert every parsed listing on (source, source_ref).
+    let upserted = 0;
+    const seenIds = new Set<string>();
+    const geocodeQueue: { id: string; address: string }[] = [];
+
+    for (const item of parsed) {
+      const existing = await service
+        .from("external_listing")
+        .select("id, address_raw, lat, lng")
+        .eq("source", "dream_website")
+        .eq("source_ref", item.source_ref)
+        .maybeSingle();
+
+      const patch: Record<string, unknown> = {
+        source: "dream_website",
+        source_ref: item.source_ref,
+        url: item.url,
+        headline: item.headline,
+        address_raw: item.address_raw,
+        suburb: item.suburb,
+        price: item.price,
+        bedrooms: item.bedrooms,
+        bathrooms: item.bathrooms,
+        property_type: item.property_type,
+        agency_name: "Dream Properties",
+        image_url: item.image_url,
+        raw: item.raw,
+        last_seen: runAt.toISOString(),
+        active: true,
+      };
+
+      const prior = existing.data;
+      const addressChanged =
+        !prior || (prior.address_raw ?? "") !== (item.address_raw ?? "");
+      const missingCoords = !prior || prior.lat == null || prior.lng == null;
+
+      const { data: upsertRow, error: upErr } = await service
+        .from("external_listing")
+        .upsert(patch, { onConflict: "source,source_ref" })
+        .select("id")
+        .single();
+      if (upErr || !upsertRow) {
+        errors.push(`${item.source_ref}: upsert failed: ${upErr?.message ?? "no id"}`);
+        continue;
+      }
+      seenIds.add(upsertRow.id);
+      upserted++;
+
+      if ((addressChanged || missingCoords) && item.address_raw) {
+        geocodeQueue.push({ id: upsertRow.id, address: item.address_raw });
+      }
+    }
+
+    // Delist anything that was previously active but wasn't seen this run.
+    // Fetching the current active set + deactivating the diff is more reliable
+    // than a PostgREST NOT IN over quoted strings.
+    let delisted = 0;
+    if (parsed.length > 0) {
+      const { data: activeNow } = await service
+        .from("external_listing")
+        .select("id")
+        .eq("source", "dream_website")
+        .eq("active", true);
+      const toDelist = (activeNow ?? [])
+        .filter((r: { id: string }) => !seenIds.has(r.id))
+        .map((r: { id: string }) => r.id);
+      if (toDelist.length > 0) {
+        const { error: delErr } = await service
+          .from("external_listing")
+          .update({ active: false })
+          .in("id", toDelist);
+        if (delErr) errors.push(`delist failed: ${delErr.message}`);
+        else delisted = toDelist.length;
+      }
+    }
+
+    // Geocode new/changed rows via Mapbox — capped so we can't blow the
+    // Hobby maxDuration on a first-time run that geocodes every listing.
+    // Surplus rows keep active=true; the next run picks them up because
+    // their lat/lng are still null (missingCoords => back in the queue).
+    let geocoded = 0;
+    let deferredGeocode = 0;
+    const token = mapboxToken();
+    if (!token) {
+      errors.push("no mapbox token — new rows landed without coordinates");
+    } else {
+      const toGeocode = geocodeQueue.slice(0, MAX_GEOCODES_PER_RUN);
+      deferredGeocode = Math.max(0, geocodeQueue.length - toGeocode.length);
+      for (const g of toGeocode) {
+        const coords = await geocodeAddress(g.address, { token });
+        if (!coords) continue;
+        const { error: gErr } = await service
+          .from("external_listing")
+          .update({ lat: coords.lat, lng: coords.lng })
+          .eq("id", g.id);
+        if (gErr) errors.push(`geocode save ${g.id}: ${gErr.message}`);
+        else geocoded++;
+      }
+    }
+
+    // Cluster + match. Wrapped so a dedup failure logs to errors[] and
+    // partial results still come back — the ledger and pins are already
+    // written; dedup can catch up next run.
+    let dedupSummary: { clustered: number; matched: number; groups: number } = {
+      clustered: 0,
+      matched: 0,
+      groups: 0,
+    };
+    try {
+      dedupSummary = await rebuildDedupAndMatch(service);
+    } catch (e) {
+      errors.push(`dedup failed: ${(e as Error).message}`);
+    }
+
+    return NextResponse.json({
+      ok: true,
+      upserted,
+      delisted,
+      geocoded,
+      deferredGeocode,
+      ...dedupSummary,
+      errors,
+    });
   } catch (e) {
+    // Last-resort JSON envelope. Any throw from the branches above lands
+    // here so RefreshDreamButton can render the error inline instead of
+    // failing to parse an HTML 500 page.
     return NextResponse.json(
-      { error: `index fetch failed: ${(e as Error).message}` },
-      { status: 502 },
+      { ok: false, error: (e as Error).message ?? String(e) },
+      { status: 500 },
     );
   }
-
-  const listingUrls = extractListingUrls(indexHtml);
-  const errors: string[] = [];
-  const parsed: DreamListing[] = [];
-
-  for (const url of listingUrls) {
-    try {
-      const html = await fetchText(url);
-      const item = parseDreamListing(url, html);
-      if (item.source_ref) parsed.push(item);
-    } catch (e) {
-      errors.push(`${url}: ${(e as Error).message}`);
-    }
-  }
-
-  // Upsert every parsed listing on (source, source_ref).
-  let upserted = 0;
-  const seenIds = new Set<string>();
-  const geocodeQueue: { id: string; address: string }[] = [];
-
-  for (const item of parsed) {
-    const existing = await service
-      .from("external_listing")
-      .select("id, address_raw, lat, lng")
-      .eq("source", "dream_website")
-      .eq("source_ref", item.source_ref)
-      .maybeSingle();
-
-    const patch: Record<string, unknown> = {
-      source: "dream_website",
-      source_ref: item.source_ref,
-      url: item.url,
-      headline: item.headline,
-      address_raw: item.address_raw,
-      suburb: item.suburb,
-      price: item.price,
-      bedrooms: item.bedrooms,
-      bathrooms: item.bathrooms,
-      property_type: item.property_type,
-      agency_name: "Dream Properties",
-      image_url: item.image_url,
-      raw: item.raw,
-      last_seen: runAt.toISOString(),
-      active: true,
-    };
-
-    const prior = existing.data;
-    const addressChanged =
-      !prior || (prior.address_raw ?? "") !== (item.address_raw ?? "");
-    const missingCoords = !prior || prior.lat == null || prior.lng == null;
-
-    const { data: upsertRow, error: upErr } = await service
-      .from("external_listing")
-      .upsert(patch, { onConflict: "source,source_ref" })
-      .select("id")
-      .single();
-    if (upErr || !upsertRow) {
-      errors.push(`${item.source_ref}: upsert failed: ${upErr?.message ?? "no id"}`);
-      continue;
-    }
-    seenIds.add(upsertRow.id);
-    upserted++;
-
-    if ((addressChanged || missingCoords) && item.address_raw) {
-      geocodeQueue.push({ id: upsertRow.id, address: item.address_raw });
-    }
-  }
-
-  // Delist anything that was previously active but wasn't seen this run.
-  // Fetching the current active set + deactivating the diff is more reliable
-  // than a PostgREST NOT IN over quoted strings.
-  let delisted = 0;
-  if (parsed.length > 0) {
-    const { data: activeNow } = await service
-      .from("external_listing")
-      .select("id")
-      .eq("source", "dream_website")
-      .eq("active", true);
-    const toDelist = (activeNow ?? [])
-      .filter((r: { id: string }) => !seenIds.has(r.id))
-      .map((r: { id: string }) => r.id);
-    if (toDelist.length > 0) {
-      const { error: delErr } = await service
-        .from("external_listing")
-        .update({ active: false })
-        .in("id", toDelist);
-      if (delErr) errors.push(`delist failed: ${delErr.message}`);
-      else delisted = toDelist.length;
-    }
-  }
-
-  // Geocode new/changed rows via Mapbox.
-  let geocoded = 0;
-  const token = mapboxToken();
-  if (!token) {
-    errors.push("no mapbox token — new rows landed without coordinates");
-  } else {
-    for (const g of geocodeQueue) {
-      const coords = await geocodeAddress(g.address, { token });
-      if (!coords) continue;
-      const { error: gErr } = await service
-        .from("external_listing")
-        .update({ lat: coords.lat, lng: coords.lng })
-        .eq("id", g.id);
-      if (gErr) errors.push(`geocode save ${g.id}: ${gErr.message}`);
-      else geocoded++;
-    }
-  }
-
-  // Cluster + match. Always run — a delisted row might have left a
-  // dangling cluster of one, and inbound match candidates may have shifted.
-  const dedupSummary = await rebuildDedupAndMatch(service);
-
-  return NextResponse.json({
-    ok: true,
-    upserted,
-    delisted,
-    geocoded,
-    ...dedupSummary,
-    errors,
-  });
 }
 
 // -----------------------------------------------------------------------------
@@ -227,17 +296,31 @@ async function fetchText(url: string): Promise<string> {
 
 // -----------------------------------------------------------------------------
 // Extract listing URLs from the WordPress index page.
-// Dream's WordPress theme renders each listing as an <a> hitting
-// /property/<slug>/. We collect distinct hrefs.
+// Dream's theme renders each listing under
+//   https://www.dreamknysna.co.za/knysna-properties/<slug>/
+// where <slug> is a lowercase alphanumeric+hyphen WordPress permalink
+// ("a-home-of-quiet-distinction", "beyond-rare", ...).
+//
+// We MUST exclude:
+//   - the bare index (/knysna-properties/) itself
+//   - pagination (/knysna-properties/page/N/)
+//   - anchor or query-string variants
 // -----------------------------------------------------------------------------
 function extractListingUrls(html: string): string[] {
-  const set = new Set<string>();
-  const re = /href=["'](https?:\/\/(?:www\.)?dreamknysna\.co\.za\/property\/[^"'#?]+\/?)["']/gi;
+  const bySlug = new Map<string, string>();
+  const re =
+    /href=["'](https?:\/\/(?:www\.)?dreamknysna\.co\.za\/knysna-properties\/([a-z0-9][a-z0-9-]*)\/?)["']/gi;
   let m: RegExpExecArray | null;
   while ((m = re.exec(html))) {
-    set.add(m[1]);
+    const slug = m[2];
+    if (!slug) continue;             // bare index guarded by regex + this
+    if (slug === "page") continue;   // pagination
+    if (bySlug.has(slug)) continue;  // www / non-www duplicates → keep first
+    // Normalise to always end with a slash — dedupes href variants.
+    const url = m[1].endsWith("/") ? m[1] : `${m[1]}/`;
+    bySlug.set(slug, url);
   }
-  return Array.from(set);
+  return Array.from(bySlug.values());
 }
 
 // -----------------------------------------------------------------------------
