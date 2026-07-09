@@ -41,7 +41,7 @@ export default async function MapPage() {
   const { data: propsData } = await supabase
     .from("property")
     .select(
-      "id, primary_address, title_deed_no, lng, lat, extent_sqm, suburb:suburb_id(name)",
+      "id, primary_address, title_deed_no, lng, lat, geo_manual, extent_sqm, suburb:suburb_id(name)",
     );
   const properties = (propsData ?? []) as any[];
 
@@ -92,6 +92,7 @@ export default async function MapPage() {
       suburb: p.suburb?.name ?? null,
       lng: p.lng != null ? Number(p.lng) : null,
       lat: p.lat != null ? Number(p.lat) : null,
+      geoManual: p.geo_manual === true,
       extentSqm: p.extent_sqm != null ? Number(p.extent_sqm) : null,
       titleDeed: p.title_deed_no ?? null,
       askingPrice: listing?.asking_price != null ? Number(listing.asking_price) : null,

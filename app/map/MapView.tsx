@@ -4,7 +4,8 @@ import "mapbox-gl/dist/mapbox-gl.css";
 import mapboxgl from "mapbox-gl";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
-import { geocodeMissingProperties } from "./actions";
+import { useRouter } from "next/navigation";
+import { geocodeMissingProperties, savePropertyPin } from "./actions";
 import RefreshDreamButton from "./RefreshDreamButton";
 
 export type MapProperty = {
@@ -13,6 +14,7 @@ export type MapProperty = {
   suburb: string | null;
   lng: number | null;
   lat: number | null;
+  geoManual: boolean;              // pin was hand-placed by an admin
   extentSqm: number | null;
   titleDeed: string | null;
   askingPrice: number | null;
@@ -137,9 +139,18 @@ export default function MapView({
   stats: Stats;
   budget?: BudgetSummary | null;
 }) {
+  const router = useRouter();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<Record<string, mapboxgl.Marker>>({});
+
+  // Refs let the dragend handler (registered ONCE per marker at creation)
+  // read the current drag mode + trigger the save without stale closures.
+  const dragKeyRef = useRef<string | null>(null);
+  const pinPropertyIdRef = useRef<Record<string, string>>({}); // mergedKey → property.id
+  const handlePinDropRef = useRef<(propertyId: string, lng: number, lat: number) => void>(
+    () => {},
+  );
 
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [enabledMandates, setEnabledMandates] = useState<Set<string>>(
@@ -157,10 +168,53 @@ export default function MapView({
   // branches driven from one flag.
   const [mobileRailOpen, setMobileRailOpen] = useState(false);
   const [pending, startTransition] = useTransition();
+
+  // Admin-only manual pin move. dragKey is the mergedKey of the pin currently
+  // in drag mode. Ref mirror lets marker-level dragend read it without a
+  // stale closure. pinMsg/pinErr surface success/failure in the preview panel.
+  const [dragKey, setDragKey] = useState<string | null>(null);
+  const [pinPending, setPinPending] = useState(false);
+  const [pinMsg, setPinMsg] = useState<string | null>(null);
+  const [pinErr, setPinErr] = useState<string | null>(null);
+  useEffect(() => { dragKeyRef.current = dragKey; }, [dragKey]);
   const [geocodeMsg, setGeocodeMsg] = useState<string | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
 
   const cleanToken = (mapboxToken ?? "").trim();
+
+  // Selecting a different pin cancels any in-flight drag mode so the state
+  // machine can't get stuck showing "Drop pin to save" on a stale target.
+  useEffect(() => {
+    if (dragKey && dragKey !== selectedKey) {
+      setDragKey(null);
+      setPinMsg(null);
+      setPinErr(null);
+    }
+  }, [selectedKey, dragKey]);
+
+  // On drop, immediately save + exit drag mode. The marker retains its new
+  // position because Mapbox has already moved it; router.refresh() then
+  // pulls the persisted coords + geo_manual flag on the next render.
+  useEffect(() => {
+    handlePinDropRef.current = (propertyId, lng, lat) => {
+      setPinErr(null);
+      setPinMsg(null);
+      setPinPending(true);
+      savePropertyPin(propertyId, lng, lat)
+        .then((res) => {
+          if (!res.ok) {
+            setPinErr(res.error ?? "save failed");
+          } else {
+            setPinMsg("Pin saved. Automated geocoders will skip this property.");
+            setDragKey(null);
+            router.refresh();
+            setTimeout(() => setPinMsg(null), 3200);
+          }
+        })
+        .catch((e) => setPinErr((e as Error).message))
+        .finally(() => setPinPending(false));
+    };
+  }, [router]);
 
   // Counts for the rail chips.
   const mandateCounts = useMemo(() => {
@@ -275,6 +329,8 @@ export default function MapView({
     lng: number;
     lat: number;
     mergedKey: string;          // for selection: always the merged pin's key
+    propertyId: string | null;  // our property.id when this pin is us / merged with us
+    geoManual: boolean;         // pin was hand-placed by an admin
     label: string;              // price string
     styleClass: string;         // CSS class for the price-pin
     sourcesShown: SourceKey[];  // which source stack to render
@@ -303,6 +359,8 @@ export default function MapView({
           lng: pin.lng,
           lat: pin.lat,
           mergedKey: pin.key,
+          propertyId: pin.matchedPropertyId ?? pin.our?.id ?? null,
+          geoManual: pin.our?.geoManual === true,
           label: formatPrice(pin.representative.price),
           styleClass,
           sourcesShown: activeSources,
@@ -336,6 +394,8 @@ export default function MapView({
           lng: pin.lng + dLng,
           lat: pin.lat + dLat,
           mergedKey: pin.key,
+          propertyId: pin.matchedPropertyId ?? pin.our?.id ?? null,
+          geoManual: pin.our?.geoManual === true,
           label: formatPrice(price),
           styleClass,
           sourcesShown: [s],
@@ -359,14 +419,21 @@ export default function MapView({
     }
 
     for (const rp of renderPins) {
+      // Keep the propertyId lookup fresh — the dragend handler needs it.
+      if (rp.propertyId) pinPropertyIdRef.current[rp.mergedKey] = rp.propertyId;
+
       if (markersRef.current[rp.id]) {
         // Reposition existing marker (split-mode fan may have moved it).
         markersRef.current[rp.id].setLngLat([rp.lng, rp.lat]);
+        // Adjusted-mark can flip if the row's geo_manual changes after a save.
+        const el = markersRef.current[rp.id].getElement();
+        if (rp.geoManual) el.classList.add("adjusted");
+        else el.classList.remove("adjusted");
         continue;
       }
 
       const el = document.createElement("div");
-      el.className = `price-pin ${rp.styleClass}${rp.label === "POR" ? " por" : ""}`;
+      el.className = `price-pin ${rp.styleClass}${rp.label === "POR" ? " por" : ""}${rp.geoManual ? " adjusted" : ""}`;
 
       const badge = document.createElement("span");
       badge.className = "badge";
@@ -391,11 +458,27 @@ export default function MapView({
       pointer.className = "pointer";
       el.appendChild(pointer);
 
-      el.addEventListener("click", () => setSelectedKey(rp.mergedKey));
+      el.addEventListener("click", () => {
+        // Suppress the click that immediately follows a drag release — Mapbox
+        // fires both events and we don't want the panel to re-select on drop.
+        if (dragKeyRef.current === rp.mergedKey) return;
+        setSelectedKey(rp.mergedKey);
+      });
 
       const marker = new mapboxgl.Marker({ element: el, anchor: "bottom" })
         .setLngLat([rp.lng, rp.lat])
         .addTo(map);
+
+      // Registered once at marker creation, this handler reads the CURRENT
+      // dragKey via the ref — so a marker created in "static" mode still
+      // saves correctly when the admin later drags it.
+      marker.on("dragend", () => {
+        if (dragKeyRef.current !== rp.mergedKey) return;
+        const propertyId = pinPropertyIdRef.current[rp.mergedKey];
+        if (!propertyId) return;
+        const ll = marker.getLngLat();
+        handlePinDropRef.current(propertyId, ll.lng, ll.lat);
+      });
 
       markersRef.current[rp.id] = marker;
     }
@@ -406,6 +489,20 @@ export default function MapView({
       map.fitBounds(bounds, { padding: 80, maxZoom: 14, duration: 0 });
     }
   }, [renderPins]);
+
+  // Toggle draggability + drag-mode class as dragKey changes. Runs after any
+  // marker sync so the class always reflects the latest state.
+  useEffect(() => {
+    for (const [id, marker] of Object.entries(markersRef.current)) {
+      const rp = renderPins.find((r) => r.id === id);
+      if (!rp) continue;
+      const shouldDrag = dragKey === rp.mergedKey;
+      marker.setDraggable(shouldDrag);
+      const el = marker.getElement();
+      if (shouldDrag) el.classList.add("dragging");
+      else el.classList.remove("dragging");
+    }
+  }, [dragKey, renderPins]);
 
   // Active pin styling.
   useEffect(() => {
@@ -697,7 +794,23 @@ export default function MapView({
         )}
 
         <aside className={`map-preview ${selectedPin ? "on" : ""}`}>
-          {selectedPin && <PreviewPanel pin={selectedPin} onClose={() => setSelectedKey(null)} />}
+          {selectedPin && (
+            <PreviewPanel
+              pin={selectedPin}
+              onClose={() => setSelectedKey(null)}
+              isAdmin={isAdmin}
+              inDragMode={dragKey === selectedPin.key}
+              onStartDrag={() => {
+                setPinMsg(null);
+                setPinErr(null);
+                setDragKey(selectedPin.key);
+              }}
+              onCancelDrag={() => setDragKey(null)}
+              pinPending={pinPending}
+              pinMsg={pinMsg}
+              pinErr={pinErr}
+            />
+          )}
         </aside>
       </div>
     </div>
@@ -803,10 +916,35 @@ function SpendMeter({ budget }: { budget: BudgetSummary }) {
 // merged across sources.
 // -----------------------------------------------------------------------------
 
-function PreviewPanel({ pin, onClose }: { pin: MergedPin; onClose: () => void }) {
+function PreviewPanel({
+  pin,
+  onClose,
+  isAdmin,
+  inDragMode,
+  onStartDrag,
+  onCancelDrag,
+  pinPending,
+  pinMsg,
+  pinErr,
+}: {
+  pin: MergedPin;
+  onClose: () => void;
+  isAdmin: boolean;
+  inDragMode: boolean;
+  onStartDrag: () => void;
+  onCancelDrag: () => void;
+  pinPending: boolean;
+  pinMsg: string | null;
+  pinErr: string | null;
+}) {
   const our = pin.our;
   const externals = pin.externals;
   const hasMultipleSources = pin.sources.length > 1;
+
+  // Adjust-pin control is only meaningful when the pin is a property we own
+  // and the viewer is a Director. Market-only listings have no property to
+  // move; agents shouldn't reshape the map.
+  const canAdjust = isAdmin && !!our && !!pin.matchedPropertyId;
 
   // Compare prices across sources; if the range spans more than 5% we flag it.
   const priceQuotes: { source: SourceKey; price: number | null; url: string | null }[] = [];
@@ -1004,6 +1142,118 @@ function PreviewPanel({ pin, onClose }: { pin: MergedPin; onClose: () => void })
                 }}
               >
                 Prices differ across sources
+              </p>
+            )}
+          </div>
+        )}
+
+        {canAdjust && (
+          <div
+            style={{
+              marginTop: 24,
+              padding: 14,
+              borderRadius: 10,
+              background: inDragMode ? "rgba(200,160,50,0.10)" : "#fbfcfe",
+              border: `1px solid ${inDragMode ? "rgba(200,160,50,0.45)" : "#e2e8f5"}`,
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "baseline",
+                justifyContent: "space-between",
+                gap: 12,
+              }}
+            >
+              <p
+                style={{
+                  fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                  fontSize: 10,
+                  letterSpacing: "0.14em",
+                  textTransform: "uppercase",
+                  color: "var(--gold)",
+                  margin: 0,
+                }}
+              >
+                Pin location
+              </p>
+              {our?.geoManual && !inDragMode && (
+                <span
+                  title="An admin has hand-placed this pin. Automated geocoders skip it."
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                    padding: "2px 8px",
+                    borderRadius: 999,
+                    fontSize: 10,
+                    fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                    letterSpacing: "0.08em",
+                    textTransform: "uppercase",
+                    background: "rgba(200,160,50,0.14)",
+                    border: "1px solid rgba(200,160,50,0.45)",
+                    color: "#7A5814",
+                  }}
+                >
+                  Pin adjusted
+                </span>
+              )}
+            </div>
+
+            {inDragMode ? (
+              <>
+                <p
+                  style={{
+                    margin: "8px 0 12px",
+                    fontSize: 13,
+                    color: "var(--estuary)",
+                    lineHeight: 1.4,
+                  }}
+                >
+                  Drag the pin on the map to the correct location. It saves
+                  automatically when you release.
+                </p>
+                <button
+                  type="button"
+                  className="ghost-dark"
+                  onClick={onCancelDrag}
+                  disabled={pinPending}
+                  style={{ padding: "8px 14px", fontSize: 13 }}
+                >
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                className="ghost-dark"
+                onClick={onStartDrag}
+                disabled={pinPending}
+                style={{ padding: "8px 14px", fontSize: 13, marginTop: 8 }}
+              >
+                {our?.geoManual ? "Re-adjust pin" : "Adjust pin"}
+              </button>
+            )}
+            {pinPending && (
+              <p style={{ margin: "8px 0 0", fontSize: 12, color: "#7a86a8" }}>
+                Saving…
+              </p>
+            )}
+            {pinMsg && (
+              <p
+                style={{
+                  margin: "8px 0 0",
+                  fontSize: 12,
+                  color: "var(--estuary)",
+                  fontWeight: 600,
+                }}
+              >
+                {pinMsg}
+              </p>
+            )}
+            {pinErr && (
+              <p className="error" style={{ margin: "8px 0 0", fontSize: 12 }}>
+                {pinErr}
               </p>
             )}
           </div>

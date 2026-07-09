@@ -1045,6 +1045,32 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
 }
 .map-legend .row.dw .sw { background: var(--navy); border: none; }
 
+/* Manual pin adjustment: an admin has moved this pin off the geocoder's
+   position. Small gold dot sits on top-right of the badge as a signal
+   that automated geocoders will skip this row. */
+.price-pin.adjusted .badge::after {
+  content: "";
+  position: absolute;
+  top: -3px; right: -3px;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--gold);
+  box-shadow: 0 0 0 1.5px var(--white);
+}
+.price-pin.adjusted .badge { position: relative; }
+
+/* Drag mode — the marker is pickup-able. Cursor changes, subtle gold ring
+   around the pill, tiny scale bump for tactile feedback. */
+.price-pin.dragging { cursor: grab; }
+.price-pin.dragging:active { cursor: grabbing; }
+.price-pin.dragging .badge {
+  box-shadow:
+    0 0 0 2px rgba(255,255,255,1),
+    0 0 0 5px rgba(200,160,50,0.65),
+    0 6px 16px rgba(15,22,52,0.45);
+  transform: scale(1.06);
+}
+
 /* =========================================================================
    Mobile responsive pass (field-three: nav / map / properties).
    Everything below is gated behind max-width breakpoints. Desktop

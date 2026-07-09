@@ -30,6 +30,7 @@ export async function geocodeMissingProperties(): Promise<GeocodeResult> {
     .from("property")
     .select("id, primary_address")
     .is("lng", null)
+    .eq("geo_manual", false)          // never overwrite a hand-placed pin
     .not("primary_address", "is", null);
   if (error) return { ok: false, error: error.message };
 
@@ -92,4 +93,45 @@ export async function geocodeMissingProperties(): Promise<GeocodeResult> {
 
   revalidatePath("/map");
   return { ok: true, geocoded, failed };
+}
+
+// Admin-only manual pin move — called by the "Adjust pin" control in the
+// map preview panel. Setting geo_manual=true immunises the row against
+// every automated geocoder from this point on: the Mapbox forward-geocode
+// action above already filters it out, and the future Lightstone re-geocode
+// must do the same (see 0027_property_geo_manual.sql comment).
+export async function savePropertyPin(
+  propertyId: string,
+  lng: number,
+  lat: number,
+): Promise<{ ok: boolean; error?: string }> {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "unauthorised" };
+
+  const { data: profile } = await supabase
+    .from("app_user")
+    .select("role, active")
+    .eq("id", user.id)
+    .single();
+  if (profile?.role !== "admin" || profile?.active === false) {
+    return { ok: false, error: "admin only" };
+  }
+
+  if (!propertyId) return { ok: false, error: "propertyId required" };
+  if (!Number.isFinite(lng) || !Number.isFinite(lat)) {
+    return { ok: false, error: "invalid coordinates" };
+  }
+
+  const { error } = await supabase
+    .from("property")
+    .update({ lng, lat, geo_manual: true })
+    .eq("id", propertyId);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/map");
+  revalidatePath(`/properties/${propertyId}`);
+  return { ok: true };
 }
