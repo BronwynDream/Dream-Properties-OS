@@ -237,13 +237,12 @@ async function run(request: Request) {
       if (Date.now() - start > TIME_BUDGET_MS) break;
 
       const town = townLabels[townIndex];
-      // Paging query — matches Bronwyn's confirmed-working DFFE curl
-      // outFields EXACTLY: PRCL_KEY, TAG_VALUE. MAJ_REGION and MIN_REGION
-      // still caused HTTP 400 "Failed to execute query" — the DFFE layer
-      // rejects them from outFields even though it accepts them in WHERE.
-      // We know the town locally; feed it to the upsert as maj_region.
-      // min_region / parcel_no / province become null until we find a
-      // field spelling the service accepts.
+      // Paging query. IMPORTANT: DFFE's layer 400s on `f=geojson`
+      // combined with `returnGeometry=true` — confirmed live. `f=json`
+      // (native ESRI shape) works fine with the same paging, so we
+      // fetch as ESRI JSON and convert rings → GeoJSON below before
+      // handing the polygon to upsert_parcel. Everything else matches
+      // Bronwyn's confirmed-working curl exactly.
       const url =
         CSG_BASE +
         "?" +
@@ -252,7 +251,7 @@ async function run(request: Request) {
           outFields: "PRCL_KEY,TAG_VALUE",
           returnGeometry: "true",
           outSR: "4326",
-          f: "geojson",
+          f: "json",
           resultRecordCount: String(PAGE_SIZE),
           resultOffset: String(offset),
         }).toString();
@@ -381,17 +380,21 @@ async function run(request: Request) {
         continue;
       }
       for (const f of features) {
-        const props = (f?.properties ?? {}) as Record<string, any>;
-        const prcl_key = String(props.PRCL_KEY ?? "").trim();
+        // ESRI JSON shape: features[i] = { attributes, geometry: { rings } }
+        const attrs = (f?.attributes ?? {}) as Record<string, any>;
+        const prcl_key = String(attrs.PRCL_KEY ?? "").trim();
         if (!prcl_key || !f?.geometry) continue;
 
-        // Polygon → MultiPolygon so the geom column type stays consistent.
-        let geomJson = f.geometry;
-        if (geomJson.type === "Polygon") {
-          geomJson = { type: "MultiPolygon", coordinates: [geomJson.coordinates] };
-        } else if (geomJson.type !== "MultiPolygon") {
-          continue;
-        }
+        // Convert ESRI rings → GeoJSON. First ring is the outer boundary,
+        // subsequent rings are holes (Esri convention: outer clockwise,
+        // holes counter-clockwise). We wrap it as a MultiPolygon so the
+        // upsert's ST_Multi() is a no-op and geom column stays consistent.
+        const rings = (f.geometry as { rings?: number[][][] })?.rings;
+        if (!Array.isArray(rings) || rings.length === 0) continue;
+        const geomJson = {
+          type: "MultiPolygon",
+          coordinates: [rings],
+        };
 
         // We only pull PRCL_KEY + TAG_VALUE from CSG (the layer 400s on
         // any other outField). maj_region comes from the local loop
@@ -401,7 +404,7 @@ async function run(request: Request) {
         const { error: upErr } = await service.rpc("upsert_parcel", {
           p_prcl_key: prcl_key,
           p_parcel_no: null,
-          p_tag_value: props.TAG_VALUE ?? null,
+          p_tag_value: attrs.TAG_VALUE ?? null,
           p_maj_region: town,
           p_min_region: null,
           p_province: null,
