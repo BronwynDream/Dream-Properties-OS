@@ -282,10 +282,18 @@ export default function MapView({
       const activeSources = pin.sources.filter((s) => enabledSources.has(s));
       if (activeSources.length === 0) continue;
 
+      // Priority: any pin (singleton or merged) that includes dream_website
+      // wears Dream navy — the dw class trumps mandate colouring on merged
+      // pins so a listing that appears on dreamknysna.co.za reads as
+      // "on Dream's site" at a glance regardless of mandate type.
+      const hasDW = activeSources.includes("dream_website");
+
       if (!splitDupes || activeSources.length === 1) {
-        const styleClass = pin.our
-          ? `mandate-${pin.our.mandateType}`
-          : "market";
+        const styleClass = hasDW
+          ? "dw"
+          : pin.our
+            ? `mandate-${pin.our.mandateType}`
+            : "market";
         out.push({
           id: pin.key,
           lng: pin.lng,
@@ -307,7 +315,11 @@ export default function MapView({
         const dLat = Math.sin(angle) * radius;
         let price: number | null = null;
         let styleClass = "market";
-        if (s === "dream_os" && pin.our) {
+        if (s === "dream_website") {
+          const ext = pin.externals.find((e) => e.source === "dream_website");
+          price = ext?.price ?? null;
+          styleClass = "dw";
+        } else if (s === "dream_os" && pin.our) {
           price = pin.our.askingPrice;
           styleClass = `mandate-${pin.our.mandateType}`;
         } else {
@@ -595,6 +607,12 @@ export default function MapView({
                 <span style={{ textTransform: "capitalize" }}>{m.replace("_", " ")}</span>
               </div>
             ))}
+            {(sourceCounts.get("dream_website") ?? 0) > 0 && (
+              <div className="row dw">
+                <span className="sw" />
+                <span>Dream website</span>
+              </div>
+            )}
             <div className="row market">
               <span className="sw" />
               <span>Market only</span>

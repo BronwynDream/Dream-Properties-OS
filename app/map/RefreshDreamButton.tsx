@@ -13,6 +13,8 @@ type RefreshResponse = {
   upserted?: number;
   delisted?: number;
   geocoded?: number;
+  parked?: number;
+  deferredGeocode?: number;
   matched?: number;
   groups?: number;
   errors?: string[];
@@ -45,6 +47,8 @@ export default function RefreshDreamButton() {
           `${json.upserted ?? 0} listing${(json.upserted ?? 0) === 1 ? "" : "s"}`,
           `${json.geocoded ?? 0} geocoded`,
         ];
+        if ((json.parked ?? 0) > 0) parts.push(`${json.parked} parked out-of-area`);
+        if ((json.deferredGeocode ?? 0) > 0) parts.push(`${json.deferredGeocode} deferred`);
         if ((json.delisted ?? 0) > 0) parts.push(`${json.delisted} delisted`);
         if ((json.matched ?? 0) > 0) parts.push(`${json.matched} matched`);
         setMsg(`Dream: ${parts.join(" · ")}`);

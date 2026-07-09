@@ -986,7 +986,7 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
   box-shadow: 0 0 0 1.5px rgba(255,255,255,0.9);
 }
 .source-dot.source-dream_os         { background: var(--navy); }
-.source-dot.source-dream_website    { background: var(--gold); color: #3F2F0E; }
+.source-dot.source-dream_website    { background: var(--navy); }
 .source-dot.source-property24       { background: #EB1E4E; }
 .source-dot.source-private_property { background: #16B36B; }
 
@@ -1019,6 +1019,31 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
   background: var(--white);
   border: 1.5px dashed #b5c0d8;
 }
+
+/* Dream Website pin — brand navy. Applies to singleton DW pins AND merged
+   pins where DW is one of the sources. Distinct from mandate colours
+   (our-stock representations) and market-only (dashed white). */
+.price-pin.dw {
+  --m-fill: var(--navy);
+  --m-ink: #ffffff;
+}
+.price-pin.dw .badge {
+  background: var(--navy);
+  color: var(--white);
+  box-shadow:
+    0 0 0 2px rgba(255,255,255,0.92),
+    0 1px 2px rgba(15,22,52,0.35);
+}
+.price-pin.dw .pointer {
+  border-top-color: var(--navy);
+}
+.price-pin.dw.active .badge {
+  box-shadow:
+    0 0 0 2px rgba(255,255,255,1),
+    0 0 0 4px rgba(200,160,50,0.55),                  /* gold focus ring against navy */
+    0 4px 12px rgba(15,22,52,0.4);
+}
+.map-legend .row.dw .sw { background: var(--navy); border: none; }
 
 @media (max-width: 900px) {
   .map-shell { grid-template-columns: 1fr; }

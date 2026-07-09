@@ -2,7 +2,12 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { rebuildDedupAndMatch } from "@/lib/external-listings/dedup";
-import { geocodeAddress, mapboxToken } from "@/lib/external-listings/geocode";
+import {
+  centroidForArea,
+  geocodeAddress,
+  inGardenRoute,
+  mapboxToken,
+} from "@/lib/external-listings/geocode";
 
 export const runtime = "nodejs";
 // Vercel Hobby silently clamps to 60s — anything higher gets truncated
@@ -148,7 +153,11 @@ async function run(request: Request) {
     // Upsert every parsed listing on (source, source_ref).
     let upserted = 0;
     const seenIds = new Set<string>();
-    const geocodeQueue: { id: string; address: string }[] = [];
+    const geocodeQueue: {
+      id: string;
+      address: string;
+      suburb: string | null;
+    }[] = [];
 
     for (const item of parsed) {
       const existing = await service
@@ -194,7 +203,11 @@ async function run(request: Request) {
       upserted++;
 
       if ((addressChanged || missingCoords) && item.address_raw) {
-        geocodeQueue.push({ id: upsertRow.id, address: item.address_raw });
+        geocodeQueue.push({
+          id: upsertRow.id,
+          address: item.address_raw,
+          suburb: item.suburb,
+        });
       }
     }
 
@@ -225,8 +238,18 @@ async function run(request: Request) {
     // Hobby maxDuration on a first-time run that geocodes every listing.
     // Surplus rows keep active=true; the next run picks them up because
     // their lat/lng are still null (missingCoords => back in the queue).
+    //
+    // Two guards on every hit:
+    //   - Garden Route bbox (inGardenRoute) — drops results in Cape Town /
+    //     Gqeberha / Durban that Mapbox occasionally returns for short
+    //     addresses even under a proximity bias.
+    //   - Centroid fallback — when a specific address fails or falls
+    //     out-of-box AND the scraper knows the suburb / area, drop the pin
+    //     at the estate/suburb centroid. Better a slightly-imprecise pin
+    //     than none at all for an estate-code listing like "F24 Thesen".
     let geocoded = 0;
     let deferredGeocode = 0;
+    let parked = 0;
     const token = mapboxToken();
     if (!token) {
       errors.push("no mapbox token — new rows landed without coordinates");
@@ -234,8 +257,19 @@ async function run(request: Request) {
       const toGeocode = geocodeQueue.slice(0, MAX_GEOCODES_PER_RUN);
       deferredGeocode = Math.max(0, geocodeQueue.length - toGeocode.length);
       for (const g of toGeocode) {
-        const coords = await geocodeAddress(g.address, { token });
-        if (!coords) continue;
+        let coords = await geocodeAddress(g.address, {
+          token,
+          suburb: g.suburb,
+        });
+        if (coords && !inGardenRoute(coords)) coords = null;
+        if (!coords) {
+          const fallback = centroidForArea(g.address, g.suburb);
+          if (fallback) coords = fallback;
+        }
+        if (!coords) {
+          parked++;
+          continue;
+        }
         const { error: gErr } = await service
           .from("external_listing")
           .update({ lat: coords.lat, lng: coords.lng })
@@ -264,6 +298,7 @@ async function run(request: Request) {
       upserted,
       delisted,
       geocoded,
+      parked,
       deferredGeocode,
       ...dedupSummary,
       errors,
@@ -480,9 +515,17 @@ function pickAddressCandidate(text: string | null | undefined): string | null {
 // live under wp-content/uploads too but never encode a property address.
 const NON_LISTING_ASSET = /(logo|icon|placeholder|avatar|favicon)/i;
 
-// Every listing photo URL on the page. Dream uploads them under
-// wp-content/uploads/YYYY/MM/... — regex the raw HTML rather than parse
-// DOM structure so a theme change doesn't silently break the collector.
+// WordPress emits a size-suffix on resized variants ("-1280x427" before the
+// extension). We want to see the original filename first so the pin picture
+// stays sharp on Retina + the address extraction operates on the cleanest
+// stem (the resized copies would still resolve to the same address once
+// stripped, but originals are the source of truth).
+const RESIZED_VARIANT = /-\d{2,4}x\d{2,4}(?=\.[a-z]+$)/i;
+
+// Every listing photo URL on the page. Dream uploads under
+// /wp-content/uploads/YYYY/MM/... — regex the raw HTML instead of parsing
+// DOM so a theme change doesn't silently break the collector. Returned in
+// original-first order so address extraction sees the cleanest filename.
 function collectListingImages(html: string): string[] {
   const set = new Set<string>();
   const re =
@@ -494,33 +537,49 @@ function collectListingImages(html: string): string[] {
     if (NON_LISTING_ASSET.test(filename)) continue;
     set.add(url);
   }
-  return Array.from(set);
+  const list = Array.from(set);
+  // Stable partition: originals first, resized after — the source-of-truth
+  // stem comes out cleanest, and the pin picture stays at native resolution.
+  list.sort((a, b) => (RESIZED_VARIANT.test(a) ? 1 : 0) - (RESIZED_VARIANT.test(b) ? 1 : 0));
+  return list;
 }
 
 // Address-like filename patterns. Match against the cleaned stem.
 const STREET_NUMBER_PATTERN = /^\d+\s+[A-Za-z]/;
 const STAND_CODE_PATTERN    = /^[A-Za-z]{1,2}\d+\s+[A-Za-z]/;
 const BARE_PLACE_NAME       = /^[A-Za-z]+(?:\s+[A-Za-z]+)*$/;
+const ONLY_NUMBERS_OR_DIMS  = /^[\d\sx]*$/i;
 
-// Derive a street address from a Dream upload URL. Filenames are keyed
-// on the sale property's address by the agent when they upload — e.g.
-//   26-Brenton-Hotel-11.jpg    → "26 Brenton Hotel"
-//   B4-Pezula-Private-Estate-1 → "B4 Pezula Private Estate"
-//   Centreville-11.jpg         → "Centreville"
-// Rules: strip extension, strip trailing "-Annotated" AND trailing photo
-// index (looped so "-Annotated-3" strips both), convert dashes/underscores
-// to spaces, collapse whitespace. Accept the result if it matches a
-// street-number, an estate stand-code, or a bare place name (≥4 chars).
+// Derive a street address from a Dream upload URL. Filenames are keyed on
+// the sale property's address by the agent when they upload — e.g.
+//   26-Brenton-Hotel-11.jpg          → "26 Brenton Hotel"
+//   19-Glenview-3-1280x427.jpg       → "19 Glenview"
+//   B4-Pezula-Private-Estate-1.jpg   → "B4 Pezula Private Estate"
+//   Centreville-11.jpg               → "Centreville"
+//
+// Cleaning order (all trailing):
+//   1. drop file extension
+//   2. -scaled                       (WordPress "big image" full-res copy)
+//   3. -eNNNNNN                      (WordPress edit-history hash)
+//   4. -NNNxNNN                      (resize dimensions leaked from srcset)
+//   5. -Annotated                    (agent's re-uploaded marked-up copy)
+//   6. -NNN                          (trailing photo index, 1–3 digits)
+// Then dashes/underscores → spaces + whitespace collapse. Accept if the
+// result matches street-number / stand-code / bare-place-name.
 function addressFromImageFilename(url: string | null | undefined): string | null {
   if (!url) return null;
   const file = url.split("/").pop() ?? "";
   let cleaned = file.replace(/\.(?:jpg|jpeg|png|webp)$/i, "");
 
-  // Strip trailing "-Annotated" and "-NNN" in either order, up to 3 rounds
-  // so "-Annotated-3" collapses to the base.
-  for (let i = 0; i < 3; i++) {
+  // Loop the trailing-suffix strip so any order / combination collapses.
+  // e.g. "-Annotated-1280x427-3" strips index → resize → Annotated across
+  // successive iterations.
+  for (let i = 0; i < 6; i++) {
     const prev = cleaned;
     cleaned = cleaned
+      .replace(/-scaled$/i, "")
+      .replace(/-e\d{6,}$/i, "")
+      .replace(/-\d{2,4}x\d{2,4}$/i, "")
       .replace(/-Annotated$/i, "")
       .replace(/-\d{1,3}$/, "");
     if (cleaned === prev) break;
@@ -532,6 +591,9 @@ function addressFromImageFilename(url: string | null | undefined): string | null
     .trim();
 
   if (!cleaned || cleaned.length > 60) return null;
+  // Guard against stems that are only dimensions or numbers ("1280x427",
+  // "20260709") — these encode metadata, not an address.
+  if (ONLY_NUMBERS_OR_DIMS.test(cleaned)) return null;
 
   if (STREET_NUMBER_PATTERN.test(cleaned)) return cleaned;
   if (STAND_CODE_PATTERN.test(cleaned)) return cleaned;
@@ -540,27 +602,36 @@ function addressFromImageFilename(url: string | null | undefined): string | null
   return null;
 }
 
-const KNYSNA_SUBURBS = [
+// Widened from Knysna-only so the scraper can extract "Plett" / "George" /
+// "Wilderness" / "Centreville" from a filename or headline and hand them to
+// the geocoder as an area anchor. Order matters — more-specific area names
+// come first so "Brenton on Sea" wins over "Brenton" alone.
+const GARDEN_ROUTE_AREAS = [
+  "Brenton on Sea",
+  "Plettenberg Bay",
+  "Thesen Islands",
+  "Knysna Heights",
+  "Hunters Home",
   "Leisure Isle",
   "The Heads",
   "Belvidere",
-  "Brenton",
-  "Brenton on Sea",
-  "Pezula",
-  "Simola",
-  "Thesen Islands",
+  "Centreville",
+  "Sparrebosch",
+  "Sedgefield",
+  "Wilderness",
+  "Eastford",
   "Old Place",
   "Paradise",
   "Rexford",
-  "Hunters Home",
-  "Knysna Heights",
-  "Sedgefield",
-  "Sparrebosch",
-  "Eastford",
+  "Brenton",
+  "Pezula",
+  "Simola",
+  "Plett",
+  "George",
 ];
 function suburbFromText(hay: string): string | null {
   if (!hay) return null;
-  for (const s of KNYSNA_SUBURBS) {
+  for (const s of GARDEN_ROUTE_AREAS) {
     if (new RegExp(`\\b${s.replace(/\s+/g, "\\s+")}\\b`, "i").test(hay)) return s;
   }
   return null;
