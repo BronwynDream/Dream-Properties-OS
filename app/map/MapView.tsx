@@ -162,6 +162,10 @@ export default function MapView({
     () => new Set<SourceKey>(["dream_os", "dream_website", "property24", "private_property"]),
   );
   const [splitDupes, setSplitDupes] = useState(false);
+  // Erf boundaries overlay — off by default. Vector tiles are served from
+  // /api/tiles/parcels/{z}/{x}/{y}; source-layer name matches parcel_mvt's
+  // ST_AsMVT layer arg ('parcels').
+  const [showErf, setShowErf] = useState(false);
   const [basemap, setBasemap] = useState<BasemapId>("satellite");
   // Mobile-only: rail as a bottom sheet. Desktop CSS makes this state a no-op
   // (the rail is always visible at ≥901px), but it's cheap to keep both
@@ -320,6 +324,87 @@ export default function MapView({
     if (!target) return;
     map.setStyle(target);
   }, [basemap]);
+
+  // Erf boundary vector layer. Sits behind the price pins (HTML markers
+  // are always on top) but visually distinct from the basemap. Because
+  // map.setStyle() drops all custom sources/layers, we re-install on the
+  // 'styledata' event too.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    function installErfLayer(m: mapboxgl.Map) {
+      if (m.getSource("parcels")) return;
+      m.addSource("parcels", {
+        type: "vector",
+        tiles: ["/api/tiles/parcels/{z}/{x}/{y}"],
+        minzoom: 14,
+        maxzoom: 22,
+      });
+      m.addLayer({
+        id: "parcels-fill",
+        type: "fill",
+        source: "parcels",
+        "source-layer": "parcels",
+        minzoom: 14,
+        paint: {
+          "fill-color": "#C8A032",
+          "fill-opacity": 0.04,
+        },
+        layout: { visibility: showErf ? "visible" : "none" },
+      });
+      m.addLayer({
+        id: "parcels-line",
+        type: "line",
+        source: "parcels",
+        "source-layer": "parcels",
+        minzoom: 14,
+        paint: {
+          "line-color": "#C8A032",
+          "line-width": ["interpolate", ["linear"], ["zoom"], 14, 0.5, 18, 1.4],
+          "line-opacity": 0.65,
+        },
+        layout: { visibility: showErf ? "visible" : "none" },
+      });
+      m.addLayer({
+        id: "parcels-labels",
+        type: "symbol",
+        source: "parcels",
+        "source-layer": "parcels",
+        minzoom: 17,
+        layout: {
+          "text-field": ["get", "tag_value"],
+          "text-size": ["interpolate", ["linear"], ["zoom"], 17, 10, 20, 13],
+          "text-font": ["Open Sans Semibold", "Arial Unicode MS Regular"],
+          "text-allow-overlap": false,
+          visibility: showErf ? "visible" : "none",
+        },
+        paint: {
+          "text-color": "#f5e7c1",
+          "text-halo-color": "rgba(15,42,99,0.85)",
+          "text-halo-width": 1.4,
+        },
+      });
+    }
+
+    if (map.isStyleLoaded()) installErfLayer(map);
+    const onStyleData = () => installErfLayer(map);
+    map.on("styledata", onStyleData);
+    return () => {
+      map.off("styledata", onStyleData);
+    };
+  }, [showErf]);
+
+  // Toggle visibility without tearing the layers down — cheap and preserves
+  // the browser's tile cache.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const vis = showErf ? "visible" : "none";
+    for (const id of ["parcels-fill", "parcels-line", "parcels-labels"]) {
+      if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", vis);
+    }
+  }, [showErf]);
 
   // Split-duplicates mode: expand each merged pin into one pin per source.
   // The split rows sit at the same coord with a tiny angular offset so the
@@ -641,6 +726,39 @@ export default function MapView({
               onChange={(e) => setSplitDupes(e.target.checked)}
             />
             Split duplicate pins by source
+          </label>
+
+          <label
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              marginTop: 6,
+              fontSize: 12,
+              color: "var(--estuary)",
+              cursor: "pointer",
+              fontWeight: 500,
+              margin: 0,
+              paddingTop: 4,
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={showErf}
+              onChange={(e) => setShowErf(e.target.checked)}
+            />
+            Erf boundaries
+            <span
+              style={{
+                marginLeft: "auto",
+                fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                fontSize: 10,
+                color: "#8090b5",
+                letterSpacing: "0.04em",
+              }}
+            >
+              z ≥ 14
+            </span>
           </label>
 
           {isAdmin && <RefreshDreamButton />}
