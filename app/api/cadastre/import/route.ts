@@ -270,16 +270,25 @@ async function run(request: Request) {
         const res = await fetchWithTimeout(url, CSG_TIMEOUT_MS);
         if (!res.ok) {
           errorKind = "http";
-          errorMsg = `HTTP ${res.status}`;
+          errorMsg = `HTTP ${res.status} · URL: ${url}`;
         } else {
           const raw = await res.json();
           if (raw && typeof raw === "object" && raw.error) {
             const e = raw.error;
             errorKind = "arcgis";
+            // ArcGIS's error.details is an array of specific complaints
+            // ("Cannot perform query. Invalid query parameters." etc).
+            // That's what tells us which param DFFE is rejecting — surface
+            // it verbatim along with the URL so we can reproduce.
+            const detailsStr = Array.isArray(e?.details)
+              ? ` · details: ${JSON.stringify(e.details).slice(0, 300)}`
+              : e?.details
+                ? ` · details: ${String(e.details).slice(0, 300)}`
+                : "";
             errorMsg =
               typeof e === "object"
-                ? `CSG error ${e.code ?? "?"}: ${e.message ?? "unknown"}`
-                : `CSG error ${String(e)}`;
+                ? `CSG error ${e.code ?? "?"}: ${e.message ?? "unknown"}${detailsStr} · URL: ${url}`
+                : `CSG error ${String(e)} · URL: ${url}`;
           } else {
             payload = raw;
           }
