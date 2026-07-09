@@ -380,40 +380,49 @@ async function run(request: Request) {
         continue;
       }
       for (const f of features) {
-        // ESRI JSON shape: features[i] = { attributes, geometry: { rings } }
-        const attrs = (f?.attributes ?? {}) as Record<string, any>;
-        const prcl_key = String(attrs.PRCL_KEY ?? "").trim();
-        if (!prcl_key || !f?.geometry) continue;
+        // Per-feature try/catch: a single bad parcel geometry or a
+        // transient Supabase/PostgREST hiccup must NEVER kill the batch.
+        // Everything goes to errors[]; the loop keeps advancing.
+        try {
+          // ESRI JSON shape: features[i] = { attributes, geometry: { rings } }
+          const attrs = (f?.attributes ?? {}) as Record<string, any>;
+          const prcl_key = String(attrs.PRCL_KEY ?? "").trim();
+          if (!prcl_key || !f?.geometry) continue;
 
-        // Convert ESRI rings → GeoJSON. First ring is the outer boundary,
-        // subsequent rings are holes (Esri convention: outer clockwise,
-        // holes counter-clockwise). We wrap it as a MultiPolygon so the
-        // upsert's ST_Multi() is a no-op and geom column stays consistent.
-        const rings = (f.geometry as { rings?: number[][][] })?.rings;
-        if (!Array.isArray(rings) || rings.length === 0) continue;
-        const geomJson = {
-          type: "MultiPolygon",
-          coordinates: [rings],
-        };
+          // Convert ESRI rings → GeoJSON. First ring is the outer boundary,
+          // subsequent rings are holes (Esri convention: outer clockwise,
+          // holes counter-clockwise). We wrap as MultiPolygon so the
+          // upsert's ST_Multi() is a no-op and geom column stays consistent.
+          const rings = (f.geometry as { rings?: number[][][] })?.rings;
+          if (!Array.isArray(rings) || rings.length === 0) continue;
+          const geomJson = {
+            type: "MultiPolygon",
+            coordinates: [rings],
+          };
 
-        // We only pull PRCL_KEY + TAG_VALUE from CSG (the layer 400s on
-        // any other outField). maj_region comes from the local loop
-        // variable — we already know it because that's what we queried
-        // by. min_region + parcel_no + province stay null until we
-        // find field spellings the service will accept.
-        const { error: upErr } = await service.rpc("upsert_parcel", {
-          p_prcl_key: prcl_key,
-          p_parcel_no: null,
-          p_tag_value: attrs.TAG_VALUE ?? null,
-          p_maj_region: town,
-          p_min_region: null,
-          p_province: null,
-          p_geom_json: JSON.stringify(geomJson),
-        });
-        if (upErr) {
-          errors.push(`upsert ${prcl_key}: ${upErr.message}`);
-        } else {
-          importedThisRun++;
+          // We only pull PRCL_KEY + TAG_VALUE from CSG (the layer 400s on
+          // any other outField). maj_region comes from the local loop
+          // variable — we already know it because that's what we queried
+          // by. min_region + parcel_no + province stay null until we
+          // find field spellings the service will accept.
+          const { error: upErr } = await service.rpc("upsert_parcel", {
+            p_prcl_key: prcl_key,
+            p_parcel_no: null,
+            p_tag_value: attrs.TAG_VALUE ?? null,
+            p_maj_region: town,
+            p_min_region: null,
+            p_province: null,
+            p_geom_json: JSON.stringify(geomJson),
+          });
+          if (upErr) {
+            errors.push(`upsert ${prcl_key}: ${upErr.message}`);
+          } else {
+            importedThisRun++;
+          }
+        } catch (e) {
+          const attrs = (f?.attributes ?? {}) as Record<string, any>;
+          const prcl_key = String(attrs?.PRCL_KEY ?? "?");
+          errors.push(`parcel ${prcl_key}: threw ${(e as Error).message}`);
         }
       }
       totalSoFar += features.length;
