@@ -262,10 +262,10 @@ async function run(request: Request) {
           f: "geojson",
           geometryPrecision: GEOMETRY_PRECISION,
           maxAllowableOffset: MAX_ALLOWABLE_OFFSET,
-          // orderByFields makes resultOffset paging deterministic. Without it,
-          // some ArcGIS servers return the same first page repeatedly or drop
-          // rows across pages. PRCL_KEY is unique so this is a stable sort.
-          orderByFields: "PRCL_KEY",
+          // No orderByFields — some ArcGIS Server layers reject
+          // orderBy on non-OBJECTID columns and return an empty page.
+          // The upsert keys on prcl_key, so any accidental page overlap
+          // from the DFFE default order is idempotent.
           resultRecordCount: String(PAGE_SIZE),
           resultOffset: String(offset),
         }).toString();

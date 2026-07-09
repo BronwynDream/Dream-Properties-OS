@@ -98,6 +98,9 @@ export default function CadastreImport() {
   const townIndex = progress?.cursor?.townIndex ?? 0;
   const townTotal = progress?.cursor?.townTotal ?? 0;
   const snapped = progress?.snapped;
+  // "Done · 0 erven" is a failure, not a success. Colour it as a warning
+  // so Bronwyn's eye lands on the expanded warnings block below.
+  const doneEmpty = done && totalSoFar === 0;
 
   return (
     <div style={{ marginTop: 12 }}>
@@ -122,8 +125,18 @@ export default function CadastreImport() {
           style={{
             padding: 12,
             borderRadius: 10,
-            border: `1px solid ${done ? "rgba(31,122,77,0.35)" : "#d7deef"}`,
-            background: done ? "rgba(31,122,77,0.06)" : "#fbfcfe",
+            border: `1px solid ${
+              doneEmpty
+                ? "rgba(200,160,50,0.5)"
+                : done
+                  ? "rgba(31,122,77,0.35)"
+                  : "#d7deef"
+            }`,
+            background: doneEmpty
+              ? "rgba(200,160,50,0.08)"
+              : done
+                ? "rgba(31,122,77,0.06)"
+                : "#fbfcfe",
           }}
         >
           <div
@@ -140,11 +153,11 @@ export default function CadastreImport() {
                 fontSize: 10,
                 letterSpacing: "0.14em",
                 textTransform: "uppercase",
-                color: done ? "#1F7A4D" : "var(--gold)",
+                color: doneEmpty ? "#7A5814" : done ? "#1F7A4D" : "var(--gold)",
                 margin: 0,
               }}
             >
-              {done ? "Done" : "Importing"}
+              {doneEmpty ? "Done · check warnings" : done ? "Done" : "Importing"}
             </p>
             <span
               style={{
@@ -225,14 +238,36 @@ export default function CadastreImport() {
           )}
 
           {progress?.errors && progress.errors.length > 0 && (
-            <details style={{ marginTop: 6, fontSize: 11, color: "#8090b5" }}>
-              <summary style={{ cursor: "pointer" }}>
+            <details
+              open
+              style={{ marginTop: 8, fontSize: 11, color: "#8090b5" }}
+            >
+              <summary style={{ cursor: "pointer", fontWeight: 600 }}>
                 {progress.errors.length} warning
                 {progress.errors.length === 1 ? "" : "s"}
               </summary>
-              <ul style={{ margin: "6px 0 0 14px", padding: 0, lineHeight: 1.4 }}>
+              <ul
+                style={{
+                  margin: "6px 0 0 0",
+                  padding: 0,
+                  listStyle: "none",
+                  fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                  fontSize: 10,
+                  lineHeight: 1.5,
+                  wordBreak: "break-all",
+                }}
+              >
                 {progress.errors.slice(0, 10).map((e, i) => (
-                  <li key={i} style={{ marginBottom: 3 }}>
+                  <li
+                    key={i}
+                    style={{
+                      marginBottom: 6,
+                      padding: "6px 8px",
+                      background: "#f6f8fc",
+                      borderLeft: "2px solid #d7deef",
+                      borderRadius: 4,
+                    }}
+                  >
                     {e}
                   </li>
                 ))}
