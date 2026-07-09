@@ -492,6 +492,11 @@ export default function MapView({
 
   // Toggle draggability + drag-mode class as dragKey changes. Runs after any
   // marker sync so the class always reflects the latest state.
+  //
+  // Side effect: when drag mode ACTIVATES, zoom + centre the map on the pin.
+  // Two reasons: (1) the pin might be barely visible at wide zoom levels, so
+  // dragging it precisely is impossible; (2) auto-zooming makes it obvious
+  // WHICH pin is now moveable, especially when multiple pins overlap.
   useEffect(() => {
     for (const [id, marker] of Object.entries(markersRef.current)) {
       const rp = renderPins.find((r) => r.id === id);
@@ -501,6 +506,16 @@ export default function MapView({
       const el = marker.getElement();
       if (shouldDrag) el.classList.add("dragging");
       else el.classList.remove("dragging");
+    }
+    if (dragKey && mapRef.current) {
+      const target = renderPins.find((r) => r.mergedKey === dragKey);
+      if (target) {
+        mapRef.current.easeTo({
+          center: [target.lng, target.lat],
+          zoom: Math.max(mapRef.current.getZoom(), 17),
+          duration: 500,
+        });
+      }
     }
   }, [dragKey, renderPins]);
 
@@ -1204,35 +1219,69 @@ function PreviewPanel({
               <>
                 <p
                   style={{
-                    margin: "8px 0 12px",
-                    fontSize: 13,
+                    margin: "10px 0 4px",
+                    fontSize: 14,
+                    fontWeight: 600,
                     color: "var(--estuary)",
+                    lineHeight: 1.35,
+                  }}
+                >
+                  Grab the pulsing pin on the map and drag it to the correct
+                  spot.
+                </p>
+                <p
+                  style={{
+                    margin: "0 0 12px",
+                    fontSize: 12,
+                    color: "#7a86a8",
                     lineHeight: 1.4,
                   }}
                 >
-                  Drag the pin on the map to the correct location. It saves
-                  automatically when you release.
+                  It saves automatically when you release. The map is centred
+                  on the pin.
                 </p>
                 <button
                   type="button"
                   className="ghost-dark"
                   onClick={onCancelDrag}
                   disabled={pinPending}
-                  style={{ padding: "8px 14px", fontSize: 13 }}
+                  style={{ padding: "10px 16px", fontSize: 13, minHeight: 40 }}
                 >
                   Cancel
                 </button>
               </>
             ) : (
-              <button
-                type="button"
-                className="ghost-dark"
-                onClick={onStartDrag}
-                disabled={pinPending}
-                style={{ padding: "8px 14px", fontSize: 13, marginTop: 8 }}
-              >
-                {our?.geoManual ? "Re-adjust pin" : "Adjust pin"}
-              </button>
+              <>
+                <p
+                  style={{
+                    margin: "8px 0 10px",
+                    fontSize: 12,
+                    color: "#5b6885",
+                    lineHeight: 1.4,
+                  }}
+                >
+                  {our?.geoManual
+                    ? "Move this pin again if the placement drifted."
+                    : "Drop the pin exactly on the property."}
+                </p>
+                <button
+                  type="button"
+                  className="cta"
+                  onClick={onStartDrag}
+                  disabled={pinPending}
+                  style={{
+                    padding: "11px 18px",
+                    fontSize: 14,
+                    minHeight: 44,
+                    width: "100%",
+                    justifyContent: "center",
+                    display: "inline-flex",
+                    alignItems: "center",
+                  }}
+                >
+                  {our?.geoManual ? "Move pin again" : "Move pin"}
+                </button>
+              </>
             )}
             {pinPending && (
               <p style={{ margin: "8px 0 0", fontSize: 12, color: "#7a86a8" }}>
