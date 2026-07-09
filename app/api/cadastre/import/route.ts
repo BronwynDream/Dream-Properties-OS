@@ -28,15 +28,26 @@ const UA = "DreamOS/1.0 (+dreamproperties.app)";
 // still leaves ~48s for CSG paging, which handles ~4–6 pages of 1000 rows
 // per invocation depending on how quickly CSG responds.
 const TIME_BUDGET_MS = 48_000;
-const CSG_TIMEOUT_MS = 22_000;
+// Raised from 22s so a slow-but-eventually-successful page doesn't abort
+// pointlessly. Still inside TIME_BUDGET_MS with room for the response
+// parse + upsert.
+const CSG_TIMEOUT_MS = 35_000;
 
-// George's parcel geometries are particularly dense and busted the 22s CSG
-// timeout at 500. 250 keeps every response comfortably inside it. The
-// resumable cursor absorbs the extra pages.
-const PAGE_SIZE = 250;
-// Max retries on a single paging fetch before we fail-forward the cursor.
-// Two retries = up to three total attempts per page.
-const PAGE_MAX_RETRIES = 2;
+// George's parcel geometries are dense — dropping page size to 200 combined
+// with the geometry-simplification params on the paging query (below) makes
+// each response a small fraction of what unsimplified paging returned.
+const PAGE_SIZE = 200;
+
+// Timeout retries cross batches — persisted on the cursor as
+// consecutive_fail. When it reaches this many, we advance anyway.
+const MAX_TIMEOUT_RETRIES = 3;
+
+// GeoJSON size shrinks massively when the DFFE service is asked to snap
+// parcel vertices to a coarse grid before returning them. 2 m in degrees
+// (~0.00002 at Knysna latitude) is invisible at any map zoom the layer is
+// rendered at (min 14), and turns a 400 KB page into a ~40 KB one.
+const GEOMETRY_PRECISION = "6";
+const MAX_ALLOWABLE_OFFSET = "0.00002";
 
 // Distinct-value discovery runs one query per keyword and unions the exact
 // MAJ_REGION labels the service actually holds. A single query with several
@@ -149,7 +160,7 @@ async function run(request: Request) {
     // 1. Load cursor.
     const { data: cursorRow, error: cErr } = await service
       .from("cadastral_import_cursor")
-      .select("town_labels, town_index, offset_in_town, total_imported")
+      .select("town_labels, town_index, offset_in_town, total_imported, consecutive_fail")
       .eq("id", true)
       .maybeSingle();
     if (cErr || !cursorRow) {
@@ -162,6 +173,21 @@ async function run(request: Request) {
     let townIndex: number = Number(cursorRow.town_index) || 0;
     let offset: number = Number(cursorRow.offset_in_town) || 0;
     let totalSoFar: number = Number(cursorRow.total_imported) || 0;
+    let consecutiveFail: number = Number((cursorRow as any).consecutive_fail) || 0;
+
+    async function persistCursor(): Promise<string | null> {
+      const { error: perr } = await service
+        .from("cadastral_import_cursor")
+        .update({
+          town_index: townIndex,
+          offset_in_town: offset,
+          total_imported: totalSoFar,
+          consecutive_fail: consecutiveFail,
+          last_ran_at: new Date().toISOString(),
+        })
+        .eq("id", true);
+      return perr ? perr.message : null;
+    }
 
     const errors: string[] = [];
     let importedThisRun = 0;
@@ -217,10 +243,14 @@ async function run(request: Request) {
       if (Date.now() - start > TIME_BUDGET_MS) break;
 
       const town = townLabels[townIndex];
-      // Use LIKE with a wildcard suffix rather than =. Discovery returns the
-      // stored MAJ_REGION string verbatim, but the DFFE service tolerates
-      // trailing whitespace / suffix variants on paging queries only via LIKE.
-      // A single ' is escaped as '' per Postgres/OGC style.
+      // Paging query. Two shape decisions on top of what the DFFE portal
+      // expects:
+      //   - LIKE '<label>%' rather than = '<label>' tolerates trailing
+      //     whitespace / suffix variants the distinct query returns.
+      //   - geometryPrecision + maxAllowableOffset ask the service to
+      //     simplify each parcel polygon before returning it. Payload
+      //     size drops ~10× — a page of 200 that used to be 400 KB
+      //     of raw coords is ~40 KB after grid-snap.
       const url =
         CSG_BASE +
         "?" +
@@ -230,6 +260,8 @@ async function run(request: Request) {
           returnGeometry: "true",
           outSR: "4326",
           f: "geojson",
+          geometryPrecision: GEOMETRY_PRECISION,
+          maxAllowableOffset: MAX_ALLOWABLE_OFFSET,
           // orderByFields makes resultOffset paging deterministic. Without it,
           // some ArcGIS servers return the same first page repeatedly or drop
           // rows across pages. PRCL_KEY is unique so this is a stable sort.
@@ -238,45 +270,80 @@ async function run(request: Request) {
           resultOffset: String(offset),
         }).toString();
 
-      // Retry up to PAGE_MAX_RETRIES times, then FAIL FORWARD — advance the
-      // cursor and log a warning so the auto-loop can't dead-lock on a
-      // slow / broken town. Two failure modes handled the same way:
-      //   - fetch throws / non-2xx  → log HTTP status / thrown message
-      //   - HTTP 200 with ArcGIS error object → log code + message
+      // Single attempt per page. Three failure modes, three behaviours:
+      //   - AbortError (timeout)                → cross-batch retry via
+      //                                            consecutive_fail on cursor;
+      //                                            skip forward only after 3
+      //   - HTTP 4xx/5xx                        → skip forward immediately
+      //   - HTTP 200 with ArcGIS error envelope → skip forward immediately
       let payload: any = null;
-      let fetchError: string | null = null;
-      for (let attempt = 0; attempt <= PAGE_MAX_RETRIES; attempt++) {
-        try {
-          const res = await fetchWithTimeout(url, CSG_TIMEOUT_MS);
-          if (!res.ok) {
-            fetchError = `HTTP ${res.status}`;
-            payload = null;
-            continue;
-          }
+      let errorKind: "timeout" | "http" | "arcgis" | null = null;
+      let errorMsg: string | null = null;
+      try {
+        const res = await fetchWithTimeout(url, CSG_TIMEOUT_MS);
+        if (!res.ok) {
+          errorKind = "http";
+          errorMsg = `HTTP ${res.status}`;
+        } else {
           const raw = await res.json();
           if (raw && typeof raw === "object" && raw.error) {
             const e = raw.error;
-            fetchError =
+            errorKind = "arcgis";
+            errorMsg =
               typeof e === "object"
                 ? `CSG error ${e.code ?? "?"}: ${e.message ?? "unknown"}`
                 : `CSG error ${String(e)}`;
-            payload = null;
-            continue;
+          } else {
+            payload = raw;
           }
-          payload = raw;
-          fetchError = null;
-          break;
-        } catch (e) {
-          fetchError = (e as Error).message;
-          payload = null;
         }
+      } catch (e) {
+        const err = e as Error;
+        // AbortController.abort() raises DOMException with name AbortError.
+        // Some Node versions surface it via the message; be tolerant.
+        const isTimeout =
+          err.name === "AbortError" || /abort/i.test(err.message ?? "");
+        errorKind = isTimeout ? "timeout" : "http";
+        errorMsg = err.message ?? String(err);
       }
 
-      if (fetchError || payload == null) {
-        // Fail forward: never return with the cursor unchanged. If the first
-        // page failed, skip the whole town (chances are the label itself is
-        // bad / the town is broken for us). If a later page failed, skip
-        // just that page — the town might have more parcels waiting.
+      // --- Timeout: cross-batch retry via consecutive_fail. ------------
+      if (errorKind === "timeout") {
+        consecutiveFail += 1;
+        if (consecutiveFail >= MAX_TIMEOUT_RETRIES) {
+          // Give up on this page — advance forward and clear the counter.
+          const before = { townIndex, offset };
+          if (offset === 0) {
+            townIndex++;
+            offset = 0;
+          } else {
+            offset += PAGE_SIZE;
+          }
+          consecutiveFail = 0;
+          errors.push(
+            `${town}@${before.offset}: timeout after ${MAX_TIMEOUT_RETRIES} tries · advanced to ${townIndex >= townLabels.length ? "END" : `${townLabels[townIndex]}@${offset}`}`,
+          );
+          const persistErr = await persistCursor();
+          if (persistErr) {
+            errors.push(`cursor advance failed: ${persistErr}`);
+            break;
+          }
+          continue;
+        }
+        // Still under the retry threshold — persist the fail count and let
+        // the next batch call try the same offset.
+        errors.push(
+          `${town}@${offset}: timeout ${consecutiveFail}/${MAX_TIMEOUT_RETRIES} · will retry next batch`,
+        );
+        const persistErr = await persistCursor();
+        if (persistErr) {
+          errors.push(`cursor timeout-persist failed: ${persistErr}`);
+        }
+        break;
+      }
+
+      // --- HTTP / ArcGIS error: skip forward immediately, reset counter. ---
+      if (errorKind === "http" || errorKind === "arcgis") {
         const before = { townIndex, offset };
         if (offset === 0) {
           townIndex++;
@@ -284,25 +351,20 @@ async function run(request: Request) {
         } else {
           offset += PAGE_SIZE;
         }
+        consecutiveFail = 0;
         errors.push(
-          `${town}@${before.offset}: ${fetchError ?? "no payload"} after ${PAGE_MAX_RETRIES + 1} attempts · advanced to ${townIndex >= townLabels.length ? "END" : `${townLabels[townIndex]}@${offset}`}`,
+          `${town}@${before.offset}: ${errorMsg} · advanced to ${townIndex >= townLabels.length ? "END" : `${townLabels[townIndex]}@${offset}`}`,
         );
-        // Persist the advance so the next batch doesn't retry the same offset.
-        const { error: persistErr } = await service
-          .from("cadastral_import_cursor")
-          .update({
-            town_index: townIndex,
-            offset_in_town: offset,
-            total_imported: totalSoFar,
-            last_ran_at: new Date().toISOString(),
-          })
-          .eq("id", true);
+        const persistErr = await persistCursor();
         if (persistErr) {
-          errors.push(`cursor advance failed: ${persistErr.message}`);
+          errors.push(`cursor advance failed: ${persistErr}`);
           break;
         }
         continue;
       }
+
+      // --- Success: clear consecutive_fail if it was set. ------------------
+      if (consecutiveFail !== 0) consecutiveFail = 0;
 
       const features: any[] = Array.isArray(payload?.features) ? payload.features : [];
 
@@ -315,17 +377,9 @@ async function run(request: Request) {
         );
         townIndex++;
         offset = 0;
-        const { error: persistErr } = await service
-          .from("cadastral_import_cursor")
-          .update({
-            town_index: townIndex,
-            offset_in_town: offset,
-            total_imported: totalSoFar,
-            last_ran_at: new Date().toISOString(),
-          })
-          .eq("id", true);
+        const persistErr = await persistCursor();
         if (persistErr) {
-          errors.push(`cursor advance failed: ${persistErr.message}`);
+          errors.push(`cursor advance failed: ${persistErr}`);
           break;
         }
         continue;
@@ -367,19 +421,11 @@ async function run(request: Request) {
       } else {
         offset += PAGE_SIZE;
       }
-      const { error: pageWriteErr } = await service
-        .from("cadastral_import_cursor")
-        .update({
-          town_index: townIndex,
-          offset_in_town: offset,
-          total_imported: totalSoFar,
-          last_ran_at: new Date().toISOString(),
-        })
-        .eq("id", true);
-      if (pageWriteErr) {
+      const persistErr2 = await persistCursor();
+      if (persistErr2) {
         // If the cursor can't advance, every batch will replay the same page
         // — the "batch 17 · 0 erven" false-progress state. Bail loud instead.
-        errors.push(`cursor advance failed: ${pageWriteErr.message}`);
+        errors.push(`cursor advance failed: ${persistErr2}`);
         break;
       }
     }
