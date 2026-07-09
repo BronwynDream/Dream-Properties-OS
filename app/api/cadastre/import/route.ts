@@ -184,7 +184,7 @@ async function run(request: Request) {
       townLabels = labels;
       townIndex = 0;
       offset = 0;
-      await service
+      const { error: labelWriteErr } = await service
         .from("cadastral_import_cursor")
         .update({
           town_labels: townLabels,
@@ -193,6 +193,18 @@ async function run(request: Request) {
           last_ran_at: new Date().toISOString(),
         })
         .eq("id", true);
+      if (labelWriteErr) {
+        // If we can't persist the discovered labels, every subsequent batch
+        // will re-run discovery (~30–50s each) and never advance. Fail loud.
+        return NextResponse.json(
+          {
+            ok: false,
+            error: `cursor label write failed: ${labelWriteErr.message}`,
+            discoveredLabels: townLabels,
+          },
+          { status: 500 },
+        );
+      }
     }
 
     // 3. Loop through towns paging by PAGE_SIZE until the time budget is exhausted.
@@ -243,7 +255,7 @@ async function run(request: Request) {
           typeof err === "object"
             ? `${err.code ?? "?"}: ${err.message ?? "unknown"}${err.details ? ` — ${JSON.stringify(err.details).slice(0, 200)}` : ""}`
             : String(err);
-        errors.push(`${town}@${offset}: CSG error ${msg}`);
+        errors.push(`${town}@${offset}: CSG error ${msg} · URL: ${url}`);
         break;
       }
 
@@ -251,12 +263,17 @@ async function run(request: Request) {
 
       // Empty first page is a red flag — the town label matched discovery but
       // paging says the town has no parcels, which shouldn't happen for real
-      // Garden Route towns. Log it and skip to the next town so the run
-      // doesn't loop forever on a bad label.
+      // Garden Route towns. Include the actual URL + a snippet of the payload
+      // so we can diagnose (missing 'features', ESRI-style attrs vs GeoJSON
+      // properties, exceededTransferLimit signal, ...) then BREAK instead
+      // of churning through the remaining towns — one bad first page is
+      // almost certainly a query problem that will repeat for every town.
       if (features.length === 0 && offset === 0) {
+        const snippet = JSON.stringify(payload ?? {}, null, 0).slice(0, 400);
         errors.push(
-          `${town}@${offset}: 0 features on first page (payload keys: ${Object.keys(payload ?? {}).join(",")})`,
+          `${town}@${offset}: 0 features on first page. URL: ${url} · payload keys: ${Object.keys(payload ?? {}).join(",")} · snippet: ${snippet}`,
         );
+        break;
       }
       for (const f of features) {
         const props = (f?.properties ?? {}) as Record<string, any>;
@@ -295,7 +312,7 @@ async function run(request: Request) {
       } else {
         offset += PAGE_SIZE;
       }
-      await service
+      const { error: pageWriteErr } = await service
         .from("cadastral_import_cursor")
         .update({
           town_index: townIndex,
@@ -304,6 +321,12 @@ async function run(request: Request) {
           last_ran_at: new Date().toISOString(),
         })
         .eq("id", true);
+      if (pageWriteErr) {
+        // If the cursor can't advance, every batch will replay the same page
+        // — the "batch 17 · 0 erven" false-progress state. Bail loud instead.
+        errors.push(`cursor advance failed: ${pageWriteErr.message}`);
+        break;
+      }
     }
 
     const done = townIndex >= townLabels.length;
