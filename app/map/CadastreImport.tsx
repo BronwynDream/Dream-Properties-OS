@@ -47,8 +47,9 @@ export default function CadastreImport() {
     };
   }, []);
 
-  async function runOne(): Promise<ImportResponse> {
-    const res = await fetch("/api/cadastre/import", {
+  async function runOne(reset: boolean): Promise<ImportResponse> {
+    const url = reset ? "/api/cadastre/import?reset=1" : "/api/cadastre/import";
+    const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
     });
@@ -59,9 +60,9 @@ export default function CadastreImport() {
     return json;
   }
 
-  async function start() {
+  async function start(freshRun: boolean) {
     setErr(null);
-    setProgress(null);
+    if (freshRun) setProgress(null);
     setBatches(0);
     setRunning(true);
     cancelRef.current = false;
@@ -69,7 +70,9 @@ export default function CadastreImport() {
     try {
       for (let i = 0; i < 200; i++) {
         if (cancelRef.current) break;
-        const step = await runOne();
+        // Reset only on the very first call of a fresh run — Resume keeps
+        // the existing cursor so mid-town progress isn't thrown away.
+        const step = await runOne(freshRun && i === 0);
         setProgress(step);
         setBatches((n) => n + 1);
         if (step.done) {
@@ -101,7 +104,7 @@ export default function CadastreImport() {
         <button
           type="button"
           className="ghost-dark"
-          onClick={start}
+          onClick={() => start(true)}
           style={{
             width: "100%",
             padding: "8px 12px",
@@ -233,7 +236,7 @@ export default function CadastreImport() {
               <button
                 type="button"
                 className="ghost-dark"
-                onClick={start}
+                onClick={() => start(false)}
                 style={{
                   flex: 1,
                   padding: "6px 10px",

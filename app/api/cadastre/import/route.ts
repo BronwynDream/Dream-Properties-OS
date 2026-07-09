@@ -30,6 +30,24 @@ const UA = "DreamOS/1.0 (+dreamproperties.app)";
 const TIME_BUDGET_MS = 48_000;
 const CSG_TIMEOUT_MS = 22_000;
 
+// Geometry-heavy GeoJSON pages of 1000 erven regularly bust the 22s CSG
+// timeout — 500 keeps every response comfortably inside it. The resumable
+// cursor handles the extra pages.
+const PAGE_SIZE = 500;
+
+// Distinct-value discovery runs one query per keyword and unions the exact
+// MAJ_REGION labels the service actually holds. A single query with several
+// ORed LIKE clauses returns empty on the DFFE portal (confirmed live), so
+// per-keyword is the reliable shape.
+const TOWN_KEYWORDS = [
+  "KNYSNA",
+  "SEDGEFIELD",
+  "PLETT",
+  "GEORGE",
+  "WILDERNESS",
+  "GREAT BRAK RIVER",
+];
+
 // Bounded per-fetch timeout so a slow CSG call can't burn the whole budget.
 async function fetchWithTimeout(url: string, ms: number): Promise<Response> {
   const ac = new AbortController();
@@ -98,6 +116,31 @@ async function run(request: Request) {
     const service = createServiceClient();
     const start = Date.now();
 
+    // 0. ?reset=1 wipes the cursor before we look at it. Lets the admin
+    //    force a clean run when the previous cursor is stale — for
+    //    example after a failed town-discovery that only landed empty
+    //    labels, or after CSG updates their parcel set.
+    const reqUrl = new URL(request.url);
+    const wantsReset = reqUrl.searchParams.get("reset") === "1";
+    if (wantsReset) {
+      const { error: resetErr } = await service
+        .from("cadastral_import_cursor")
+        .update({
+          town_labels: [],
+          town_index: 0,
+          offset_in_town: 0,
+          total_imported: 0,
+          last_ran_at: new Date().toISOString(),
+        })
+        .eq("id", true);
+      if (resetErr) {
+        return NextResponse.json(
+          { ok: false, error: `cursor reset failed: ${resetErr.message}` },
+          { status: 500 },
+        );
+      }
+    }
+
     // 1. Load cursor.
     const { data: cursorRow, error: cErr } = await service
       .from("cadastral_import_cursor")
@@ -120,29 +163,39 @@ async function run(request: Request) {
 
     // 2. Discover town labels on first run.
     if (townLabels.length === 0) {
+      let labels: string[];
       try {
-        const labels = await discoverTownLabels();
-        townLabels = labels;
-        townIndex = 0;
-        offset = 0;
-        await service
-          .from("cadastral_import_cursor")
-          .update({
-            town_labels: townLabels,
-            town_index: 0,
-            offset_in_town: 0,
-            last_ran_at: new Date().toISOString(),
-          })
-          .eq("id", true);
+        labels = await discoverTownLabels();
       } catch (e) {
         return NextResponse.json(
           { ok: false, error: `town discovery failed: ${(e as Error).message}` },
           { status: 502 },
         );
       }
+      // Empty result means the CSG service accepted our query but returned
+      // no MAJ_REGION strings — a genuine failure, not a completed import.
+      // Refuse to write a done-looking cursor so the failure is loud.
+      if (labels.length === 0) {
+        return NextResponse.json(
+          { ok: false, error: "CSG town discovery returned no labels" },
+          { status: 502 },
+        );
+      }
+      townLabels = labels;
+      townIndex = 0;
+      offset = 0;
+      await service
+        .from("cadastral_import_cursor")
+        .update({
+          town_labels: townLabels,
+          town_index: 0,
+          offset_in_town: 0,
+          last_ran_at: new Date().toISOString(),
+        })
+        .eq("id", true);
     }
 
-    // 3. Loop through towns paging by 1000 until the time budget is exhausted.
+    // 3. Loop through towns paging by PAGE_SIZE until the time budget is exhausted.
     while (townIndex < townLabels.length) {
       if (Date.now() - start > TIME_BUDGET_MS) break;
 
@@ -156,7 +209,7 @@ async function run(request: Request) {
           returnGeometry: "true",
           outSR: "4326",
           f: "geojson",
-          resultRecordCount: "1000",
+          resultRecordCount: String(PAGE_SIZE),
           resultOffset: String(offset),
         }).toString();
 
@@ -205,11 +258,11 @@ async function run(request: Request) {
       totalSoFar += features.length;
 
       // Advance the cursor. Persist per-town so a mid-town abort is safe.
-      if (features.length < 1000) {
+      if (features.length < PAGE_SIZE) {
         townIndex++;
         offset = 0;
       } else {
-        offset += 1000;
+        offset += PAGE_SIZE;
       }
       await service
         .from("cadastral_import_cursor")
@@ -274,32 +327,58 @@ async function run(request: Request) {
 }
 
 // -----------------------------------------------------------------------------
-// Discover exact town labels (MAJ_REGION strings). CSG stores towns as
-// uppercase names; the wildcard match catches variants like "PLETT" vs
-// "PLETTENBERG BAY" so we import whichever the service actually holds.
+// Discover exact town labels (MAJ_REGION strings) — one distinct query per
+// keyword. The DFFE portal rejects a single query with several ORed LIKE
+// clauses (returns an empty feature list), so we page over TOWN_KEYWORDS
+// and union the labels each keyword yields.
+//
+// returnGeometry=false is mandatory or the service refuses DISTINCT.
 // -----------------------------------------------------------------------------
 async function discoverTownLabels(): Promise<string[]> {
-  const url =
-    CSG_BASE +
-    "?" +
-    new URLSearchParams({
-      returnDistinctValues: "true",
-      outFields: "MAJ_REGION",
-      where:
-        "MAJ_REGION LIKE '%KNYSNA%' OR MAJ_REGION LIKE '%SEDGEFIELD%' OR MAJ_REGION LIKE '%PLETT%' OR MAJ_REGION LIKE '%GEORGE%'",
-      returnGeometry: "false",
-      f: "json",
-    }).toString();
-
-  const res = await fetchWithTimeout(url, CSG_TIMEOUT_MS);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const json = (await res.json()) as {
-    features?: { attributes?: Record<string, string> }[];
-  };
   const set = new Set<string>();
-  for (const f of json.features ?? []) {
-    const label = f?.attributes?.MAJ_REGION;
-    if (typeof label === "string" && label.trim().length > 0) set.add(label.trim());
+
+  for (const keyword of TOWN_KEYWORDS) {
+    const url =
+      CSG_BASE +
+      "?" +
+      new URLSearchParams({
+        returnDistinctValues: "true",
+        outFields: "MAJ_REGION",
+        where: `MAJ_REGION LIKE '%${keyword.replace(/'/g, "''")}%'`,
+        returnGeometry: "false",
+        f: "json",
+      }).toString();
+
+    let res: Response;
+    try {
+      res = await fetchWithTimeout(url, CSG_TIMEOUT_MS);
+    } catch (e) {
+      // A single keyword timing out shouldn't take the whole discovery
+      // down — keep going, we'll union what other keywords return.
+      // eslint-disable-next-line no-console
+      console.warn(`[cadastre] discovery(${keyword}) fetch: ${(e as Error).message}`);
+      continue;
+    }
+    if (!res.ok) {
+      // eslint-disable-next-line no-console
+      console.warn(`[cadastre] discovery(${keyword}) HTTP ${res.status}`);
+      continue;
+    }
+    let json: { features?: { attributes?: Record<string, string> }[] };
+    try {
+      json = await res.json();
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn(`[cadastre] discovery(${keyword}) parse: ${(e as Error).message}`);
+      continue;
+    }
+    for (const f of json.features ?? []) {
+      const label = f?.attributes?.MAJ_REGION;
+      if (typeof label === "string" && label.trim().length > 0) {
+        set.add(label.trim());
+      }
+    }
   }
+
   return Array.from(set).sort();
 }
