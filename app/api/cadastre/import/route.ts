@@ -237,20 +237,19 @@ async function run(request: Request) {
       if (Date.now() - start > TIME_BUDGET_MS) break;
 
       const town = townLabels[townIndex];
-      // Paging query — matches the confirmed-working DFFE curl shape:
-      //   MAJ_REGION='<label>'  (equality; discovery already trims labels)
-      //   outFields=PRCL_KEY,TAG_VALUE,MAJ_REGION,MIN_REGION
-      // Dropped PARCEL_NO and PROVINCE — those field names caused HTTP 400
-      // "Failed to execute query" on the DFFE layer (they may not exist or
-      // aren't queryable via `outFields`). The upsert leaves them null.
-      // No geometryPrecision / maxAllowableOffset / orderByFields — all
-      // three cause 400s on this endpoint.
+      // Paging query — matches Bronwyn's confirmed-working DFFE curl
+      // outFields EXACTLY: PRCL_KEY, TAG_VALUE. MAJ_REGION and MIN_REGION
+      // still caused HTTP 400 "Failed to execute query" — the DFFE layer
+      // rejects them from outFields even though it accepts them in WHERE.
+      // We know the town locally; feed it to the upsert as maj_region.
+      // min_region / parcel_no / province become null until we find a
+      // field spelling the service accepts.
       const url =
         CSG_BASE +
         "?" +
         new URLSearchParams({
           where: `MAJ_REGION='${town.replace(/'/g, "''")}'`,
-          outFields: "PRCL_KEY,TAG_VALUE,MAJ_REGION,MIN_REGION",
+          outFields: "PRCL_KEY,TAG_VALUE",
           returnGeometry: "true",
           outSR: "4326",
           f: "geojson",
@@ -385,13 +384,18 @@ async function run(request: Request) {
           continue;
         }
 
+        // We only pull PRCL_KEY + TAG_VALUE from CSG (the layer 400s on
+        // any other outField). maj_region comes from the local loop
+        // variable — we already know it because that's what we queried
+        // by. min_region + parcel_no + province stay null until we
+        // find field spellings the service will accept.
         const { error: upErr } = await service.rpc("upsert_parcel", {
           p_prcl_key: prcl_key,
-          p_parcel_no: props.PARCEL_NO ?? null,
+          p_parcel_no: null,
           p_tag_value: props.TAG_VALUE ?? null,
-          p_maj_region: props.MAJ_REGION ?? null,
-          p_min_region: props.MIN_REGION ?? null,
-          p_province: props.PROVINCE ?? null,
+          p_maj_region: town,
+          p_min_region: null,
+          p_province: null,
           p_geom_json: JSON.stringify(geomJson),
         });
         if (upErr) {
