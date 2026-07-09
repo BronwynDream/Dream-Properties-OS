@@ -237,19 +237,20 @@ async function run(request: Request) {
       if (Date.now() - start > TIME_BUDGET_MS) break;
 
       const town = townLabels[townIndex];
-      // Paging query. Matches the confirmed-working DFFE shape:
-      //   - LIKE '<label>%' tolerates trailing whitespace / suffix variants.
-      //   - No geometryPrecision or maxAllowableOffset — DFFE rejects both
-      //     with HTTP 400 "Failed to execute query" (confirmed live).
-      //   - No orderByFields — the layer rejects orderBy on non-OBJECTID.
-      //     Upsert keys on prcl_key so any accidental page overlap is
-      //     idempotent.
+      // Paging query — matches the confirmed-working DFFE curl shape:
+      //   MAJ_REGION='<label>'  (equality; discovery already trims labels)
+      //   outFields=PRCL_KEY,TAG_VALUE,MAJ_REGION,MIN_REGION
+      // Dropped PARCEL_NO and PROVINCE — those field names caused HTTP 400
+      // "Failed to execute query" on the DFFE layer (they may not exist or
+      // aren't queryable via `outFields`). The upsert leaves them null.
+      // No geometryPrecision / maxAllowableOffset / orderByFields — all
+      // three cause 400s on this endpoint.
       const url =
         CSG_BASE +
         "?" +
         new URLSearchParams({
-          where: `MAJ_REGION LIKE '${town.replace(/'/g, "''")}%'`,
-          outFields: "PARCEL_NO,TAG_VALUE,MAJ_REGION,MIN_REGION,PROVINCE,PRCL_KEY",
+          where: `MAJ_REGION='${town.replace(/'/g, "''")}'`,
+          outFields: "PRCL_KEY,TAG_VALUE,MAJ_REGION,MIN_REGION",
           returnGeometry: "true",
           outSR: "4326",
           f: "geojson",
