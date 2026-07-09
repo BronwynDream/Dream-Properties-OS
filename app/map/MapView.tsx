@@ -152,6 +152,10 @@ export default function MapView({
   );
   const [splitDupes, setSplitDupes] = useState(false);
   const [basemap, setBasemap] = useState<BasemapId>("satellite");
+  // Mobile-only: rail as a bottom sheet. Desktop CSS makes this state a no-op
+  // (the rail is always visible at ≥901px), but it's cheap to keep both
+  // branches driven from one flag.
+  const [mobileRailOpen, setMobileRailOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [geocodeMsg, setGeocodeMsg] = useState<string | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
@@ -452,7 +456,20 @@ export default function MapView({
 
   return (
     <div className="map-shell">
-      <aside className="map-rail">
+      <aside className={`map-rail${mobileRailOpen ? " mobile-open" : ""}`}>
+        {/* Mobile-only bottom-sheet handle. Hidden on desktop via CSS. */}
+        <button
+          type="button"
+          className="map-rail-handle"
+          aria-expanded={mobileRailOpen}
+          aria-label={mobileRailOpen ? "Close controls" : "Open controls"}
+          onClick={() => setMobileRailOpen((v) => !v)}
+        >
+          <span className="map-rail-handle-grip" aria-hidden />
+          <span className="map-rail-handle-text">
+            {mobileRailOpen ? "Close" : "Filters & listings"}
+          </span>
+        </button>
         <section>
           <h3>Basemap</h3>
           <div className="basemap-tabs">

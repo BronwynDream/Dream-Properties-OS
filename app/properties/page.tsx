@@ -69,14 +69,18 @@ export default async function PropertiesList() {
             <tbody>
               {props.map((p) => (
                 <tr key={p.id}>
-                  <td className="strong">
+                  <td className="strong" data-label="Address">
                     <Link href={`/properties/${p.id}`} className="row-link">
                       {p.primary_address}
                     </Link>
                   </td>
-                  <td>{p.suburb?.name ?? "—"}</td>
-                  <td className="mono" style={{ fontSize: 12 }}>{p.title_deed_no ?? "—"}</td>
-                  <td>{p.extent_sqm ? `${p.extent_sqm} m²` : "—"}</td>
+                  <td data-label="Suburb">{p.suburb?.name ?? "—"}</td>
+                  <td className="mono" style={{ fontSize: 12 }} data-label="Erf / Deed">
+                    {p.title_deed_no ?? "—"}
+                  </td>
+                  <td data-label="Extent">
+                    {p.extent_sqm ? `${p.extent_sqm} m²` : "—"}
+                  </td>
                 </tr>
               ))}
             </tbody>

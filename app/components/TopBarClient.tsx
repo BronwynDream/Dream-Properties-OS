@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 
 type Tab = { href: string; label: string; adminOnly?: boolean };
 
@@ -23,10 +24,35 @@ export default function TopBarClient({
 }) {
   const path = usePathname();
   const isAdmin = role === "admin";
+  const visibleTabs = TABS.filter((t) => !t.adminOnly || isAdmin);
+
+  // Drawer state is mobile-only functionally — on desktop the CSS pins the
+  // drawer offscreen and the hamburger button is display: none, so this state
+  // does nothing to the rendered UI. That's why we don't gate it behind a
+  // matchMedia hook.
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  // Auto-close the drawer whenever the route changes so a tab tap doesn't
+  // leave the overlay hanging.
+  useEffect(() => {
+    setDrawerOpen(false);
+  }, [path]);
 
   return (
     <header className="topbar">
       <div className="topbar-inner">
+        <button
+          type="button"
+          className="topbar-hamburger"
+          aria-label={drawerOpen ? "Close menu" : "Open menu"}
+          aria-expanded={drawerOpen}
+          onClick={() => setDrawerOpen((v) => !v)}
+        >
+          <span className="topbar-hamburger-bar" />
+          <span className="topbar-hamburger-bar" />
+          <span className="topbar-hamburger-bar" />
+        </button>
+
         <Link href="/dashboard" className="topbar-brand">
           <span className="topbar-brand-mark" aria-hidden>D</span>
           <span className="topbar-brand-text">
@@ -36,7 +62,7 @@ export default function TopBarClient({
         </Link>
 
         <nav className="topbar-nav" aria-label="Primary">
-          {TABS.filter((t) => !t.adminOnly || isAdmin).map((t) => {
+          {visibleTabs.map((t) => {
             const active = path === t.href || path.startsWith(t.href + "/");
             return (
               <Link
@@ -64,6 +90,39 @@ export default function TopBarClient({
         </div>
       </div>
       <div className="topbar-tideline" aria-hidden />
+
+      {/* Mobile-only slide-down drawer. The scrim closes it when tapped; the
+          inner nav catches its own clicks so links still fire. */}
+      <div
+        className={`topbar-drawer${drawerOpen ? " on" : ""}`}
+        aria-hidden={!drawerOpen}
+        onClick={() => setDrawerOpen(false)}
+      >
+        <nav
+          className="topbar-drawer-nav"
+          aria-label="Primary (mobile)"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {visibleTabs.map((t) => {
+            const active = path === t.href || path.startsWith(t.href + "/");
+            return (
+              <Link
+                key={t.href}
+                href={t.href}
+                className={
+                  active
+                    ? "topbar-drawer-tab topbar-drawer-tab-on"
+                    : "topbar-drawer-tab"
+                }
+                aria-current={active ? "page" : undefined}
+                onClick={() => setDrawerOpen(false)}
+              >
+                {t.label}
+              </Link>
+            );
+          })}
+        </nav>
+      </div>
     </header>
   );
 }
