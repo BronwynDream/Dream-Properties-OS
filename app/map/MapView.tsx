@@ -7,7 +7,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { geocodeMissingProperties, savePropertyPin } from "./actions";
 import RefreshDreamButton from "./RefreshDreamButton";
-import CadastreImport from "./CadastreImport";
 
 export type MapProperty = {
   id: string;
@@ -766,7 +765,6 @@ export default function MapView({
             </span>
           </label>
 
-          {isAdmin && <CadastreImport />}
           {isAdmin && <RefreshDreamButton />}
         </section>
 
