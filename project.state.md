@@ -4,7 +4,215 @@ Running log of what's decided, built, and next. Updated at the end of each worki
 session. `PROJECT.md` remains the canonical business/design doc; this file is the
 "where are we right now" companion.
 
-_Last updated: 2026-07-08 evening_
+_Last updated: 2026-07-10 morning_
+
+---
+
+## CADASTRE MARATHON: CSG → VECTOR TILES → SNAP (2026-07-09 → 2026-07-10)
+
+**The map now has erf boundaries.** Every property record has a
+`prcl_key` bridge to a specific parcel in the SA Chief Surveyor
+General cadastre. The whole pipeline — CSG import, MVT tile server,
+Mapbox vector layer, coordinate snap — is live and rendering navy erf
+outlines with parcel-number labels over the satellite basemap.
+
+75,745 parcels imported for the KNYSNA + GEORGE magisterial districts
+(the pre-1994 admin regions that CSG uses — KNYSNA covers Knysna town,
+Sedgefield, Rheenendal, wider Garden Route). 7,156 of them cluster on
+Leisure Isle. Every listing now bridges to a specific erf via
+`external_listing.prcl_key`; every future Lightstone lookup can key
+off the same identifier.
+
+### Adjust pin + move-pin UX (start of arc, 2026-07-09 morning)
+- **`0027_property_geo_manual.sql`** — `property.geo_manual boolean
+  default false`. Every automated geocoder now filters
+  `.eq("geo_manual", false)` so a hand-placed pin can never be
+  clobbered.
+- **`savePropertyPin(propertyId, lng, lat)`** admin action + drag-mode
+  wiring in MapView: dragKey / pinPropertyIdRef / handlePinDropRef so
+  the persistent `dragend` handler on the Mapbox marker reads current
+  state without stale closures. `router.refresh()` after successful
+  save.
+- Preview panel gains a **Pin location** section with the `Move pin`
+  CTA (renamed from Adjust pin — the whole action, not the intended
+  outcome). Restyled as full-width navy CTA, 44px min-height. On drag
+  entry the map `easeTo`s the pin at zoom 17 so it's unmistakable
+  which pin is grabbable. The dragging pin pulses (1.4s gold ring,
+  respects reduced-motion).
+- Adjusted pins get a small gold dot on the marker badge + a "PIN
+  ADJUSTED" chip in the preview so admins can see hand-placed pins at
+  a glance.
+
+### Erf-boundary layer shipped end-to-end
+- **`0028_cadastral_parcel.sql`** (recorded — user applied) — table +
+  `parcel_mvt(z,x,y)` function returning MVT bytea via ST_AsMVT.
+- **`0029_cadastre_import_and_snap.sql`** — `cadastral_import_cursor`
+  singleton, `upsert_parcel(...)` RPC (GeoJSON → PostGIS),
+  `snap_all_to_parcels()` RPC (bulk ST_Contains + centroid update,
+  respects `geo_manual=true`), `property.prcl_key` +
+  `external_listing.prcl_key` + `external_listing.geo_manual`.
+- **`0030_cadastre_consecutive_fail.sql`** — one column on the cursor
+  for cross-batch timeout retries.
+- **`0031_upsert_parcel_int_cast.sql`** — `nullif(p_parcel_no, '')::int`
+  inside the function so the text parameter casts cleanly to the int
+  column. Fixed the "every upsert rejects" state.
+- **`/api/cadastre/import`** — resumable, cursor-driven, admin session
+  OR bearer auth. Per-keyword discovery, empty-first-page skip, fail-
+  forward on HTTP + ArcGIS errors, cross-batch timeout retry via
+  `consecutive_fail`, per-parcel try/catch (one bad ring can't kill a
+  batch), skip-town after 5 consecutive HTTP fails (stops runaway
+  offset increments past a town's data), `?peek=1` returns current
+  cursor state without any work, `?reset=1` wipes cursor for a clean
+  restart.
+- **`/api/tiles/parcels/[z]/[x]/[y]`** — MVT server via
+  `parcel_mvt(z,x,y)` RPC. Handles Supabase bytea in base64 or `\x`-
+  prefix hex. Returns 204 below z=14 and for empty tiles.
+  `Cache-Control: public, max-age=86400, s-maxage=86400`.
+- **`/api/cadastre/snap`** — standalone admin trigger for
+  `snap_all_to_parcels()`.
+- **MapView "Erf boundaries" toggle** — vector source pointing at
+  `${origin}/api/tiles/parcels/{z}/{x}/{y}` (absolute URL — Mapbox
+  picks this up more reliably than a path-only string), fill + line +
+  label sub-layers, styledata re-install on basemap swap. Navy fill @
+  12%, navy lines @ 95% opacity 1-3px width (bumped from muted gold
+  after Bronwyn tested and saw nothing; gold + satellite basemap was
+  invisible), white text labels with navy halo for TAG_VALUE at z≥17.
+
+### `CadastreImport` panel (map rail, admin-only)
+- Compact panel under the Sources chips: idle → **Import cadastre**
+  button; running → batch counter + total erven + current town @
+  offset + Stop / Cancel; done → green totals + snap results +
+  Dismiss.
+- Peek on mount via `?peek=1` so a `router.refresh()` from an unrelated
+  action (Adjust pin save, Refresh Dream listings) can't hide the
+  in-flight cursor and trick the admin into clicking a fresh-start
+  button that wipes 11k erven of progress.
+- "Done · check warnings" gold state when totalSoFar === 0 && done —
+  visually distinct from real success.
+- Auto-open `<details>` on warnings with URL + payload snippet, monospace
+  cards with word-break so long ArcGIS error strings are readable.
+
+### DFFE-specific quirks we had to unstick
+The DFFE portal's ArcGIS Server layer rejects a lot of standard params
+that other services accept. Notes for future adapters:
+  - `f=geojson` + `returnGeometry=true` → HTTP 200 with
+    `{ error: { code: 400 } }` inside. Use `f=json` and convert ESRI
+    rings to GeoJSON MultiPolygon client-side.
+  - `geometryPrecision`, `maxAllowableOffset`, `orderByFields` on
+    non-OBJECTID columns → HTTP 400. Drop all three.
+  - `outFields` accepts `PRCL_KEY`, `TAG_VALUE`, `MAJ_REGION` (in
+    WHERE only, not outFields — weirdly). `PARCEL_NO`, `MIN_REGION`,
+    `PROVINCE` return 400 when queried. Feed `maj_region` from the
+    local `town` variable on upsert instead.
+  - Distinct-value discovery works with `f=json + returnGeometry=false`,
+    fails otherwise.
+  - GeoJSON output for paged queries breaks silently past ~offset
+    (town-record-count); we skip the town after 5 consecutive HTTP
+    fails since DFFE returns network errors when offset exceeds data.
+
+### Same-house merge (dedup enhancements)
+- `dedup.ts` `Row` + `Prop` types gain `prcl_key`. External listings
+  sharing a `prcl_key` cluster into the same dedup group.
+  `matchFor(row)` ladder is now:
+  `lightstone_id → prcl_key → normalised address exact →
+  token-subset → geo-proximity`.
+- Token-subset match: `"19 glenview" ⊆ "19 glenview road the heads"`
+  triggers a match. Requires at least one house-number-shaped token
+  so "the heads" alone can't latch onto every Heads property.
+- **Map merge** collapses a matched external listing into its
+  property's pin even when the property has no coords of its own —
+  seeds the merged pin at the listing's coordinate. No more phantom
+  market pin at the same address as a real record.
+
+### Mobile responsive pass (2026-07-09 midday)
+Field agents work off phones. Three screens hardened for ≤900px:
+- **TopBar** collapses to a hamburger + slide-down drawer at ≤768px.
+- **Map** rail becomes a fixed-position bottom sheet with a 56px peek
+  handle. Preview panel goes from right-slide-in to full-width bottom
+  sheet at 82vh with a 44px close control.
+- **Properties list** table transforms into per-row cards via
+  `display: block` + `td[data-label]::before` at ≤640px.
+- Property Record: cadastral strip wraps to 2-up, header status chip
+  stacks below title, photo tiles rescale.
+- Viewport pinned in `app/layout.tsx` (`export const viewport`) so iOS
+  Safari can't fall back to 980px or auto-zoom on input focus.
+
+### Dream scraper geocode refinements (queued from prior arc)
+Also shipped in this window (2026-07-09 midday, before the cadastre
+push):
+- Filename cleaner strips WordPress `-scaled`, `-eNNNNNN`, resize
+  dimensions `-NNNxNNN`, and trailing photo index. Original uploads
+  sort before resized variants so the pin picture stays sharp.
+- `anchorForGardenRoute(address, suburb?)` replaces `anchorForKnysna`.
+- Region-guard: bbox lat -34.20 to -33.65, lng 22.30 to 23.60.
+- Centroid fallback for known estates (Pezula, Thesen, Simola,
+  Eastford, Brenton, etc.) when Mapbox fails or returns out-of-bbox.
+- One-time cleanup on every refresh nulls historical out-of-bbox
+  coords. Explicit null-on-park so stale in-box pins can't survive.
+- Refresh Dream listings button in the map rail (admin only).
+- DW pins recoloured to Dream navy.
+
+### Property intake email + Team screen (2026-07-08 evening, folded in)
+- Postmark inbound webhook `/api/intake/email` with URL-token auth.
+  Subject-prefix router: `Property:` / `Client:` / no-prefix.
+  Fuzzy-match RPCs `match_property_by_address` + `match_party_by_name`
+  so re-forwarded emails attach to existing records instead of
+  duplicating. Migrations 0022 (source + postmark_message_id, view
+  refresh), 0023 (party_id + fuzzy RPCs).
+- **`/team`** screen (0024 `job_title` + `phone` on `app_user`,
+  `roles.ts` with Dream tone `admin → "Director"`, admin invite via
+  `service.auth.admin.inviteUserByEmail`, self-lockout guards, access
+  map panel). Admin-only tab in TopBar.
+- Lightstone cost controls (0026): budget cap + soft/hard threshold
+  alerts to Directors via Resend, monthly rollover on the
+  `lightstone_budget` singleton, per-call ledger, `market_property`
+  cache (permanent for deeds/ownership/last_sale/comparables,
+  12 months for AVM), spend meter on the map rail.
+
+### Ship checklist (all in production, all applied)
+Migrations: **0021 → 0031** all applied to Bon Bon's DB.
+
+Env vars live on Vercel:
+- SUPABASE_SERVICE_ROLE_KEY
+- INTAKE_WEBHOOK_TOKEN
+- NEXT_PUBLIC_SITE_URL
+- CRON_SECRET
+- RESEND_API_KEY + NOTIFY_FROM
+- (LIGHTSTONE_API_BASE + LIGHTSTONE_API_KEY still stub-behind — set
+  when the subscription opens)
+
+Postmark inbound stream at `intake@dreamproperties.app` → webhook.
+Vercel Cron at `0 3 * * *` hits `/api/sources/dream/refresh`.
+Dream WordPress scraper + scan pipeline live and self-healing.
+
+### Diagnostic scars (for the next Ops moment)
+Half the day was spent surfacing DFFE's actual error responses in the
+CadastreImport panel — `<details open>` on warnings + URL + full
+`error.details` array from the ArcGIS envelope. If a future adapter
+hits a similar "empty details, no clue" wall, load a curl in the
+Bash tool and probe the endpoint directly — that's what finally
+narrowed the `f=geojson` bug down.
+
+### Queued for next session
+- **Look at how existing properties line up with erven.** Real-data
+  pass on `/map` at z16+ to spot which properties snapped correctly
+  vs which need `Move pin`. Likely surfaces 5-15 properties that need
+  manual placement.
+- **/dupes callout on Dashboard** so Bronwyn is driven to review
+  rather than the tab being hidden. Small (~1h).
+- **Doc revision dedupe** on Property Record (`normaliseFilename` +
+  `byte_size`, keep newest). Still pending from prior arcs.
+- **P24 + Private Property scraper adapters** — the same
+  `external_listing` table + same `rebuildDedupAndMatch` pipeline;
+  each adapter is a self-contained route. Blocked on portal access.
+- **Registered-transfer → market cache invalidation trigger.** When a
+  transfer flips to `registered`, null the property's Lightstone
+  cache facets (`deeds`, `ownership`, `last_sale`, `comparables`) so
+  the next Fetch pulls fresh.
+- **Force-refresh checkbox on the Lightstone Fetch modal** — the
+  server already accepts `force:true` on Market facet calls; needs a
+  UI toggle so an admin can bypass the cache when they know something
+  changed.
 
 ---
 
