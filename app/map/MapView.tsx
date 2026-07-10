@@ -336,9 +336,13 @@ export default function MapView({
 
     function installErfLayer(m: mapboxgl.Map) {
       if (m.getSource("parcels")) return;
+      // Absolute tile URL — Mapbox picks it up more reliably than a
+      // path-only string, and CDN edge caching keys off the full origin.
+      const origin =
+        typeof window !== "undefined" ? window.location.origin : "";
       m.addSource("parcels", {
         type: "vector",
-        tiles: ["/api/tiles/parcels/{z}/{x}/{y}"],
+        tiles: [`${origin}/api/tiles/parcels/{z}/{x}/{y}`],
         minzoom: 14,
         maxzoom: 22,
       });
@@ -349,8 +353,8 @@ export default function MapView({
         "source-layer": "parcels",
         minzoom: 14,
         paint: {
-          "fill-color": "#C8A032",
-          "fill-opacity": 0.04,
+          "fill-color": "#132B84",
+          "fill-opacity": 0.12,
         },
         layout: { visibility: showErf ? "visible" : "none" },
       });
@@ -361,9 +365,9 @@ export default function MapView({
         "source-layer": "parcels",
         minzoom: 14,
         paint: {
-          "line-color": "#C8A032",
-          "line-width": ["interpolate", ["linear"], ["zoom"], 14, 0.5, 18, 1.4],
-          "line-opacity": 0.65,
+          "line-color": "#132B84",
+          "line-width": ["interpolate", ["linear"], ["zoom"], 14, 1, 18, 3],
+          "line-opacity": 0.95,
         },
         layout: { visibility: showErf ? "visible" : "none" },
       });
@@ -375,15 +379,15 @@ export default function MapView({
         minzoom: 17,
         layout: {
           "text-field": ["get", "tag_value"],
-          "text-size": ["interpolate", ["linear"], ["zoom"], 17, 10, 20, 13],
+          "text-size": ["interpolate", ["linear"], ["zoom"], 17, 11, 20, 14],
           "text-font": ["Open Sans Semibold", "Arial Unicode MS Regular"],
           "text-allow-overlap": false,
           visibility: showErf ? "visible" : "none",
         },
         paint: {
-          "text-color": "#f5e7c1",
-          "text-halo-color": "rgba(15,42,99,0.85)",
-          "text-halo-width": 1.4,
+          "text-color": "#ffffff",
+          "text-halo-color": "#132B84",
+          "text-halo-width": 1.6,
         },
       });
     }
