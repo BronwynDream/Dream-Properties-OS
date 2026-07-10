@@ -212,6 +212,12 @@ async function run(request: Request) {
 
     const errors: string[] = [];
     let importedThisRun = 0;
+    // In-batch counter: N consecutive HTTP/ArcGIS errors at offsets > 0
+    // means we've paged past the end of this town's data. Rather than
+    // burn the whole batch incrementing offset by 200 forever, jump to
+    // the next town. Reset on any successful page.
+    let consecutiveHttpFails = 0;
+    const HTTP_FAILS_TO_SKIP_TOWN = 5;
 
     // 2. Discover town labels on first run.
     if (townLabels.length === 0) {
@@ -364,18 +370,29 @@ async function run(request: Request) {
         break;
       }
 
-      // --- HTTP / ArcGIS error: skip forward immediately, reset counter. ---
+      // --- HTTP / ArcGIS error: skip forward, reset timeout counter. -------
+      // After HTTP_FAILS_TO_SKIP_TOWN consecutive failures at offsets > 0
+      // we jump to the next town. Prevents runaway offset increments when
+      // the town has actually run out of data and DFFE returns network
+      // errors for out-of-range paging.
       if (errorKind === "http" || errorKind === "arcgis") {
         const before = { townIndex, offset };
-        if (offset === 0) {
+        consecutiveHttpFails += 1;
+        const skipTown =
+          offset === 0 || consecutiveHttpFails >= HTTP_FAILS_TO_SKIP_TOWN;
+        if (skipTown) {
           townIndex++;
           offset = 0;
+          consecutiveHttpFails = 0;
         } else {
           offset += PAGE_SIZE;
         }
         consecutiveFail = 0;
+        const advanceTo = skipTown
+          ? `${townIndex >= townLabels.length ? "END" : `${townLabels[townIndex]}@0`} (skipped town after ${consecutiveHttpFails || HTTP_FAILS_TO_SKIP_TOWN} fails)`
+          : `${townLabels[townIndex]}@${offset}`;
         errors.push(
-          `${town}@${before.offset}: ${errorMsg} · advanced to ${townIndex >= townLabels.length ? "END" : `${townLabels[townIndex]}@${offset}`}`,
+          `${town}@${before.offset}: ${errorMsg} · advanced to ${advanceTo}`,
         );
         const persistErr = await persistCursor();
         if (persistErr) {
@@ -385,8 +402,9 @@ async function run(request: Request) {
         continue;
       }
 
-      // --- Success: clear consecutive_fail if it was set. ------------------
+      // --- Success: clear both counters. ------------------------------------
       if (consecutiveFail !== 0) consecutiveFail = 0;
+      if (consecutiveHttpFails !== 0) consecutiveHttpFails = 0;
 
       const features: any[] = Array.isArray(payload?.features) ? payload.features : [];
 
