@@ -561,6 +561,69 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
 .dash-hero-empty .dash-hero-address { color: #8090b5; font-weight: 500; }
 .dash-hero-empty .dash-hero-eyebrow { color: #6b78a0; }
 
+/* Dupes callout — Director-only, only when there are pairs to review.
+   Tinted gold to signal "attention" without shouting; sits between the
+   hero and the work columns so a Director's eye lands on it before the
+   day's queue. Whole card is clickable. */
+.dash-dupes-callout {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin: 24px 0 8px;
+  padding: 18px 22px;
+  background: rgba(200, 160, 50, 0.08);
+  border: 1px solid rgba(200, 160, 50, 0.35);
+  border-radius: 12px;
+  text-decoration: none;
+  color: var(--estuary);
+  transition: background 0.12s, border-color 0.12s;
+}
+.dash-dupes-callout:hover {
+  background: rgba(200, 160, 50, 0.14);
+  border-color: rgba(200, 160, 50, 0.55);
+}
+.dash-dupes-body { flex: 1; min-width: 0; }
+.dash-dupes-eyebrow {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #7A5814;
+  margin: 0;
+}
+.dash-dupes-headline {
+  font-family: "Inter", -apple-system, sans-serif;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--estuary);
+  margin: 4px 0 0;
+  line-height: 1.2;
+}
+.dash-dupes-breakdown {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: #5b6885;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 0.02em;
+}
+.dash-dupes-breakdown b { color: var(--estuary); font-weight: 700; }
+.dash-dupes-arrow {
+  font-family: "Inter", -apple-system, sans-serif;
+  font-size: 22px;
+  color: #7A5814;
+  font-weight: 600;
+  flex-shrink: 0;
+  transition: transform 0.12s;
+}
+.dash-dupes-callout:hover .dash-dupes-arrow { transform: translateX(3px); }
+
+@media (max-width: 640px) {
+  .dash-dupes-callout { padding: 14px 16px; margin: 20px 0 4px; }
+  .dash-dupes-headline { font-size: 17px; }
+}
+
 /* Three columns of work */
 .dash-work {
   display: grid;

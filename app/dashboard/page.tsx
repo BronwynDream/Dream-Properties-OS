@@ -49,6 +49,7 @@ export default async function Dashboard() {
     .select("full_name, role")
     .eq("id", user.id)
     .single();
+  const isAdmin = profile?.role === "admin";
 
   // Four data pulls that feed the three columns + the hero.
   const [inFlightData, liveListingsData, waitingBatchesData, recentTransferData] =
@@ -88,6 +89,25 @@ export default async function Dashboard() {
   const liveListings = (liveListingsData.data ?? []) as any[];
   const waitingBatches = (waitingBatchesData.data ?? []) as any[];
   const recentTransfer = (recentTransferData.data ?? [])[0] as any | undefined;
+
+  // Dupe callout — admins only. Two RPCs kept off the initial Promise.all so
+  // agents (majority of loads) never pay the pairwise-scan cost. Limit 20:
+  // if there are more, we render "20+" — the point is to drive review, not
+  // to render an exhaustive list.
+  const DUPE_LIMIT = 20;
+  const [propertyDupeCount, partyDupeCount] = isAdmin
+    ? await Promise.all([
+        supabase
+          .rpc("find_property_dupes", { p_threshold: 0.5, p_limit: DUPE_LIMIT })
+          .then((r) => (r.data ?? []).length),
+        supabase
+          .rpc("find_party_dupes", { p_threshold: 0.5, p_limit: DUPE_LIMIT })
+          .then((r) => (r.data ?? []).length),
+      ])
+    : [0, 0];
+  const totalDupeCount = propertyDupeCount + partyDupeCount;
+  const dupeCountCapped =
+    propertyDupeCount >= DUPE_LIMIT || partyDupeCount >= DUPE_LIMIT;
 
   // Hero: first in-flight deal by transfer_date, else most-recent transfer,
   // else nothing (empty invitation to act).
@@ -186,6 +206,40 @@ export default async function Dashboard() {
               Open triage →
             </Link>
           </section>
+        )}
+
+        {/* Director callout — only when there are pending dupe pairs. Sits
+            between the hero and the work columns so a Director's eye lands
+            on it before they dive into today's queue. */}
+        {isAdmin && totalDupeCount > 0 && (
+          <Link href="/dupes" className="dash-dupes-callout">
+            <div className="dash-dupes-body">
+              <p className="dash-dupes-eyebrow">Directors — needs a look</p>
+              <h2 className="dash-dupes-headline">
+                {totalDupeCount}
+                {dupeCountCapped ? "+" : ""} likely duplicate
+                {totalDupeCount === 1 && !dupeCountCapped ? "" : "s"} to review
+              </h2>
+              <p className="dash-dupes-breakdown">
+                {propertyDupeCount > 0 && (
+                  <>
+                    <b>{propertyDupeCount}</b>{" "}
+                    propert{propertyDupeCount === 1 ? "y" : "ies"}
+                  </>
+                )}
+                {propertyDupeCount > 0 && partyDupeCount > 0 && " · "}
+                {partyDupeCount > 0 && (
+                  <>
+                    <b>{partyDupeCount}</b>{" "}
+                    part{partyDupeCount === 1 ? "y" : "ies"}
+                  </>
+                )}
+              </p>
+            </div>
+            <span className="dash-dupes-arrow" aria-hidden>
+              →
+            </span>
+          </Link>
         )}
 
         {/* Three columns of work */}
