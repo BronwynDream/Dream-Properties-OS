@@ -148,6 +148,7 @@ export default function MapView({
   // read the current drag mode + trigger the save without stale closures.
   const dragKeyRef = useRef<string | null>(null);
   const pinPropertyIdRef = useRef<Record<string, string>>({}); // mergedKey → property.id
+  const didInitialFitRef = useRef(false);
   const handlePinDropRef = useRef<(propertyId: string, lng: number, lat: number) => void>(
     () => {},
   );
@@ -572,10 +573,20 @@ export default function MapView({
       markersRef.current[rp.id] = marker;
     }
 
-    if (renderPins.length > 0 && Object.keys(markersRef.current).length === renderPins.length) {
+    // Fit-to-bounds runs ONCE on initial load — every subsequent renderPins
+    // change (source-chip toggle, mandate filter, Split-duplicates, refresh)
+    // must respect whatever the user has panned/zoomed to. Without this gate
+    // any interaction re-frames the whole Garden Route, which reads as the map
+    // "fighting back" every time a filter is touched.
+    if (
+      !didInitialFitRef.current &&
+      renderPins.length > 0 &&
+      Object.keys(markersRef.current).length === renderPins.length
+    ) {
       const bounds = new mapboxgl.LngLatBounds();
       for (const rp of renderPins) bounds.extend([rp.lng, rp.lat]);
       map.fitBounds(bounds, { padding: 80, maxZoom: 14, duration: 0 });
+      didInitialFitRef.current = true;
     }
   }, [renderPins]);
 
