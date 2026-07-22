@@ -48,6 +48,8 @@ const MAX_GEOCODES_PER_RUN = 60;
 // shape: fetch → parse → upsert → geocode → rebuildDedupAndMatch.
 
 const INDEX_URL = "https://www.dreamknysna.co.za/knysna-properties/";
+const AJAX_URL = "https://www.dreamknysna.co.za/wp-admin/admin-ajax.php";
+const AJAX_ACTION = "dream_cx_apply_filters";
 const UA = "DreamOS-Scraper/1.0 (+dreamproperties.app)";
 
 // -----------------------------------------------------------------------------
@@ -144,7 +146,7 @@ async function run(request: Request) {
       );
     }
 
-    const listingUrls = extractListingUrls(indexHtml);
+    const listingUrls = await discoverAllListingUrls(indexHtml);
 
     // Zero-state: a WordPress theme change or Cloudflare interstitial would
     // cut this to zero. Return an explicit note so the next Vercel log line
@@ -416,6 +418,92 @@ function extractListingUrls(html: string): string[] {
     const url = m[1].endsWith("/") ? m[1] : `${m[1]}/`;
     bySlug.set(slug, url);
   }
+  return Array.from(bySlug.values());
+}
+
+// -----------------------------------------------------------------------------
+// Dream's theme paginates listings client-side. Page 1 is server-rendered
+// (~12 slugs); pages 2..N are AJAX-fetched via WordPress's admin-ajax.php,
+// action `dream_cx_apply_filters`, with a nonce emitted inline on the initial
+// page. Without following this, the scraper misses ~80% of Dream's stock.
+//
+// Contract (from /wp-content/themes/dreamknysna/js/cpt_filters.js):
+//   POST admin-ajax.php
+//   body: action=dream_cx_apply_filters&nonce=<X>&page=N&sorttype=&resultspp=
+//   where <X> comes from window.dream_cx_apply_filters.nonce.
+//
+// We extract nonce + max data-pagenum from the initial HTML, then walk. Stop
+// early if a page returns zero new slugs (safety net for theme changes).
+// -----------------------------------------------------------------------------
+async function discoverAllListingUrls(initialHtml: string): Promise<string[]> {
+  const bySlug = new Map<string, string>();
+  const slugFromUrl = (u: string) =>
+    u.match(/knysna-properties\/([a-z0-9][a-z0-9-]*)\/?$/i)?.[1];
+
+  for (const url of extractListingUrls(initialHtml)) {
+    const slug = slugFromUrl(url);
+    if (slug) bySlug.set(slug, url);
+  }
+
+  const nonceMatch = initialHtml.match(
+    /dream_cx_apply_filters\s*=\s*\{[^}]*"nonce":"([a-z0-9]+)"/i,
+  );
+  const nonce = nonceMatch?.[1];
+  if (!nonce) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      "[dream-scraper] no AJAX nonce found in index — falling back to server-rendered slugs only",
+    );
+    return Array.from(bySlug.values());
+  }
+
+  let maxPage = 1;
+  const pageNumRe = /data-pagenum="(\d+)"/g;
+  let pm: RegExpExecArray | null;
+  while ((pm = pageNumRe.exec(initialHtml))) {
+    const n = Number(pm[1]);
+    if (Number.isFinite(n) && n > maxPage) maxPage = n;
+  }
+
+  for (let page = 2; page <= maxPage; page++) {
+    let html: string;
+    try {
+      const res = await fetch(AJAX_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "User-Agent": UA,
+        },
+        body: new URLSearchParams({
+          action: AJAX_ACTION,
+          nonce,
+          page: String(page),
+          sorttype: "",
+          resultspp: "",
+        }).toString(),
+      });
+      if (!res.ok) {
+        // eslint-disable-next-line no-console
+        console.warn(`[dream-scraper] AJAX page ${page}: HTTP ${res.status}`);
+        break;
+      }
+      html = await res.text();
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn(`[dream-scraper] AJAX page ${page} fetch failed: ${(e as Error).message}`);
+      break;
+    }
+    let addedThisPage = 0;
+    for (const url of extractListingUrls(html)) {
+      const slug = slugFromUrl(url);
+      if (slug && !bySlug.has(slug)) {
+        bySlug.set(slug, url);
+        addedThisPage++;
+      }
+    }
+    if (addedThisPage === 0) break;   // theme changed / stale page / end of set
+  }
+
   return Array.from(bySlug.values());
 }
 
