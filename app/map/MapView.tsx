@@ -687,7 +687,8 @@ export default function MapView({
           </div>
         </section>
 
-        {isAdmin && budget && <SpendMeter budget={budget} />}
+        {/* SpendMeter hidden 2026-07-22 — orphaned by the Lightstone API pivot.
+            Will return as "External data spend" once WinDeed / CIPC costs land. */}
 
         <section>
           <h3>Sources</h3>

@@ -11,15 +11,16 @@ import { guardedGet } from "@/lib/lightstone/gateway";
 // rule, we ledger a cache_hit and return the cached JSON.
 //
 // Freshness rules (spec):
-//   deeds        — permanent (only manual refresh, or triggered on new registered transfer)
+//   deeds        — permanent (only manual refresh, or auto-invalidated on new registered transfer)
 //   ownership    — permanent (same)
 //   last_sale    — permanent (same)
 //   comparables  — permanent (same)
 //   avm          — 12 months
-// The "new registered transfer" trigger is out of scope for this ship —
-// callers can pass force:true when they know something's changed. A future
-// server-side trigger on transfer.status = 'registered' can flip the same
-// bit by updating market_property.<facet>_fetched_at to null.
+// The registered-transfer auto-invalidation is a DB trigger (migration 0032):
+// AFTER INSERT/UPDATE OF status on transfer, when status transitions to
+// 'registered', the four permanent-facet *_fetched_at columns on the
+// matching market_property row null out and the next call misses cleanly.
+// Callers can still pass force:true to bypass the cache on demand.
 
 export type MarketFacet =
   | "deeds"

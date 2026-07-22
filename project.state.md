@@ -4,7 +4,140 @@ Running log of what's decided, built, and next. Updated at the end of each worki
 session. `PROJECT.md` remains the canonical business/design doc; this file is the
 "where are we right now" companion.
 
-_Last updated: 2026-07-10 morning_
+_Last updated: 2026-07-22_
+
+---
+
+## LIGHTSTONE STRATEGY: PORTAL STAYS, LINE ITEMS MIGRATE (2026-07-22)
+
+Resolves the open "should we sign up for Lightstone API?" question. Lightstone
+quoted R5k/month — mismatched to Dream's real volume (~30 Property Reports/
+month portal). The pivot: keep the Property Report on the Lightstone portal
+(SIE/PIP flags + free personal history list have no market substitute); migrate
+the discrete paid line items (DOT, title-deed, CIPC, trust) to source-direct or
+a single no-subscription reseller; build inside the CRM the things no vendor
+covers well (team-wide report history, boundary-aware comparables, mandate-
+expiry and new-listing alerts).
+
+No code shipped this arc — it's the strategy record. Follow-up ships queued
+below.
+
+### Discovery (Bronwyn's 2026-07-22 workflow reply)
+Team collated: Bronwyn + Jo, referencing Vanessa, Angie, Candy.
+- 5–10 Property Reports/week normal; up to 100/week during targeted road
+  trawls (buyer wants front-row, team pulls neighbour reports across a
+  whole road to find contactable owners); ~30/month average.
+- Full-bundle pull every time — because they never knew granular facets
+  existed, not because they want the full bundle.
+- Personal history list is load-bearing: pay once, view forever. Vanessa
+  relies on it daily.
+- Portal reliability varies by user: Angie 3× logins avg, Vanessa never
+  logs out, Candy fluent with map search. Configuration/skill variance.
+- Comparables considered unreliable in Knysna (conflates neighbouring
+  estates, averages plots+houses). **Never shared with buyers.**
+- Separate paid line items beyond Property Report: **DOT** (Deeds Office
+  Tracker — pending-registration status), title-deed one-offs, CIPC
+  (company/director), trust searches.
+- Bronwyn confirmed erf-numbered map is landing: "will alleviate guess
+  work" when trawling a road.
+
+### Vendor pivot (from `lightstone-line-item-migration.md` co-work brief)
+- **Property Report** → **stays on Lightstone portal.** SIE/PIP flags have
+  no confirmed market substitute; history list is best-of-breed.
+- **DOT + title-deed** → **Lexis WinDeed** (pay-per-search, no
+  subscription, one shared team login). ~R24.21 ex VAT / DOT search;
+  ~R21.65–R25.67 incl VAT / title-deed search. **DeedsWeb-direct** as the
+  R19 / R109 floor if we ever wrap deeds calls inside the CRM.
+- **CIPC** → **direct to CIPC** (BizPortal / e-Services). R30 full
+  electronic disclosure. Habit change only, no vendor needed — the
+  clearest saving in the exercise.
+- **Trust** → stays FICA pack + conveyancer. Master's beneficial-ownership
+  register (trustonline.justice.gov.za) is restricted access, not a self-
+  service agent tool.
+- **Deeds-transfer alerts** on a short watchlist (past clients / expired
+  mandates, ~20–30 properties) → **WinDeed Alerts** at ~R5.31/property/
+  month ex VAT. Everything else uses our own new-listing scrape alerts —
+  earlier and more actionable.
+- **API path (future, only if we integrate at scale)** → **SearchWorks
+  OneHub** (via Standard Bank) or **AfriGIS Property Ownership & Deeds
+  API**. Both are true REST/JSON, both quote-gated — no numbers yet.
+
+### Build inside the CRM (what no vendor covers)
+- **Team-wide "pay once, view forever" report history.** File every
+  purchased PDF (Lightstone Property Report, WinDeed DOT, deed copy)
+  against the property record, viewable by all agents indefinitely. Once
+  this exists, the pay-per-view objection to *any* provider disappears.
+  Pairs with the intake webhook + document pipeline.
+- **Boundary-aware buyer-shareable comparables.** Built from scraped
+  `external_listing` (Dream nightly; P24 + PP queued) plus our own
+  `transfer` records with proper Knysna suburb/estate boundaries and
+  plot-vs-house separation. Removes the strongest single reason to pull a
+  Property Report. Target = something Bronwyn shares with buyers, which
+  Lightstone can't offer.
+- **Mandate-expiry alerts.** Pure internal DB.
+- **New-listing alerts on watched areas/estates.** Reads from
+  `external_listing`. Earlier signal than a deeds-transfer alert.
+- **Erf-numbered map.** DONE (cadastre marathon 2026-07-09 → 2026-07-10).
+
+### Queued from this arc
+- **CIPC-direct habit note to Bronwyn** — no-regret action this week.
+- **WinDeed account setup** — Bronwyn/Vanessa's action; small.
+- **Team-wide report history feature** — small ship, high value.
+- **Boundary-aware comparables model** — the largest Lightstone-reduction
+  lever; medium ship.
+- **Deeds-transfer alerts** on the short watchlist — small ship via
+  WinDeed Alerts wrapper or (if the CIPC-direct wiring goes well)
+  DeedsWeb-direct.
+- **Mandate-expiry alerts** — small ship, DB-only.
+
+### Not built this arc
+The pivot itself. Four memory files added (`dream-team-roster`, `dream-
+lightstone-usage`, `dream-comparables-approach`, `dream-deeds-vendor-map`)
++ `lightstone-api-pending` updated to reflect the R5k/mo decline. Co-work
+research deliverable saved at `Dream Knysna Properties/lightstone-line-
+item-migration.md`.
+
+---
+
+## MARKET CACHE AUTO-INVALIDATION ON REGISTRATION (2026-07-14)
+
+Closes the last "manual force-refresh required" hole in the Lightstone cache
+layer. When one of our own transfers advances to `registered` — through any
+path — the four permanent-facet cache columns on the matching
+`market_property` row are nulled automatically, so the next
+`getMarketFacet()` call for `deeds` / `ownership` / `last_sale` /
+`comparables` misses and re-fetches under the budget. AVM has its own
+12-month TTL and is intentionally left alone.
+
+### Ship
+- **`0032_register_invalidate_market_cache.sql`** —
+  `invalidate_market_cache_on_register()` trigger function
+  (security definer, search_path=public) + `trg_transfer_register_invalidate`
+  AFTER INSERT OR UPDATE OF status ON transfer. Fires when status transitions
+  to `registered`; skips no-op re-sets (old.status = new.status = registered).
+  Joins `transfer.property_id → property.lightstone_property_id →
+  market_property` and nulls `legal_fetched_at`, `ownership_fetched_at`,
+  `last_sale_fetched_at`, `comparables_fetched_at`. Silent no-op if the
+  property has no `lightstone_property_id` yet (common for pre-take-on
+  records) or no matching `market_property` row.
+- **`lib/market/service.ts`** — top-of-file comment updated. The
+  "trigger is out of scope" note was written for 0026's cache-layer ship;
+  now reflects that 0032 closed it. `invalidateMarketFacet()` stays as-is
+  for programmatic invalidation (still called from nothing today, kept for
+  future explicit-clear UIs).
+
+### Fires from every existing status→registered path
+- `commit_batch()` (migration 0018) — title-deed evidence auto-advances.
+- `merge_transfers()` (migration 0019) — winner may inherit registered
+  status via coalesce from the loser's `registered_date`; safe because the
+  trigger only fires when status *changes* to registered.
+- Direct SQL edits, admin UIs, future manual "Mark registered" actions.
+
+Migration to apply on Bon Bon's DB: **0032**.
+
+### Queued next (unchanged)
+See CADASTRE MARATHON section's queued list. Top item still:
+erf-snap real-data pass on `/map` at z16+ to find pins on wrong parcels.
 
 ---
 
@@ -198,17 +331,22 @@ narrowed the `f=geojson` bug down.
   pass on `/map` at z16+ to spot which properties snapped correctly
   vs which need `Move pin`. Likely surfaces 5-15 properties that need
   manual placement.
-- **/dupes callout on Dashboard** so Bronwyn is driven to review
-  rather than the tab being hidden. Small (~1h).
+- ~~**/dupes callout on Dashboard**~~ — SHIPPED 2026-07-13 (commit
+  f82b869 — Director-only pair count on Overview).
+- **WhatsApp conversation ingestion** — schema brief lives at
+  `docs/whatsapp-schema-brief.md`. Person-anchored model
+  (people/person_phone_numbers/conversations/messages/deals/
+  conversation_deal_links), Meta Cloud API webhook, phone-based
+  matching. Parked for a later session — a full arc in itself
+  (multiple migrations + webhook + outbound send window handling +
+  POPIA retention flag).
 - **Doc revision dedupe** on Property Record (`normaliseFilename` +
   `byte_size`, keep newest). Still pending from prior arcs.
 - **P24 + Private Property scraper adapters** — the same
   `external_listing` table + same `rebuildDedupAndMatch` pipeline;
   each adapter is a self-contained route. Blocked on portal access.
-- **Registered-transfer → market cache invalidation trigger.** When a
-  transfer flips to `registered`, null the property's Lightstone
-  cache facets (`deeds`, `ownership`, `last_sale`, `comparables`) so
-  the next Fetch pulls fresh.
+- ~~**Registered-transfer → market cache invalidation trigger.**~~
+  SHIPPED 2026-07-14 (migration 0032 — see arc at top of file).
 - **Force-refresh checkbox on the Lightstone Fetch modal** — the
   server already accepts `force:true` on Market facet calls; needs a
   UI toggle so an admin can bypass the cache when they know something

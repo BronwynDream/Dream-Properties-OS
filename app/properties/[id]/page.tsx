@@ -124,9 +124,12 @@ export default async function PropertyRecord({
     if (seenIds.has(dedupeKey)) continue;
     seenIds.add(dedupeKey);
 
-    const { data: signed } = await supabase.storage
-      .from(d.storage_bucket)
-      .createSignedUrl(d.storage_path, 3600);
+    const { data: signed, error: signErr } = d.storage_bucket && d.storage_path
+      ? await supabase.storage.from(d.storage_bucket).createSignedUrl(d.storage_path, 3600)
+      : { data: null, error: null };
+    if (signErr) {
+      console.error(`[property] signed URL failed for doc ${d.id} (${d.title}):`, signErr.message);
+    }
     // Photos strip is strict: only files classified as a photo doc_type. Scanned
     // ID cards and passports are image files too but are id_document / passport
     // by doc_type — surfacing them in a public-looking photo strip would be a
@@ -442,17 +445,28 @@ export default async function PropertyRecord({
                       </p>
                       <div className="doc-chips">
                         {group.items.map((d) => (
-                          <a
-                            key={d.id}
-                            href={d.url ?? "#"}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="doc-chip"
-                            title={d.label ?? undefined}
-                          >
-                            {d.title}
-                            {d.is_pii && <span className="pii-dot">PII</span>}
-                          </a>
+                          d.url ? (
+                            <a
+                              key={d.id}
+                              href={d.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="doc-chip"
+                              title={d.label ?? undefined}
+                            >
+                              {d.title}
+                              {d.is_pii && <span className="pii-dot">PII</span>}
+                            </a>
+                          ) : (
+                            <span
+                              key={d.id}
+                              className="doc-chip is-missing"
+                              title="No file attached — this document row has no stored PDF (correspondence often lands as email body only)."
+                            >
+                              {d.title}
+                              {d.is_pii && <span className="pii-dot">PII</span>}
+                            </span>
+                          )
                         ))}
                       </div>
                     </div>
