@@ -68,9 +68,18 @@ export default function MarkSoldButton({
       {!open ? (
         <button
           type="button"
-          className="ghost-dark"
-          style={{ padding: "5px 11px", fontSize: 12 }}
           onClick={() => setOpen(true)}
+          style={{
+            padding: "7px 14px",
+            fontSize: 12,
+            background: "var(--navy)",
+            color: "var(--white)",
+            border: 0,
+            borderRadius: 8,
+            cursor: "pointer",
+            fontWeight: 600,
+            letterSpacing: "0.01em",
+          }}
         >
           {buttonLabel}
         </button>
