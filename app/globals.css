@@ -316,6 +316,41 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
 .transfer-card { background: var(--white); border: 1px solid #e2e8f5; border-radius: 12px; padding: 18px; margin-top: 16px; box-shadow: 0 4px 20px rgba(15,42,99,0.05); }
 .transfer-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
 .transfer-head b { font-family: "Inter", -apple-system, sans-serif; color: var(--estuary); font-size: 17px; }
+
+/* Action row that sits between transfer-head and transfer-cols. Hosts
+   Mark-as-sold + the sold-by provenance line so an agent can see and
+   flip the status without scrolling through documents. */
+.transfer-actions { margin-bottom: 14px; }
+.transfer-actions > div:first-child { margin-top: 0 !important; }
+
+/* Collapsible drop zone on the Property Record. Closed by default so it
+   doesn't dominate an established record; expands when an agent wants
+   to drop a fresh batch. */
+.dropzone-collapse summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 10px 14px;
+  background: #f4f6fb;
+  border: 1px dashed #cbd4e8;
+  border-radius: 10px;
+  color: var(--estuary);
+  font-size: 13px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  transition: background 0.12s, border-color 0.12s;
+}
+.dropzone-collapse summary:hover { background: #ecf0f8; border-color: var(--navy); }
+.dropzone-collapse summary::-webkit-details-marker { display: none; }
+.dropzone-collapse-caret {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  color: #8090b5;
+  font-size: 16px;
+  line-height: 1;
+  transition: transform 0.15s;
+}
+.dropzone-collapse[open] .dropzone-collapse-caret { transform: rotate(45deg); }
 .transfer-cols { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 18px; }
 .col-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: #8090b5; font-family: "JetBrains Mono", monospace; margin: 0 0 8px; }
 .party-line { font-size: 14px; margin-bottom: 6px; color: var(--ink); }

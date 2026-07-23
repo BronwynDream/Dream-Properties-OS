@@ -286,8 +286,11 @@ export default async function PropertyRecord({
           </div>
         )}
 
-        {/* Take on documents — drop this property's folder here, everything
-            goes into one batch tied to this property and auto-extracts. */}
+        {/* Take on documents — collapsed by default so it doesn't dominate the
+            record for established properties. The Fetch from Lightstone button
+            stays visible in the header (it's a distinct action, not part of
+            the drop flow). Click the summary to expand the drop zone when a
+            new batch needs to land. */}
         <section style={{ marginTop: 32 }}>
           <div
             className="section-head"
@@ -295,17 +298,6 @@ export default async function PropertyRecord({
           >
             <h2 style={{ fontSize: 20, margin: 0 }}>Take on documents</h2>
             <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-              <span
-                className="mono"
-                style={{
-                  fontSize: 11,
-                  color: "#8090b5",
-                  letterSpacing: "0.08em",
-                  textTransform: "uppercase",
-                }}
-              >
-                Everything lands on this record
-              </span>
               <LightstoneFetch
                 propertyId={prop.id}
                 products={LIGHTSTONE_PRODUCTS.map((p) => ({
@@ -316,13 +308,21 @@ export default async function PropertyRecord({
               />
             </div>
           </div>
-          <DropZone
-            propertyId={prop.id}
-            overrideLabel={prop.primary_address ?? "Take-on"}
-            autoExtract
-            variant="compact"
-            redirectToBatch
-          />
+          <details className="dropzone-collapse">
+            <summary>
+              <span>Drop a property folder to add documents</span>
+              <span className="dropzone-collapse-caret" aria-hidden="true">+</span>
+            </summary>
+            <div style={{ marginTop: 10 }}>
+              <DropZone
+                propertyId={prop.id}
+                overrideLabel={prop.primary_address ?? "Take-on"}
+                autoExtract
+                variant="compact"
+                redirectToBatch
+              />
+            </div>
+          </details>
         </section>
 
         {uniquePhotos.length > 0 && (
@@ -420,6 +420,28 @@ export default async function PropertyRecord({
                 </span>
               </div>
 
+              {/* Mark-as-sold sits immediately below the head — discoverable
+                  without scrolling past docs. Any agent, any transfer. */}
+              <div className="transfer-actions">
+                <MarkSoldButton
+                  transferId={t.id}
+                  transferName={t.name}
+                  propertyId={prop.id}
+                  currentSoldBy={t.sold_by ?? null}
+                />
+                {t.sold_by && (
+                  <p className="muted" style={{ fontSize: 11.5, margin: "6px 0 0" }}>
+                    Sold by <b>{
+                      t.sold_by === "dream" ? "Dream Knysna"
+                      : t.sold_by === "partner" ? "joint-mandate partner"
+                      : t.sold_by === "other" ? "another agency"
+                      : "private sale (pre-mandate)"
+                    }</b>
+                    {t.sold_by_note ? ` · ${t.sold_by_note}` : ""}
+                  </p>
+                )}
+              </div>
+
               <div className="transfer-cols">
                 <div>
                   <p className="col-title">Sellers</p>
@@ -493,31 +515,6 @@ export default async function PropertyRecord({
                 </div>
               )}
 
-              {/* Mark-as-sold: any agent, any transfer. Records who closed
-                  the deal so a joint-partner win or a lost-mandate sale can
-                  be flagged without misusing 'registered'. */}
-              <MarkSoldButton
-                transferId={t.id}
-                transferName={t.name}
-                propertyId={prop.id}
-                currentSoldBy={t.sold_by ?? null}
-              />
-
-              {/* Show the recorded provenance below the button when set. */}
-              {t.sold_by && (
-                <p className="muted" style={{ fontSize: 11.5, marginTop: 6 }}>
-                  Sold by <b>{
-                    t.sold_by === "dream" ? "Dream Knysna"
-                    : t.sold_by === "partner" ? "joint-mandate partner"
-                    : t.sold_by === "other" ? "another agency"
-                    : "private sale (pre-mandate)"
-                  }</b>
-                  {t.sold_by_note ? ` · ${t.sold_by_note}` : ""}
-                </p>
-              )}
-
-              {/* Admin-only merge control. Shown when there's at least one other
-                  transfer on this property to fold into. */}
               {isAdmin && transfers.length > 1 && (
                 <MergeTransfer
                   loserId={t.id}
