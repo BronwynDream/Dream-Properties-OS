@@ -103,3 +103,34 @@ export async function mergeTransfers(
   if (error) return { ok: false as const, error: error.message };
   return { ok: true as const };
 }
+
+// Agent action: mark a transfer sold. Wraps the mark_transfer_sold RPC
+// (migration 0033). Dream-sold records intent only; external categories
+// flip status to sold_external and skip the deed workflow. Note is
+// optional freeform (partner agency name, context).
+export type SoldBy = "dream" | "partner" | "other" | "pre_mandate";
+
+export async function markTransferSold(
+  transferId: string,
+  propertyId: string,
+  soldBy: SoldBy,
+  soldByNote: string | null,
+) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false as const, error: "unauthorised" };
+
+  const { error } = await supabase.rpc("mark_transfer_sold", {
+    p_transfer_id: transferId,
+    p_sold_by: soldBy,
+    p_sold_by_note: soldByNote,
+  });
+  revalidatePath(`/properties/${propertyId}`);
+  revalidatePath("/properties");
+  revalidatePath("/dashboard");
+  revalidatePath("/map");
+  if (error) return { ok: false as const, error: error.message };
+  return { ok: true as const };
+}

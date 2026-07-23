@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import TopBar from "@/app/components/TopBar";
 import MergeTransfer from "./MergeTransfer";
+import MarkSoldButton from "./MarkSoldButton";
 import DropZone from "@/app/triage/DropZone";
 import LightstoneFetch from "./LightstoneFetch";
 import { PRODUCTS as LIGHTSTONE_PRODUCTS } from "@/lib/lightstone";
@@ -49,7 +50,7 @@ export default async function PropertyRecord({
 
   const { data: transfersData } = await supabase
     .from("transfer")
-    .select("id, name, status, transfer_date, registered_date, created_at")
+    .select("id, name, status, transfer_date, registered_date, created_at, sold_by, sold_by_note")
     .eq("property_id", params.id)
     .order("created_at", { ascending: false });
   const transfers = (transfersData ?? []) as any[];
@@ -191,9 +192,11 @@ export default async function PropertyRecord({
     if (!raw) return { label: "No live deal", kind: "none" };
     const s = raw.toLowerCase();
     if (s === "registered") return { label: "Registered", kind: "registered" };
+    if (s === "sold_external") return { label: "Sold externally", kind: "muted" };
     if (s === "in_conveyancing") return { label: "In conveyancing", kind: "conveyancing" };
     if (s === "preparing") return { label: "Preparing", kind: "preparing" };
-    if (s === "cancelled" || s === "withdrawn") return { label: raw, kind: "muted" };
+    if (s === "cancelled" || s === "withdrawn" || s === "lapsed")
+      return { label: raw.replace(/_/g, " "), kind: "muted" };
     return { label: raw.replace(/_/g, " "), kind: "preparing" };
   };
   const headerStatus = statusHuman(currentTransfer?.status);
@@ -472,6 +475,29 @@ export default async function PropertyRecord({
                     </div>
                   ))}
                 </div>
+              )}
+
+              {/* Mark-as-sold: any agent, any transfer. Records who closed
+                  the deal so a joint-partner win or a lost-mandate sale can
+                  be flagged without misusing 'registered'. */}
+              <MarkSoldButton
+                transferId={t.id}
+                transferName={t.name}
+                propertyId={prop.id}
+                currentSoldBy={t.sold_by ?? null}
+              />
+
+              {/* Show the recorded provenance below the button when set. */}
+              {t.sold_by && (
+                <p className="muted" style={{ fontSize: 11.5, marginTop: 6 }}>
+                  Sold by <b>{
+                    t.sold_by === "dream" ? "Dream Knysna"
+                    : t.sold_by === "partner" ? "joint-mandate partner"
+                    : t.sold_by === "other" ? "another agency"
+                    : "private sale (pre-mandate)"
+                  }</b>
+                  {t.sold_by_note ? ` · ${t.sold_by_note}` : ""}
+                </p>
               )}
 
               {/* Admin-only merge control. Shown when there's at least one other
