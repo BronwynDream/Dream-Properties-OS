@@ -25,8 +25,15 @@ import { randomUUID } from "crypto";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 const CLUSTER_METERS = 20;
+// Geo-proximity fallback for OS-property matching. 50m was too tight given
+// how unreliable scraper-extracted address_raw is on Dream's marketing-heavy
+// pages — most listings have garbage strings like "Angie" or "African Breeze"
+// from image filenames, so coord-proximity is our only signal for ~5 of the
+// 8 OS properties. 150m sacrifices a bit of precision (risk: adjacent
+// properties on the same road merging) for coverage, acceptable at Dream's
+// 57-listing scale where any wrong match is eyeballable in one screen.
 const CLUSTER_PRICE_RATIO = 0.15;
-const MATCH_METERS = 50;
+const MATCH_METERS = 150;
 
 type Row = {
   id: string;
