@@ -367,13 +367,34 @@ export async function rebuildDedupAndMatch(
   }
 
   // ---- WRITE BACK ---------------------------------------------------------
+  // eslint-disable-next-line no-console
+  console.log(
+    `[dedup] starting write-back: ${rows.length} rows, ${propsWithGeo.length} props-with-geo, ${propByAddr.size} propsByAddr keys, MATCH_METERS=${MATCH_METERS}`,
+  );
+  // Show a couple of sample propByAddr keys so we can see what normalisation
+  // produced on our own properties.
+  const sampleAddrKeys = Array.from(propByAddr.keys()).slice(0, 8);
+  // eslint-disable-next-line no-console
+  console.log(`[dedup] propByAddr sample keys: ${JSON.stringify(sampleAddrKeys)}`);
+
   let clustered = 0;
   let matched = 0;
+  let updateErrors = 0;
   for (const r of rows) {
     const root = uf.find(r.id);
     const newGroup = groupIdFor.get(root)!;
+    const computed = matchFor(r);
     const newMatch =
-      r.matched_property_id ?? matchFor(r) ?? null;
+      r.matched_property_id ?? computed ?? null;
+
+    // Log per-row diagnostic for the first 8 rows so we can see why they
+    // matched or didn't. Full-verbose would spam the log.
+    if (rows.indexOf(r) < 8) {
+      // eslint-disable-next-line no-console
+      console.log(
+        `[dedup] row addr="${r.address_raw ?? "null"}" → normalised="${normaliseAddress(r.address_raw)}" · computed=${computed?.slice(0, 8) ?? "null"} · newMatch=${newMatch?.slice(0, 8) ?? "null"} · prev=${r.matched_property_id?.slice(0, 8) ?? "null"}`,
+      );
+    }
 
     const changedGroup = r.dedup_group_id !== newGroup;
     const changedMatch = r.matched_property_id !== newMatch;
@@ -383,7 +404,18 @@ export async function rebuildDedupAndMatch(
     if (changedGroup) patch.dedup_group_id = newGroup;
     if (changedMatch) patch.matched_property_id = newMatch;
 
-    await supabase.from("external_listing").update(patch).eq("id", r.id);
+    const { error: updErr } = await supabase
+      .from("external_listing")
+      .update(patch)
+      .eq("id", r.id);
+    if (updErr) {
+      updateErrors++;
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[dedup] update failed for ${r.id.slice(0, 8)}: ${updErr.message}`,
+      );
+      continue;
+    }
 
     if (changedGroup) clustered++;
     if (changedMatch && newMatch) matched++;
