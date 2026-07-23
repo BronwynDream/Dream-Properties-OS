@@ -64,7 +64,7 @@ export default function PropertyHero({
       container: containerRef.current,
       style: "mapbox://styles/mapbox/satellite-streets-v12",
       center: [lng, lat],
-      zoom: 18,
+      zoom: 17.5,
       attributionControl: false,
       // Fixed anchor — no pan / zoom / rotate. Agents go to /map for that.
       interactive: false,

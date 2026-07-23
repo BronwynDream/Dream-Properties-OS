@@ -269,6 +269,187 @@ export default async function PropertyRecord({
   }));
   const heroErven = (erven ?? []).map((e: any) => e.erf_number).join(", ");
 
+  // Split transfers into the active one (most recent) and the historical
+  // ones. Active sits in the hero row alongside PropertyHero so the agent
+  // sees property + current deal on one screen. Past transfers get their own
+  // section below with the tideline year markers.
+  const activeTransfer = transfers[0] ?? null;
+  const pastTransfers = transfers.slice(1);
+
+  // Reusable transfer card render — used both in the hero row (no timeline
+  // marker) and in the ownership history section (with year + dot marker).
+  const renderTransferCard = (t: any, opts: { showMarker: boolean }) => {
+    const parties = tparties.filter((tp) => tp.transfer_id === t.id);
+    const sellers = parties.filter((p) => p.side === "seller");
+    const buyers = parties.filter((p) => p.side === "purchaser");
+    const agr = agreements.find((a) => a.transfer_id === t.id);
+    const ms = milestones.filter((m) => m.transfer_id === t.id);
+    const tStatus = statusHuman(t.status);
+    const year =
+      t.transfer_date?.slice(0, 4) ??
+      t.registered_date?.slice(0, 4) ??
+      t.created_at?.slice(0, 4) ??
+      "—";
+
+    const renderParty = (tp: any) => {
+      const p = tp.party;
+      if (!p) return null;
+      const mem = membersFor(p.id);
+      return (
+        <div key={p.id} className="party-line">
+          <b>{p.entity_name || p.display_name}</b>{" "}
+          <span className="pill">{p.party_type}</span>
+          {p.registration_no && <span className="muted"> · reg {p.registration_no}</span>}
+          {p.id_number && <span className="muted"> · ID {p.id_number}</span>}
+          {mem.length > 0 && (
+            <ul className="member-list">
+              {mem.map((m, i) => (
+                <li key={i}>
+                  {m.member?.display_name}{" "}
+                  <span className="muted">({m.role})</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      );
+    };
+
+    const card = (
+      <div className="transfer-card">
+        <div className="transfer-head">
+          <b>{t.name}</b>
+          <span className={`status-chip status-${tStatus.kind}`}>
+            <span className="dot" />
+            {tStatus.label}
+          </span>
+        </div>
+
+        <div className="transfer-actions">
+          <MarkSoldButton
+            transferId={t.id}
+            transferName={t.name}
+            propertyId={prop.id}
+            currentSoldBy={t.sold_by ?? null}
+          />
+          {t.sold_by && (
+            <p className="muted" style={{ fontSize: 11.5, margin: "6px 0 0" }}>
+              Sold by <b>{
+                t.sold_by === "dream" ? "Dream Knysna"
+                : t.sold_by === "partner" ? "joint-mandate partner"
+                : t.sold_by === "other" ? "another agency"
+                : "private sale (pre-mandate)"
+              }</b>
+              {t.sold_by_note ? ` · ${t.sold_by_note}` : ""}
+            </p>
+          )}
+        </div>
+
+        <div className="transfer-cols">
+          <div>
+            <p className="col-title">Sellers</p>
+            {sellers.length ? sellers.map(renderParty) : <p className="muted">—</p>}
+          </div>
+          <div>
+            <p className="col-title">Purchasers</p>
+            {buyers.length ? buyers.map(renderParty) : <p className="muted">—</p>}
+          </div>
+          <div>
+            <p className="col-title">Agreement</p>
+            {agr ? (
+              <>
+                <div className="party-line">Price <b>{money(agr.price)}</b></div>
+                <div className="party-line">Deposit <b>{money(agr.deposit)}</b></div>
+                <div className="party-line">Transfer <b>{agr.transfer_date ?? "—"}</b></div>
+              </>
+            ) : (
+              <p className="muted">—</p>
+            )}
+          </div>
+        </div>
+
+        {ms.length > 0 && (
+          <div className="milestones">
+            {ms.map((m, i) => (
+              <span key={i} className="ms-chip">
+                {m.type.replace(/_/g, " ")}
+                {m.due_date ? `: ${m.due_date}` : ""} · {m.status}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {docsFor(t.id).length > 0 && (
+          <div className="doc-list">
+            {groupedDocsFor(t.id).map((group) => (
+              <div key={group.key} className={`doc-group ${group.key === "fica" ? "is-pii" : ""}`}>
+                <p className="doc-group-title">
+                  {group.label}
+                  <span className="doc-group-count">{group.items.length}</span>
+                </p>
+                <div className="doc-chips">
+                  {group.items.map((d) => (
+                    d.url ? (
+                      <a
+                        key={d.id}
+                        href={d.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="doc-chip"
+                        title={d.label ?? undefined}
+                      >
+                        {d.title}
+                        {d.is_pii && <span className="pii-dot">PII</span>}
+                      </a>
+                    ) : (
+                      <span
+                        key={d.id}
+                        className="doc-chip is-missing"
+                        title="No file attached — this document row has no stored PDF (correspondence often lands as email body only)."
+                      >
+                        {d.title}
+                        {d.is_pii && <span className="pii-dot">PII</span>}
+                      </span>
+                    )
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {isAdmin && transfers.length > 1 && (
+          <MergeTransfer
+            loserId={t.id}
+            loserName={t.name}
+            propertyId={prop.id}
+            candidates={transfers
+              .filter((c: any) => c.id !== t.id)
+              .map((c: any) => ({
+                id: c.id,
+                name: c.name,
+                status: c.status ?? null,
+                transferDate: c.transfer_date ?? null,
+              }))}
+          />
+        )}
+      </div>
+    );
+
+    if (opts.showMarker) {
+      return (
+        <div key={t.id} className="timeline-row">
+          <div className="timeline-marker">
+            <span className="timeline-year">{year}</span>
+            <span className="timeline-dot" />
+          </div>
+          {card}
+        </div>
+      );
+    }
+    return <div key={t.id}>{card}</div>;
+  };
+
   return (
     <>
     <TopBar />
@@ -292,25 +473,56 @@ export default async function PropertyRecord({
       </header>
       <hr className="tideline" />
 
-      <section className="app-body" style={{ maxWidth: 1000 }}>
-        {/* Hero: erf polygon on satellite (Dream gold on lagoon fill), vital
-            stats stack, photo strip. Replaces the plain cadastral strip —
-            the shape of the ground is the identity, everything else is data
-            about that shape. See PropertyHero.tsx for the design thesis. */}
-        <PropertyHero
-          lat={(prop as any).lat ?? null}
-          lng={(prop as any).lng ?? null}
-          prclKey={(prop as any).prcl_key ?? null}
-          erven={heroErven}
-          titleDeed={prop.title_deed_no ?? null}
-          extentSqm={prop.extent_sqm ?? null}
-          suburb={prop.suburb?.name ?? null}
-          type={prop.property_type?.label ?? null}
-          ownership={prop.ownership_type?.label ?? null}
-          since={since}
-          photos={heroPhotos}
-          mapboxToken={mapboxToken}
-        />
+      <section className="app-body property-record-body">
+        {/* Compact action row — always visible so Fetch from Lightstone stays
+            reachable on established records where the Take-on section is
+            hidden. Small vertical footprint. */}
+        <div className="property-record-actions">
+          <LightstoneFetch
+            propertyId={prop.id}
+            products={LIGHTSTONE_PRODUCTS.map((p) => ({
+              code: p.code,
+              label: p.label,
+              description: p.description,
+            }))}
+          />
+        </div>
+
+        {/* Hero row: PropertyHero (erf polygon + vitals + photos) on the left,
+            the active transfer's deal card on the right. Fits property + live
+            deal on one laptop screen without scrolling. Past transfers go
+            below in the Ownership history section. */}
+        <div className="property-record-hero-row">
+          <PropertyHero
+            lat={(prop as any).lat ?? null}
+            lng={(prop as any).lng ?? null}
+            prclKey={(prop as any).prcl_key ?? null}
+            erven={heroErven}
+            titleDeed={prop.title_deed_no ?? null}
+            extentSqm={prop.extent_sqm ?? null}
+            suburb={prop.suburb?.name ?? null}
+            type={prop.property_type?.label ?? null}
+            ownership={prop.ownership_type?.label ?? null}
+            since={since}
+            photos={heroPhotos}
+            mapboxToken={mapboxToken}
+          />
+          {activeTransfer ? (
+            <div className="property-record-deal">
+              {renderTransferCard(activeTransfer, { showMarker: false })}
+            </div>
+          ) : (
+            <div className="property-record-deal property-record-deal--empty">
+              <p className="eyebrow">Current deal</p>
+              <p>
+                No live transfer on this property yet.
+                <br />
+                Drop a folder in the Take-on section below (or via Triage) to
+                bring in the ownership history and start a deal.
+              </p>
+            </div>
+          )}
+        </div>
 
         {/* Sample-data banner — surfaces whenever Lightstone stub results are
             attached to this record so nobody mistakes the SAMPLE placeholder
@@ -335,18 +547,18 @@ export default async function PropertyRecord({
           </div>
         )}
 
-        {/* Take on documents — collapsed by default so it doesn't dominate the
-            record for established properties. The Fetch from Lightstone button
-            stays visible in the header (it's a distinct action, not part of
-            the drop flow). Click the summary to expand the drop zone when a
-            new batch needs to land. */}
-        <section style={{ marginTop: 32 }}>
-          <div
-            className="section-head"
-            style={{ marginBottom: 12, alignItems: "flex-end" }}
-          >
-            <h2 style={{ fontSize: 20, margin: 0 }}>Take on documents</h2>
-            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        {/* Take on documents — only shown on properties that have NO transfers
+            AND NO documents yet. Established records don't need the drop zone
+            hogging vertical space; add-more-docs flows through Triage. Fetch
+            from Lightstone is available inline here for fresh take-on flows;
+            for established records it's reachable from the action row above. */}
+        {transfers.length === 0 && docs.length === 0 && (
+          <section style={{ marginTop: 32 }}>
+            <div
+              className="section-head"
+              style={{ marginBottom: 12, alignItems: "flex-end" }}
+            >
+              <h2 style={{ fontSize: 20, margin: 0 }}>Take on documents</h2>
               <LightstoneFetch
                 propertyId={prop.id}
                 products={LIGHTSTONE_PRODUCTS.map((p) => ({
@@ -356,23 +568,15 @@ export default async function PropertyRecord({
                 }))}
               />
             </div>
-          </div>
-          <details className="dropzone-collapse">
-            <summary>
-              <span>Drop a property folder to add documents</span>
-              <span className="dropzone-collapse-caret" aria-hidden="true">+</span>
-            </summary>
-            <div style={{ marginTop: 10 }}>
-              <DropZone
-                propertyId={prop.id}
-                overrideLabel={prop.primary_address ?? "Take-on"}
-                autoExtract
-                variant="compact"
-                redirectToBatch
-              />
-            </div>
-          </details>
-        </section>
+            <DropZone
+              propertyId={prop.id}
+              overrideLabel={prop.primary_address ?? "Take-on"}
+              autoExtract
+              variant="compact"
+              redirectToBatch
+            />
+          </section>
+        )}
 
         {uniquePhotos.length > 0 && (
           <section className="photo-strip">
@@ -402,188 +606,22 @@ export default async function PropertyRecord({
           </section>
         )}
 
-        <div className="section-head" style={{ marginTop: 36, marginBottom: 4 }}>
-          <h2 style={{ fontSize: 20, margin: 0 }}>Ownership timeline</h2>
-          <span className="mono" style={{ fontSize: 11, color: "#8090b5", letterSpacing: "0.08em", textTransform: "uppercase" }}>
-            {transfers.length} {transfers.length === 1 ? "transfer" : "transfers"}
-          </span>
-        </div>
-        {transfers.length === 0 && (
-          <p style={{ color: "#5b6885", marginTop: 12 }}>
-            No transfers on record yet. Drop this property&apos;s folder in Triage to bring in
-            its ownership history.
-          </p>
-        )}
-
-        <div className="timeline">
-        {transfers.map((t) => {
-          const parties = tparties.filter((tp) => tp.transfer_id === t.id);
-          const sellers = parties.filter((p) => p.side === "seller");
-          const buyers = parties.filter((p) => p.side === "purchaser");
-          const agr = agreements.find((a) => a.transfer_id === t.id);
-          const ms = milestones.filter((m) => m.transfer_id === t.id);
-
-          const renderParty = (tp: any) => {
-            const p = tp.party;
-            if (!p) return null;
-            const mem = membersFor(p.id);
-            return (
-              <div key={p.id} className="party-line">
-                <b>{p.entity_name || p.display_name}</b>{" "}
-                <span className="pill">{p.party_type}</span>
-                {p.registration_no && <span className="muted"> · reg {p.registration_no}</span>}
-                {p.id_number && <span className="muted"> · ID {p.id_number}</span>}
-                {mem.length > 0 && (
-                  <ul className="member-list">
-                    {mem.map((m, i) => (
-                      <li key={i}>
-                        {m.member?.display_name}{" "}
-                        <span className="muted">({m.role})</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            );
-          };
-
-          const tStatus = statusHuman(t.status);
-          const year =
-            t.transfer_date?.slice(0, 4) ??
-            t.registered_date?.slice(0, 4) ??
-            t.created_at?.slice(0, 4) ??
-            "—";
-
-          return (
-            <div key={t.id} className="timeline-row">
-              <div className="timeline-marker">
-                <span className="timeline-year">{year}</span>
-                <span className="timeline-dot" />
-              </div>
-              <div className="transfer-card">
-              <div className="transfer-head">
-                <b>{t.name}</b>
-                <span className={`status-chip status-${tStatus.kind}`}>
-                  <span className="dot" />
-                  {tStatus.label}
-                </span>
-              </div>
-
-              {/* Mark-as-sold sits immediately below the head — discoverable
-                  without scrolling past docs. Any agent, any transfer. */}
-              <div className="transfer-actions">
-                <MarkSoldButton
-                  transferId={t.id}
-                  transferName={t.name}
-                  propertyId={prop.id}
-                  currentSoldBy={t.sold_by ?? null}
-                />
-                {t.sold_by && (
-                  <p className="muted" style={{ fontSize: 11.5, margin: "6px 0 0" }}>
-                    Sold by <b>{
-                      t.sold_by === "dream" ? "Dream Knysna"
-                      : t.sold_by === "partner" ? "joint-mandate partner"
-                      : t.sold_by === "other" ? "another agency"
-                      : "private sale (pre-mandate)"
-                    }</b>
-                    {t.sold_by_note ? ` · ${t.sold_by_note}` : ""}
-                  </p>
-                )}
-              </div>
-
-              <div className="transfer-cols">
-                <div>
-                  <p className="col-title">Sellers</p>
-                  {sellers.length ? sellers.map(renderParty) : <p className="muted">—</p>}
-                </div>
-                <div>
-                  <p className="col-title">Purchasers</p>
-                  {buyers.length ? buyers.map(renderParty) : <p className="muted">—</p>}
-                </div>
-                <div>
-                  <p className="col-title">Agreement</p>
-                  {agr ? (
-                    <>
-                      <div className="party-line">Price <b>{money(agr.price)}</b></div>
-                      <div className="party-line">Deposit <b>{money(agr.deposit)}</b></div>
-                      <div className="party-line">Transfer <b>{agr.transfer_date ?? "—"}</b></div>
-                    </>
-                  ) : (
-                    <p className="muted">—</p>
-                  )}
-                </div>
-              </div>
-
-              {ms.length > 0 && (
-                <div className="milestones">
-                  {ms.map((m, i) => (
-                    <span key={i} className="ms-chip">
-                      {m.type.replace(/_/g, " ")}
-                      {m.due_date ? `: ${m.due_date}` : ""} · {m.status}
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              {docsFor(t.id).length > 0 && (
-                <div className="doc-list">
-                  {groupedDocsFor(t.id).map((group) => (
-                    <div key={group.key} className={`doc-group ${group.key === "fica" ? "is-pii" : ""}`}>
-                      <p className="doc-group-title">
-                        {group.label}
-                        <span className="doc-group-count">{group.items.length}</span>
-                      </p>
-                      <div className="doc-chips">
-                        {group.items.map((d) => (
-                          d.url ? (
-                            <a
-                              key={d.id}
-                              href={d.url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="doc-chip"
-                              title={d.label ?? undefined}
-                            >
-                              {d.title}
-                              {d.is_pii && <span className="pii-dot">PII</span>}
-                            </a>
-                          ) : (
-                            <span
-                              key={d.id}
-                              className="doc-chip is-missing"
-                              title="No file attached — this document row has no stored PDF (correspondence often lands as email body only)."
-                            >
-                              {d.title}
-                              {d.is_pii && <span className="pii-dot">PII</span>}
-                            </span>
-                          )
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {isAdmin && transfers.length > 1 && (
-                <MergeTransfer
-                  loserId={t.id}
-                  loserName={t.name}
-                  propertyId={prop.id}
-                  candidates={transfers
-                    .filter((c: any) => c.id !== t.id)
-                    .map((c: any) => ({
-                      id: c.id,
-                      name: c.name,
-                      status: c.status ?? null,
-                      transferDate: c.transfer_date ?? null,
-                    }))}
-                />
-              )}
-              </div>
+        {/* Ownership history: only past transfers. The active transfer lives
+            in the hero row above. Hidden entirely when there's just one (or
+            zero) transfers on record — no empty section noise. */}
+        {pastTransfers.length > 0 && (
+          <>
+            <div className="section-head" style={{ marginTop: 36, marginBottom: 4 }}>
+              <h2 style={{ fontSize: 20, margin: 0 }}>Ownership history</h2>
+              <span className="mono" style={{ fontSize: 11, color: "#8090b5", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                {pastTransfers.length} prior {pastTransfers.length === 1 ? "transfer" : "transfers"}
+              </span>
             </div>
-          );
-        })}
-        </div>
+            <div className="timeline">
+              {pastTransfers.map((t) => renderTransferCard(t, { showMarker: true }))}
+            </div>
+          </>
+        )}
       </section>
     </main>
     </>
