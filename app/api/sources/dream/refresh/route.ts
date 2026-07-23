@@ -457,15 +457,14 @@ async function discoverAllListingUrls(initialHtml: string): Promise<string[]> {
     return Array.from(bySlug.values());
   }
 
-  let maxPage = 1;
-  const pageNumRe = /data-pagenum="(\d+)"/g;
-  let pm: RegExpExecArray | null;
-  while ((pm = pageNumRe.exec(initialHtml))) {
-    const n = Number(pm[1]);
-    if (Number.isFinite(n) && n > maxPage) maxPage = n;
-  }
+  // We don't cap the walk with the paginator's max page number. The theme
+  // collapses trailing pages behind "…" — Dream currently shows five buttons
+  // (1..5) but has data on page 6 as well. Rely on break-on-empty for real
+  // termination, with a defensive hard cap so a runaway pagination bug can't
+  // torch the request budget.
+  const HARD_PAGE_CAP = 50;
 
-  for (let page = 2; page <= maxPage; page++) {
+  for (let page = 2; page <= HARD_PAGE_CAP; page++) {
     let html: string;
     try {
       const res = await fetch(AJAX_URL, {
