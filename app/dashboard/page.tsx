@@ -15,13 +15,6 @@ function daysBetween(iso: string | null | undefined): number | null {
   return Math.round((d.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 }
 
-function daysAgo(iso: string | null | undefined): number | null {
-  if (!iso) return null;
-  const d = new Date(iso);
-  const now = new Date();
-  return Math.floor((now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24));
-}
-
 function humanStatus(raw: string | null | undefined): string {
   if (!raw) return "—";
   if (raw === "in_conveyancing") return "In conveyancing";
@@ -51,8 +44,8 @@ export default async function Dashboard() {
     .single();
   const isAdmin = profile?.role === "admin";
 
-  // Four data pulls that feed the three columns + the hero.
-  const [inFlightData, liveListingsData, waitingBatchesData, recentTransferData] =
+  // Three data pulls that feed the columns + Attention row.
+  const [inFlightData, liveListingsData, waitingBatchesData] =
     await Promise.all([
       supabase
         .from("transfer")
@@ -76,19 +69,11 @@ export default async function Dashboard() {
         .neq("status", "committed")
         .order("created_at", { ascending: false })
         .limit(6),
-      supabase
-        .from("transfer")
-        .select(
-          "id, name, status, transfer_date, created_at, property:property_id(id, primary_address, suburb:suburb_id(name))",
-        )
-        .order("created_at", { ascending: false })
-        .limit(1),
     ]);
 
   const inFlight = (inFlightData.data ?? []) as any[];
   const liveListings = (liveListingsData.data ?? []) as any[];
   const waitingBatches = (waitingBatchesData.data ?? []) as any[];
-  const recentTransfer = (recentTransferData.data ?? [])[0] as any | undefined;
 
   // Dupe callout — admins only. Two RPCs kept off the initial Promise.all so
   // agents (majority of loads) never pay the pairwise-scan cost. Limit 20:
@@ -109,103 +94,137 @@ export default async function Dashboard() {
   const dupeCountCapped =
     propertyDupeCount >= DUPE_LIMIT || partyDupeCount >= DUPE_LIMIT;
 
-  // Hero: first in-flight deal by transfer_date, else most-recent transfer,
-  // else nothing (empty invitation to act).
-  const featured = inFlight[0] ?? recentTransfer ?? null;
-  const featuredIsInFlight = featured?.status === "in_conveyancing";
-  const featuredDaysToTransfer = featuredIsInFlight
-    ? daysBetween(featured?.transfer_date)
-    : null;
-  const featuredDaysAgo = !featuredIsInFlight ? daysAgo(featured?.created_at) : null;
+  // Attention row: 3-5 items that need eyes on them today, ranked by
+  // urgency. Replaces the "hero property" that hijacked the viewport with
+  // one deal — Bronwyn opens the app for breadth (what's happening across
+  // the book), not depth (one property). Categories, high → low urgency:
+  //   1. Overdue transfers  (in_conveyancing past transfer_date)
+  //   2. Red-tier review batches
+  //   3. Imminent transfers (in_conveyancing within 14 days)
+  //   4. Amber-tier review batches
+  //   5. Dupe pairs to review (admins only)
+  type AttentionItem = {
+    key: string;
+    urgency: number;
+    primary: string;
+    secondary: string | null;
+    payload: string;
+    href: string;
+    variant: "urgent" | "warn" | "info";
+  };
+  const attention: AttentionItem[] = [];
 
-  const heroAddress =
-    featured?.property?.primary_address ?? featured?.name ?? null;
-  const heroSuburb = featured?.property?.suburb?.name ?? null;
+  for (const t of inFlight) {
+    const days = daysBetween(t.transfer_date);
+    if (days == null) continue;
+    if (days < 0) {
+      const overdue = Math.abs(days);
+      attention.push({
+        key: `overdue-${t.id}`,
+        urgency: 10000 + overdue,
+        primary: t.property?.primary_address ?? t.name,
+        secondary: t.property?.suburb?.name ?? null,
+        payload: `${overdue} d past transfer date`,
+        href: t.property?.id ? `/properties/${t.property.id}` : "#",
+        variant: "urgent",
+      });
+    } else if (days <= 14) {
+      attention.push({
+        key: `imminent-${t.id}`,
+        urgency: 3000 - days,
+        primary: t.property?.primary_address ?? t.name,
+        secondary: t.property?.suburb?.name ?? null,
+        payload:
+          days === 0
+            ? "transfers today"
+            : `transfer in ${days} d`,
+        href: t.property?.id ? `/properties/${t.property.id}` : "#",
+        variant: days <= 3 ? "urgent" : "warn",
+      });
+    }
+  }
+
+  for (const b of waitingBatches) {
+    if (b.tier === "red" || b.tier === "amber") {
+      attention.push({
+        key: `batch-${b.id}`,
+        urgency: b.tier === "red" ? 8000 : 2000,
+        primary: b.label ?? "Dropped batch",
+        secondary: "awaiting review",
+        payload: b.tier.toUpperCase(),
+        href: `/triage/${b.id}`,
+        variant: b.tier === "red" ? "urgent" : "warn",
+      });
+    }
+  }
+
+  if (isAdmin && totalDupeCount > 0) {
+    attention.push({
+      key: "dupes",
+      urgency: 1500,
+      primary: `${totalDupeCount}${dupeCountCapped ? "+" : ""} likely duplicate${totalDupeCount === 1 && !dupeCountCapped ? "" : "s"}`,
+      secondary: "awaiting merge review",
+      payload: "DUPES",
+      href: "/dupes",
+      variant: "info",
+    });
+  }
+
+  attention.sort((a, b) => b.urgency - a.urgency);
+  const topAttention = attention.slice(0, 5);
 
   const totalNothing =
-    !featured && inFlight.length === 0 && liveListings.length === 0 && waitingBatches.length === 0;
+    inFlight.length === 0 && liveListings.length === 0 && waitingBatches.length === 0;
 
   return (
     <>
       <TopBar />
       <main className="page">
-        {/* Hero — a specific deal, not a headcount */}
-        {featured && (
-          <section className="dash-hero">
-            <div className="dash-hero-body">
-              <p className="dash-hero-eyebrow">
-                {featuredIsInFlight ? "Closest to transfer" : "Most recent record"}
-              </p>
-              <h1 className="dash-hero-address">{heroAddress ?? "Unknown"}</h1>
-              <p className="dash-hero-tideline" aria-hidden />
-              {heroSuburb && <p className="dash-hero-suburb">{heroSuburb}</p>}
-              <div className="dash-hero-meta">
-                <span
-                  className={`status-chip status-${
-                    featuredIsInFlight ? "conveyancing" : "preparing"
-                  }`}
-                >
-                  <span className="dot" />
-                  {humanStatus(featured.status)}
-                </span>
-                {featuredIsInFlight && featured.transfer_date && (
-                  <span className="dash-hero-payload">
-                    {featuredDaysToTransfer === null
-                      ? `Transfer date ${featured.transfer_date}`
-                      : featuredDaysToTransfer > 0
-                        ? (
-                          <>
-                            <b>{featuredDaysToTransfer}</b>{" "}
-                            {featuredDaysToTransfer === 1 ? "day" : "days"} to transfer
-                          </>
-                        )
-                        : featuredDaysToTransfer === 0
-                          ? "Transfer today"
-                          : (
-                            <>
-                              <b>{Math.abs(featuredDaysToTransfer)}</b>{" "}
-                              {Math.abs(featuredDaysToTransfer) === 1 ? "day" : "days"} past transfer date
-                            </>
-                          )}
-                  </span>
-                )}
-                {!featuredIsInFlight && featuredDaysAgo !== null && (
-                  <span className="dash-hero-payload">
-                    Committed{" "}
-                    <b>
-                      {featuredDaysAgo === 0
-                        ? "today"
-                        : `${featuredDaysAgo} ${featuredDaysAgo === 1 ? "day" : "days"} ago`}
-                    </b>
-                  </span>
-                )}
-              </div>
+        {/* Attention row — 3-5 items that need eyes on them today, ranked by
+            urgency. If nothing needs attention we show a small "caught up"
+            state instead of hiding, so the section is a stable landmark. */}
+        <section className="dash-attention">
+          <p className="dash-attention-eyebrow">Attention today</p>
+          {topAttention.length === 0 ? (
+            <div className="dash-attention-empty">
+              <p>Nothing needs attention right now — everything&apos;s caught up.</p>
             </div>
-            {featured.property?.id && (
-              <Link
-                href={`/properties/${featured.property.id}`}
-                className="dash-hero-cta"
-              >
-                Open record →
-              </Link>
-            )}
-          </section>
-        )}
+          ) : (
+            <ul className="dash-attention-list">
+              {topAttention.map((a) => (
+                <li key={a.key}>
+                  <Link
+                    href={a.href}
+                    className={`dash-attention-row dash-attention-${a.variant}`}
+                  >
+                    <span className="dash-attention-icon" aria-hidden>
+                      {a.variant === "urgent" ? "▲" : a.variant === "warn" ? "◆" : "●"}
+                    </span>
+                    <div className="dash-attention-body">
+                      <span className="dash-attention-primary">{a.primary}</span>
+                      {a.secondary && (
+                        <span className="dash-attention-secondary">{a.secondary}</span>
+                      )}
+                    </div>
+                    <span className="dash-attention-payload">{a.payload}</span>
+                    <span className="dash-attention-arrow" aria-hidden>
+                      →
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
 
-        {totalNothing && (
-          <section className="dash-hero dash-hero-empty">
-            <div className="dash-hero-body">
-              <p className="dash-hero-eyebrow">Nothing in flight</p>
-              <h1 className="dash-hero-address">Everything&apos;s caught up.</h1>
-              <p className="dash-hero-tideline" aria-hidden />
-              <p className="dash-hero-suburb">
-                Drop a folder in triage to bring in more deals.
-              </p>
-            </div>
-            <Link href="/triage" className="dash-hero-cta">
-              Open triage →
-            </Link>
-          </section>
+        {totalNothing && topAttention.length === 0 && (
+          <p className="muted" style={{ marginTop: 12, fontSize: 13 }}>
+            Nothing in flight anywhere. Drop a folder in{" "}
+            <Link href="/triage" className="row-link" style={{ fontWeight: 600 }}>
+              triage
+            </Link>{" "}
+            to bring in more deals.
+          </p>
         )}
 
         {/* Director callout — only when there are pending dupe pairs. Sits

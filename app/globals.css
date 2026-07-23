@@ -746,6 +746,84 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
 .dash-hero-empty .dash-hero-address { color: #8090b5; font-weight: 500; }
 .dash-hero-empty .dash-hero-eyebrow { color: #6b78a0; }
 
+/* Attention row — replaces the old dash-hero. 3-5 items ranked by
+   urgency, compact enough to see the whole book's red flags at a glance.
+   Overdue items get a red urgent variant; imminent (14d) get gold warn;
+   info items (dupes) get a muted dot. */
+.dash-attention {
+  background: var(--white);
+  border: 1px solid #e2e8f5;
+  border-radius: 16px;
+  padding: 20px 24px 14px;
+  box-shadow: 0 4px 20px rgba(15, 42, 99, 0.05);
+}
+.dash-attention-eyebrow {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--gold); margin: 0 0 12px; font-weight: 700;
+}
+.dash-attention-empty {
+  padding: 8px 4px 4px;
+  color: #6b78a0; font-size: 13px;
+}
+.dash-attention-empty p { margin: 0; }
+.dash-attention-list { list-style: none; padding: 0; margin: 0; }
+.dash-attention-list li + li { border-top: 1px solid var(--mist); }
+.dash-attention-row {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto 18px;
+  gap: 14px;
+  align-items: center;
+  padding: 12px 6px;
+  text-decoration: none;
+  color: var(--estuary);
+  border-radius: 8px;
+  transition: background 0.1s;
+}
+.dash-attention-row:hover { background: var(--mist); }
+.dash-attention-icon {
+  font-size: 11px;
+  text-align: center;
+  line-height: 1;
+  color: var(--slate, #6b78a0);
+}
+.dash-attention-body {
+  display: flex; flex-direction: column; gap: 2px; min-width: 0;
+}
+.dash-attention-primary {
+  font-family: "Inter", -apple-system, sans-serif;
+  font-weight: 600; font-size: 14px; color: var(--estuary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.dash-attention-secondary {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10.5px; letter-spacing: 0.06em;
+  color: var(--slate, #6b78a0);
+}
+.dash-attention-payload {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12px; font-weight: 600;
+  color: var(--estuary);
+  white-space: nowrap;
+}
+.dash-attention-arrow {
+  color: var(--slate, #6b78a0);
+  font-size: 14px; text-align: right;
+}
+
+/* Urgent variant — overdue transfers, red-tier batches. Red icon + red
+   payload so the eye lands on them first. */
+.dash-attention-urgent .dash-attention-icon { color: #c62828; }
+.dash-attention-urgent .dash-attention-payload { color: #c62828; }
+
+/* Warn variant — imminent transfers (within 14d), amber-tier batches. */
+.dash-attention-warn .dash-attention-icon { color: var(--gold); }
+.dash-attention-warn .dash-attention-payload { color: var(--gold); }
+
+/* Info variant — dupe callout etc. Quiet, still clickable. */
+.dash-attention-info .dash-attention-icon { color: var(--slate, #6b78a0); }
+.dash-attention-info .dash-attention-payload { color: var(--navy); }
+
 /* Dupes callout — Director-only, only when there are pairs to review.
    Tinted gold to signal "attention" without shouting; sits between the
    hero and the work columns so a Director's eye lands on it before the
