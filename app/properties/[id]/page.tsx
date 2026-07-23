@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import TopBar from "@/app/components/TopBar";
 import MergeTransfer from "./MergeTransfer";
 import MarkSoldButton from "./MarkSoldButton";
+import PropertyHero, { type SinceLine } from "./PropertyHero";
 import DropZone from "@/app/triage/DropZone";
 import LightstoneFetch from "./LightstoneFetch";
 import { PRODUCTS as LIGHTSTONE_PRODUCTS } from "@/lib/lightstone";
@@ -222,14 +223,51 @@ export default async function PropertyRecord({
   };
   const headerStatus = statusHuman(currentTransfer?.status);
 
-  const facts = [
-    { label: "Erf", value: (erven ?? []).map((e: any) => e.erf_number).join(", "), mono: true },
-    { label: "Title deed", value: prop.title_deed_no, mono: true },
-    { label: "Extent", value: prop.extent_sqm ? `${prop.extent_sqm} m²` : null },
-    { label: "Suburb", value: prop.suburb?.name },
-    { label: "Type", value: prop.property_type?.label },
-    { label: "Ownership", value: prop.ownership_type?.label },
-  ];
+  // Since line: surname of the buyer on the most-recent REGISTERED transfer,
+  // year of registration, and price paid. Shows "who owns it now, since when,
+  // for how much" — the piece of context every SA property document opens with.
+  // Null when we have no registered transfer yet (deed hasn't landed / been
+  // classified), in which case the hero hides the section entirely rather
+  // than filling space with an excuse.
+  // Since line: surname of the buyer on the most-recent REGISTERED transfer,
+  // year of registration, price paid. Null when no registered transfer yet —
+  // the hero hides the section rather than filling space with an excuse.
+  // Uses the top-level money() helper (defined at file scope) for price.
+  let since: SinceLine = null;
+  const lastRegistered = transfers.find(
+    (t: any) => (t.status ?? "").toLowerCase() === "registered" && t.registered_date,
+  );
+  if (lastRegistered) {
+    const buyers = tparties.filter(
+      (p: any) => p.transfer_id === lastRegistered.id && p.side === "buyer",
+    );
+    const primary = buyers.find((p: any) => p.is_primary) ?? buyers[0];
+    const displayName = primary?.party?.display_name as string | undefined;
+    if (displayName) {
+      // Take the last word as the surname ("Michael John Wilson" → "Wilson").
+      // Entity names ("The Leisure Partnership") keep the full name — safer.
+      const parts = displayName.trim().split(/\s+/);
+      const surname = parts.length > 1 ? parts[parts.length - 1] : displayName;
+      const agr = agreements.find((a: any) => a.transfer_id === lastRegistered.id);
+      const priceStr =
+        agr?.price != null
+          ? `R ${Number(agr.price).toLocaleString("en-ZA")}`
+          : null;
+      since = {
+        surname,
+        year: (lastRegistered.registered_date as string).slice(0, 4),
+        price: priceStr,
+      };
+    }
+  }
+
+  const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
+  const heroPhotos = uniquePhotos.map((p) => ({
+    id: p.id,
+    url: p.url,
+    title: p.title,
+  }));
+  const heroErven = (erven ?? []).map((e: any) => e.erf_number).join(", ");
 
   return (
     <>
@@ -255,18 +293,24 @@ export default async function PropertyRecord({
       <hr className="tideline" />
 
       <section className="app-body" style={{ maxWidth: 1000 }}>
-        {/* Cadastral strip — reads left-to-right like a Deeds Office cover sheet.
-            Missing values dim so what's known vs unknown is visually obvious. */}
-        <div className="cadastral">
-          {facts.map((f) => (
-            <div key={f.label} className={`cadastral-item ${!f.value ? "is-empty" : ""}`}>
-              <span className="cadastral-label">{f.label}</span>
-              <span className={`cadastral-value ${f.mono ? "mono" : ""}`}>
-                {f.value ?? "—"}
-              </span>
-            </div>
-          ))}
-        </div>
+        {/* Hero: erf polygon on satellite (Dream gold on lagoon fill), vital
+            stats stack, photo strip. Replaces the plain cadastral strip —
+            the shape of the ground is the identity, everything else is data
+            about that shape. See PropertyHero.tsx for the design thesis. */}
+        <PropertyHero
+          lat={(prop as any).lat ?? null}
+          lng={(prop as any).lng ?? null}
+          prclKey={(prop as any).prcl_key ?? null}
+          erven={heroErven}
+          titleDeed={prop.title_deed_no ?? null}
+          extentSqm={prop.extent_sqm ?? null}
+          suburb={prop.suburb?.name ?? null}
+          type={prop.property_type?.label ?? null}
+          ownership={prop.ownership_type?.label ?? null}
+          since={since}
+          photos={heroPhotos}
+          mapboxToken={mapboxToken}
+        />
 
         {/* Sample-data banner — surfaces whenever Lightstone stub results are
             attached to this record so nobody mistakes the SAMPLE placeholder

@@ -323,6 +323,106 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
 .transfer-actions { margin-bottom: 14px; }
 .transfer-actions > div:first-child { margin-top: 0 !important; }
 
+/* Property Record hero — erf polygon on satellite (left) + vital stats
+   stack (right). The polygon is the identity; everything around it stays
+   quiet. Signature move of the record. See PropertyHero.tsx. */
+.property-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(240px, 1fr);
+  gap: 20px;
+  margin-top: 24px;
+  margin-bottom: 8px;
+}
+.property-hero-left { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.property-hero-map {
+  position: relative;
+  height: 380px;
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--mist);
+  box-shadow: 0 1px 2px rgba(19, 43, 132, 0.05);
+}
+.property-hero-map-canvas { position: absolute; inset: 0; }
+.property-hero-coords {
+  position: absolute; bottom: 8px; right: 10px;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px; color: rgba(255, 255, 255, 0.9);
+  background: rgba(13, 58, 82, 0.55);
+  padding: 3px 7px; border-radius: 5px;
+  pointer-events: none; z-index: 5;
+  letter-spacing: 0.01em;
+}
+.property-hero-mapless {
+  height: 380px; border-radius: 14px; background: var(--mist);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--slate, #6b7789); font-size: 13px; padding: 24px; text-align: center;
+  line-height: 1.55;
+}
+.property-hero-photos {
+  display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
+}
+.property-hero-photo {
+  width: 72px; height: 72px; border-radius: 8px; overflow: hidden;
+  background: var(--mist); display: block; flex-shrink: 0;
+  transition: transform 0.12s;
+}
+.property-hero-photo:hover { transform: scale(1.03); }
+.property-hero-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.property-hero-photo-more {
+  width: 72px; height: 72px; border-radius: 8px;
+  background: var(--mist); color: var(--slate, #6b7789);
+  display: flex; align-items: center; justify-content: center;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 13px; font-weight: 600; letter-spacing: -0.01em;
+}
+
+.property-hero-stats {
+  display: flex; flex-direction: column; gap: 16px;
+  background: var(--white);
+  border-radius: 14px;
+  padding: 22px 22px 20px;
+  box-shadow: 0 1px 2px rgba(19, 43, 132, 0.05);
+}
+.property-hero-eyebrow {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--slate, #6b7789); margin: 0 0 4px; font-weight: 700;
+}
+.property-hero-value {
+  font-family: "Inter", -apple-system, sans-serif;
+  color: var(--estuary); font-size: 15px; font-weight: 600; margin: 0;
+  line-height: 1.3;
+}
+.property-hero-value.mono {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 14px; letter-spacing: -0.005em; font-weight: 500;
+}
+.property-hero-unit {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12px; color: var(--slate, #6b7789); font-weight: 400;
+  margin-left: 2px;
+}
+.property-hero-since {
+  margin-top: 6px; padding-top: 16px;
+  border-top: 1px dashed var(--gold);
+}
+.property-hero-since-value {
+  font-family: "Inter", -apple-system, sans-serif;
+  color: var(--estuary); font-size: 14px; font-weight: 500; margin: 0;
+}
+.property-hero-since-value b { font-weight: 700; color: var(--navy); }
+.property-hero-since-price {
+  color: var(--slate, #6b7789); font-size: 12px;
+  font-weight: 500; margin: 3px 0 0;
+  letter-spacing: -0.005em;
+}
+
+@media (max-width: 900px) {
+  .property-hero { grid-template-columns: 1fr; gap: 14px; }
+  .property-hero-map, .property-hero-mapless { height: 260px; }
+  .property-hero-stats { padding: 18px 18px 16px; }
+}
+
 /* Collapsible drop zone on the Property Record. Closed by default so it
    doesn't dominate an established record; expands when an agent wants
    to drop a fresh batch. */
