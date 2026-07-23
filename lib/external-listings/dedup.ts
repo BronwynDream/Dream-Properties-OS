@@ -50,14 +50,45 @@ type Prop = {
   prcl_key: string | null;
 };
 
-// Collapse an address to a stable comparable form:
-//   - lowercase
-//   - drop punctuation
-//   - collapse whitespace
-//   - drop trailing ", knysna" / ", south africa" / postcode / province junk
+// Garden Route suburb names (and common misspellings) that appear as trailing
+// noise on address strings. Both sides need stripping — our records store
+// "6 Bowden Park, Leisure Isle, Knysna", scrapers extract "Eagles Way" from
+// image filenames with no suburb, and marketing headlines carry "LI" for
+// "Leisure Isle". Order matters: strip longest names first so "leisure isle"
+// doesn't leave "isle" behind.
+const SUBURB_NOISE = [
+  "leisure island",
+  "leisure isle",
+  "the heads",
+  "pezula private estate",
+  "pezula golf estate",
+  "pezula",
+  "brenton on sea",
+  "brenton",
+  "belvidere estate",
+  "belvidere",
+  "eastford vale",
+  "eastford",
+  "knysna waterfront",
+  "knysna quays",
+  "knysna heights",
+  "knysna central",
+  "knysna",
+  "sedgefield",
+  "rheenendal",
+  "simola",
+  "thesen islands",
+  "thesen",
+  "costa sarda",
+  "paradise",
+];
+
+// Collapse an address to a stable comparable form. Aggressive noise-stripping
+// so scraper-extracted "15 Eagles Way Evening" and our stored
+// "15 EAGLES WAY, THE HEADS, KNYSNA" both normalise to "15 eagles way".
 export function normaliseAddress(raw: string | null | undefined): string {
   if (!raw) return "";
-  return raw
+  let s = raw
     .toLowerCase()
     .replace(/[,.]/g, " ")
     .replace(/\bsouth africa\b/g, "")
@@ -65,6 +96,36 @@ export function normaliseAddress(raw: string | null | undefined): string {
     .replace(/\b(6\d{3})\b/g, "") // Garden Route postal codes are 6xxx
     .replace(/\s+/g, " ")
     .trim();
+
+  // Strip suburb suffixes iteratively — "6 bowden park leisure isle knysna"
+  // → "6 bowden park". Only strips at the tail, so "brenton road" (a road
+  // that happens to share a suburb name) stays intact.
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const suburb of SUBURB_NOISE) {
+      if (s.endsWith(" " + suburb) || s === suburb) {
+        s = s.slice(0, s.length - suburb.length).trim();
+        changed = true;
+        break;
+      }
+    }
+    // "LI" abbreviation for Leisure Isle when it's a standalone trailing word
+    if (s.endsWith(" li")) {
+      s = s.slice(0, -3).trim();
+      changed = true;
+    }
+    // Marketing suffixes that occasionally appear after the address in image
+    // filenames: "Evening", "Morning", "Special", "Featured", "Sale". Only
+    // stripped as trailing single tokens so they don't clobber street names.
+    for (const suffix of ["evening", "morning", "special", "featured", "sale", "new"]) {
+      if (s.endsWith(" " + suffix)) {
+        s = s.slice(0, s.length - suffix.length - 1).trim();
+        changed = true;
+      }
+    }
+  }
+  return s;
 }
 
 // Address tokens for the subset-match rule. "19 glenview" ⊆ "19 glenview road
@@ -254,13 +315,30 @@ export async function rebuildDedupAndMatch(
     }
     const n = normaliseAddress(r.address_raw);
     if (n.length >= 5) {
+      // Exact after normalisation. Common now that both sides strip suburb
+      // suffixes ("15 eagles way" from both sides).
       const hit = propByAddr.get(n);
       if (hit) return hit;
+
+      // Prefix match either direction. Handles marketing suffixes still
+      // clinging to scraper output that the normaliser doesn't recognise
+      // ("15 eagles way evening" starts with "15 eagles way"), and stored
+      // addresses with extra road-type words ("6 bowden park road" starts
+      // with "6 bowden park"). Guard: shorter side must be ≥5 chars and
+      // start with a digit — prevents "1" matching "1 anything".
+      if (/^\d/.test(n)) {
+        for (const [propN, propId] of propByAddr) {
+          if (Math.min(n.length, propN.length) < 5) continue;
+          if (!/^\d/.test(propN)) continue;
+          if (propN.startsWith(n) || n.startsWith(propN)) return propId;
+        }
+      }
     }
     // Token-subset: every listing token must appear in the property's tokens.
-    // "19 glenview" ⊆ "19 glenview road the heads" → match. Requires at
-    // least one house-number-shaped token to avoid "the heads" latching onto
-    // any Heads property.
+    // Post-normalisation-fix, this catches the rare cases where prefix match
+    // fails due to token reordering ("eagles way 15" — unlikely but possible).
+    // House-number guard kept: prevents suburb-only matches ("the heads"
+    // latching onto every Heads property).
     const lt = addressTokens(r.address_raw);
     if (lt.length >= 2 && lt.some((t) => /^\d/.test(t))) {
       for (const p of propTokenSets) {
