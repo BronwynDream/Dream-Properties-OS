@@ -48,11 +48,27 @@ export default async function PropertyRecord({
     .select("erf_number, portion")
     .eq("property_id", params.id);
 
-  const { data: transfersData } = await supabase
+  // Try the post-0033 schema first (sold_by, sold_by_note). If those columns
+  // don't yet exist in this environment (migration not applied), fall back to
+  // the legacy select — otherwise the page silently renders as if the property
+  // had no transfers at all, which looks like data loss but isn't.
+  let { data: transfersData, error: transfersErr } = await supabase
     .from("transfer")
     .select("id, name, status, transfer_date, registered_date, created_at, sold_by, sold_by_note")
     .eq("property_id", params.id)
     .order("created_at", { ascending: false });
+  if (transfersErr) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[property] transfer select failed, retrying without 0033 columns: ${transfersErr.message}`,
+    );
+    const legacy = await supabase
+      .from("transfer")
+      .select("id, name, status, transfer_date, registered_date, created_at")
+      .eq("property_id", params.id)
+      .order("created_at", { ascending: false });
+    transfersData = legacy.data;
+  }
   const transfers = (transfersData ?? []) as any[];
   const tids = transfers.map((t) => t.id);
 
