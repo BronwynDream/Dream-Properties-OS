@@ -4,7 +4,82 @@ Running log of what's decided, built, and next. Updated at the end of each worki
 session. `PROJECT.md` remains the canonical business/design doc; this file is the
 "where are we right now" companion.
 
-_Last updated: 2026-07-22_
+_Last updated: 2026-07-24_
+
+---
+
+## INTAKE EMAIL: SWITCH FROM POSTMARK TO RESEND (2026-07-24)
+
+Discovered mid-session that the intake email flow had never actually run.
+Bronwyn forwarded two St James Hotel emails to `intake@dreamproperties.app`
+and nothing landed. Root cause was compound:
+
+1. **Migrations 0022 and 0023 were never applied** to Bon Bon's DB (audit
+   query showed everything 0024→0033 applied but 0022/0023 skipped, which
+   is why `ingest_batch.sender_email` didn't exist and the webhook errored
+   on insert). Applied both, plus a new **0034_provider_message_id.sql**
+   that renames `postmark_message_id` to `provider_message_id` for the
+   provider switch. Combined SQL was pasted straight into Studio.
+2. **Postmark was never signed up for.** The webhook code shipped
+   2026-07-08 assumed Postmark as the MX + inbound-parse provider, but the
+   Postmark account + DNS never got done. Emails to
+   `intake@dreamproperties.app` had nowhere to land — Simon's outbound
+   SMTP silently queued them because MX was unset, so no bounce.
+
+Switch: **Resend** for inbound (already using Resend for outbound admin
+alerts, so one-vendor consolidation). Trade-off: Resend's inbound webhook
+only delivers metadata; we make follow-up API calls to fetch the email
+body + attachment bytes from signed CDN URLs. More network hops per
+email but a cleaner mental model.
+
+### Ship
+- **`lib/resend/inbound.ts`** — thin client: `retrieveReceivedEmail(id)`,
+  `listReceivedAttachments(id)`, `fetchAttachmentBytes(url)`, and a
+  `fetchInboundEmailComplete(id)` helper that pulls the email + attachment
+  list in parallel. Uses `RESEND_API_KEY` (already on Vercel).
+- **`app/api/intake/email/route.ts`** — rewritten. Svix signature
+  verification (svix npm package, ~90 KB, no crypto reimpl). Webhook
+  envelope has `type: "email.received"` + `data.email_id` + attachments
+  metadata; body + real from-address come from the follow-up API fetch.
+  Idempotency: `provider_message_id = 'resend:<email_id>'`. Everything
+  downstream (sender allow-list, fuzzy match, batch insert, classify) is
+  unchanged behaviour.
+- **`0034_provider_message_id.sql`** — rename column + comment. Applied
+  same time as 0022/0023 catch-up.
+- **`svix ^1.99.1`** added to package.json.
+
+### Env vars to add on Vercel
+- **`RESEND_WEBHOOK_SECRET`** — from Resend dashboard when the inbound
+  webhook is created. Signs the payload; we verify with svix.
+- (`RESEND_API_KEY` and `SUPABASE_SERVICE_ROLE_KEY` were already set.)
+- (`INTAKE_WEBHOOK_TOKEN` is now unused — safe to remove.)
+
+### Resend dashboard setup (Simon's side)
+1. Domains → `dreamproperties.app` added, region eu-west-1 (Ireland).
+2. DNS records at the domain registrar:
+   - DKIM TXT (`resend._domainkey`)
+   - SPF MX + TXT on the `send.` subdomain (outbound return-path — doesn't
+     touch main mail routing)
+   - DMARC TXT (optional)
+   - **Inbound MX on the root domain** — Enable Receiving toggle reveals
+     this record; needs to be added and verified before Resend accepts mail
+     at `intake@dreamproperties.app`.
+3. Webhooks → new webhook for `email.received` event, POST to
+   `https://dreamproperties.app/api/intake/email`, copy signing secret to
+   Vercel as `RESEND_WEBHOOK_SECRET`.
+
+### Not built this arc
+- Reply email confirming triage URL (still parked from the original ship).
+- Auto-extract on inbound. Bronwyn triggers bulk-extract from /triage; the
+  extract path still needs a service-role auth refactor.
+- Removal of the now-unused `INTAKE_WEBHOOK_TOKEN` from Vercel — cosmetic.
+
+### Queued to verify
+Once Resend DNS verifies and `RESEND_WEBHOOK_SECRET` is set, Simon forwards
+the two St James emails again. Expected: two batches in `/triage` with the
+gold "via email" pill, one new "The St James Boutique Hotel of Knysna"
+property record created by the first email, second email fuzzy-matches to
+that record. Bulk-extract → commit → docs land on the property.
 
 ---
 

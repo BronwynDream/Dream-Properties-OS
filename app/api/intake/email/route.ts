@@ -1,29 +1,38 @@
 import { NextResponse } from "next/server";
+import { Webhook } from "svix";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServiceClient } from "@/lib/supabase/service";
 import { classifyBatchWithClient } from "@/lib/classify-batch";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  fetchInboundEmailComplete,
+  fetchAttachmentBytes,
+} from "@/lib/resend/inbound";
 
 export const runtime = "nodejs";
-// Postmark can send 25 MB inbound payloads. Give the pipeline room to
-// decode + upload sequentially without racing the platform timeout.
+// Resend's inbound flow: webhook (metadata) → fetch email + attachments via
+// their API → download each attachment from a signed CDN URL. That's up to
+// ~1 + 1 + N HTTP calls per email. 300s ceiling matches Vercel Hobby's max
+// and gives room for a big multi-attachment intake.
 export const maxDuration = 300;
 
-// POST /api/intake/email?token=<INTAKE_WEBHOOK_TOKEN>
+// POST /api/intake/email
 //
-// Postmark inbound webhook. Setup:
-//   1. Postmark → Servers → your server → Message Streams → Inbound.
-//   2. Set Webhook URL: https://dreamproperties.app/api/intake/email?token=<INTAKE_WEBHOOK_TOKEN>
-//   3. Include raw email content: OFF (we only need parsed JSON + attachments).
-//   4. Point intake@dreamproperties.app MX at Postmark's inbound host
-//      (Postmark → Servers → InboundStream → Setup Instructions).
-//   5. Env vars on Vercel:
-//        INTAKE_WEBHOOK_TOKEN       — long random string, matches the ?token= above
-//        SUPABASE_SERVICE_ROLE_KEY  — from Supabase → Settings → API (service_role)
+// Resend inbound webhook. Setup:
+//   1. Resend → Domains → add dreamproperties.app, add DNS records
+//      (DKIM TXT, SPF MX, SPF TXT, DMARC TXT, inbound MX).
+//   2. Resend → Webhooks → create webhook for the inbound email event, URL:
+//      https://dreamproperties.app/api/intake/email
+//   3. Env vars on Vercel:
+//        RESEND_API_KEY            — from Resend → API Keys (Full access)
+//        RESEND_WEBHOOK_SECRET     — from Resend → Webhooks → this webhook
+//        SUPABASE_SERVICE_ROLE_KEY — from Supabase → Settings → API
 //
-// Auth: URL token, constant-time compared. Sender allow-list: the From address
-// must match a row in app_user (case-insensitive). Anything else → 403.
+// Auth: svix signature verification on the incoming webhook. Sender allow-
+// list: the From address must match a row in app_user (case-insensitive).
+// Anything else → 403.
 //
-// Idempotency: Postmark retries on 5xx. We dedupe by MessageID so a retry
+// Idempotency: Resend retries webhooks on 5xx. We dedupe by email_id
+// (stored as "resend:<uuid>" in ingest_batch.provider_message_id) so a retry
 // returns the existing batch instead of creating a duplicate.
 //
 // Subject-driven routing:
@@ -35,92 +44,128 @@ export const maxDuration = 300;
 //   Property: similarity >= 0.55 against primary_address → attach to existing.
 //   Client:   similarity >= 0.60 against party.display_name → attach to existing.
 //   No match → create new row.
-// Weaker matches are ignored — Bronwyn can merge later in /dupes if needed.
 //
 // Pipeline: (property|party) row → ingest_batch (source='email',
 // property_id OR party_id set) → email body saved as ingest_file → attachments
-// decoded + uploaded → classifyBatch. Extraction is left for Bronwyn to trigger
-// from /triage/[id], same as the drag-drop flow's default.
+// fetched from Resend CDN + uploaded → classifyBatch. Extraction is left for
+// Bronwyn to trigger from /triage/[id].
 
 const MAX_ATTACHMENT_MB = 20;
 const PROPERTY_MATCH_THRESHOLD = 0.55;
 const PARTY_MATCH_THRESHOLD = 0.6;
 
-type PostmarkAttachment = {
-  Name?: string;
-  Content?: string; // base64
-  ContentType?: string;
-  ContentLength?: number;
-  ContentID?: string;
-};
-
-type PostmarkInbound = {
-  From?: string;
-  FromFull?: { Email?: string; Name?: string };
-  Subject?: string;
-  TextBody?: string;
-  HtmlBody?: string;
-  MessageID?: string;
-  Attachments?: PostmarkAttachment[];
+// Resend's inbound webhook envelope. Metadata only — body + attachment bytes
+// are fetched via their API.
+type ResendInboundEvent = {
+  type: string;
+  created_at?: string;
+  data: {
+    email_id: string;
+    created_at?: string;
+    from: string;
+    to?: string[];
+    subject?: string | null;
+    message_id?: string;
+    attachments?: Array<{
+      id: string;
+      filename: string;
+      content_type: string;
+    }>;
+  };
 };
 
 type Intent = "property" | "client";
 
 export async function POST(request: Request) {
-  // 1. URL token check.
-  const url = new URL(request.url);
-  const token = url.searchParams.get("token") ?? "";
-  const expected = process.env.INTAKE_WEBHOOK_TOKEN ?? "";
-  if (!expected) {
+  // 1. Svix signature verification.
+  const secret = (process.env.RESEND_WEBHOOK_SECRET ?? "").trim();
+  if (!secret) {
     return NextResponse.json(
-      { error: "INTAKE_WEBHOOK_TOKEN not configured" },
+      { error: "RESEND_WEBHOOK_SECRET not configured" },
       { status: 500 },
     );
   }
-  if (!constantTimeEq(token, expected)) {
-    return NextResponse.json({ error: "unauthorised" }, { status: 401 });
+
+  const svixId = request.headers.get("svix-id") ?? "";
+  const svixTimestamp = request.headers.get("svix-timestamp") ?? "";
+  const svixSignature = request.headers.get("svix-signature") ?? "";
+  if (!svixId || !svixTimestamp || !svixSignature) {
+    return NextResponse.json(
+      { error: "missing svix signature headers" },
+      { status: 401 },
+    );
   }
 
-  // 2. Parse Postmark JSON.
-  let body: PostmarkInbound;
+  const rawBody = await request.text();
+  let event: ResendInboundEvent;
   try {
-    body = (await request.json()) as PostmarkInbound;
-  } catch {
-    return NextResponse.json({ error: "invalid JSON body" }, { status: 400 });
+    const wh = new Webhook(secret);
+    event = wh.verify(rawBody, {
+      "svix-id": svixId,
+      "svix-timestamp": svixTimestamp,
+      "svix-signature": svixSignature,
+    }) as ResendInboundEvent;
+  } catch (e) {
+    return NextResponse.json(
+      { error: `signature verification failed: ${(e as Error).message}` },
+      { status: 401 },
+    );
   }
 
-  const fromEmail = (body.FromFull?.Email ?? body.From ?? "").trim().toLowerCase();
-  const rawSubject = (body.Subject ?? "").trim();
-  const textBody = (body.TextBody ?? "").trim();
-  const messageId = (body.MessageID ?? "").trim() || null;
-  const attachments = Array.isArray(body.Attachments) ? body.Attachments : [];
+  // 2. Only handle inbound-email events. Resend may send other event types on
+  //    the same webhook URL if you configure multiple event types — ignore
+  //    them cleanly with a 200 so Resend doesn't retry.
+  if (event.type !== "email.received") {
+    return NextResponse.json({ ok: true, skipped: event.type });
+  }
 
+  const emailId = event.data?.email_id;
+  if (!emailId) {
+    return NextResponse.json({ error: "missing email_id" }, { status: 400 });
+  }
+
+  const supabase = createServiceClient();
+  const providerMessageId = `resend:${emailId}`;
+
+  // 3. Idempotency: same email_id → return existing batch.
+  const { data: existing } = await supabase
+    .from("ingest_batch")
+    .select("id, property_id, party_id")
+    .eq("provider_message_id", providerMessageId)
+    .maybeSingle();
+  if (existing) {
+    return NextResponse.json({
+      ok: true,
+      dedupe: true,
+      batchId: existing.id,
+      propertyId: existing.property_id,
+      partyId: existing.party_id,
+      triageUrl: `/triage/${existing.id}`,
+    });
+  }
+
+  // 4. Fetch the full email + attachments metadata from Resend. This is where
+  //    the body text, real from-address, and download URLs actually come from.
+  let email;
+  let attachmentMetas;
+  try {
+    const complete = await fetchInboundEmailComplete(emailId);
+    email = complete.email;
+    attachmentMetas = complete.attachments;
+  } catch (e) {
+    // 502 so Resend retries the webhook — transient API blip is worth a redo.
+    return NextResponse.json(
+      { error: `resend fetch failed: ${(e as Error).message}` },
+      { status: 502 },
+    );
+  }
+
+  const fromEmail = normaliseEmail(email.from);
   if (!fromEmail) {
     return NextResponse.json({ error: "missing From address" }, { status: 400 });
   }
 
-  const supabase = createServiceClient();
-
-  // 3. Idempotency: same MessageID → return existing batch.
-  if (messageId) {
-    const { data: existing } = await supabase
-      .from("ingest_batch")
-      .select("id, property_id, party_id")
-      .eq("postmark_message_id", messageId)
-      .maybeSingle();
-    if (existing) {
-      return NextResponse.json({
-        ok: true,
-        dedupe: true,
-        batchId: existing.id,
-        propertyId: existing.property_id,
-        partyId: existing.party_id,
-        triageUrl: `/triage/${existing.id}`,
-      });
-    }
-  }
-
-  // 4. Sender allow-list: must be an app_user.
+  // 5. Sender allow-list: must be an app_user.
   const { data: appUser } = await supabase
     .from("app_user")
     .select("id, email")
@@ -133,7 +178,10 @@ export async function POST(request: Request) {
     );
   }
 
-  // 5. Route on subject prefix.
+  const rawSubject = (email.subject ?? "").trim();
+  const textBody = (email.text ?? "").trim();
+
+  // 6. Route on subject prefix.
   const { intent, value: subjectValue } = parseSubject(rawSubject);
   const label = (subjectValue.slice(0, 200) || "(untitled intake)").trim();
 
@@ -142,13 +190,13 @@ export async function POST(request: Request) {
       ? await resolveParty(supabase, subjectValue, label)
       : await resolveProperty(supabase, subjectValue, label);
 
-  // 6. Create the batch — one of property_id / party_id is set.
+  // 7. Create the batch — one of property_id / party_id is set.
   const batchInsert: Record<string, unknown> = {
     label: target.batchLabel,
     source: "email",
     created_by: appUser.id,
     sender_email: fromEmail,
-    postmark_message_id: messageId,
+    provider_message_id: providerMessageId,
   };
   if (intent === "property") batchInsert.property_id = target.id;
   else batchInsert.party_id = target.id;
@@ -167,7 +215,7 @@ export async function POST(request: Request) {
 
   const errors: string[] = [];
 
-  // 7. Save the email body as its own file — often carries the address, CMA
+  // 8. Save the email body as its own file — often carries the address, CMA
   //    context, or notes that never make it into an attachment.
   if (textBody) {
     const header = `From: ${fromEmail}\nSubject: ${rawSubject}\n\n`;
@@ -192,29 +240,33 @@ export async function POST(request: Request) {
     }
   }
 
-  // 8. Attachments: decode base64, upload to staging, insert ingest_file rows.
-  for (let i = 0; i < attachments.length; i++) {
-    const a = attachments[i];
-    const name = safeFilename(String(a?.Name ?? `attachment-${i + 1}`));
-    const contentType = String(a?.ContentType ?? "application/octet-stream");
-    const content = String(a?.Content ?? "");
-    if (!content) continue;
+  // 9. Attachments: fetch each from the signed CDN URL Resend returned, upload
+  //    to staging, insert ingest_file rows. One bad attachment doesn't kill
+  //    the batch — errors accumulate and are surfaced in the response.
+  for (let i = 0; i < attachmentMetas.length; i++) {
+    const meta = attachmentMetas[i];
+    const name = safeFilename(meta.filename || `attachment-${i + 1}`);
+    const contentType = meta.content_type || "application/octet-stream";
+    const prefix = String(i + 1).padStart(2, "0");
+    const path = `${batch.id}/${prefix}-${name}`;
 
-    let bytes: Buffer;
-    try {
-      bytes = Buffer.from(content, "base64");
-    } catch (e) {
-      errors.push(`decode ${name}: ${(e as Error).message}`);
-      continue;
-    }
-    if (bytes.length === 0) continue;
-    if (bytes.length > MAX_ATTACHMENT_MB * 1024 * 1024) {
+    // Skip oversized attachments outright — Resend caps at 40 MB total per
+    // email but our storage flow bounds each individual file at 20 MB.
+    if (meta.size > MAX_ATTACHMENT_MB * 1024 * 1024) {
       errors.push(`${name} exceeds ${MAX_ATTACHMENT_MB} MB — skipped`);
       continue;
     }
 
-    const prefix = String(i + 1).padStart(2, "0");
-    const path = `${batch.id}/${prefix}-${name}`;
+    let bytes: Buffer;
+    try {
+      const buf = await fetchAttachmentBytes(meta.download_url);
+      bytes = Buffer.from(buf);
+    } catch (e) {
+      errors.push(`fetch ${name}: ${(e as Error).message}`);
+      continue;
+    }
+    if (bytes.length === 0) continue;
+
     const { error: upErr } = await supabase.storage
       .from("staging")
       .upload(path, bytes, { contentType, upsert: true });
@@ -234,9 +286,9 @@ export async function POST(request: Request) {
     if (fErr) errors.push(`file row ${name}: ${fErr.message}`);
   }
 
-  // 9. Classify — sets doc types, PII flags, batch tier, and renames a
-  //    generic "(untitled intake)" batch off its best-named document when
-  //    possible. Extraction is a review-time step, not run here.
+  // 10. Classify — sets doc types, PII flags, batch tier, and renames a
+  //     generic "(untitled intake)" batch off its best-named document when
+  //     possible. Extraction is a review-time step, not run here.
   try {
     await classifyBatchWithClient(batch.id, supabase);
   } catch (e) {
@@ -252,27 +304,22 @@ export async function POST(request: Request) {
     matchedName: target.matchedName,
     propertyId: intent === "property" ? target.id : null,
     partyId: intent === "client" ? target.id : null,
-    attachmentCount: attachments.length,
+    attachmentCount: attachmentMetas.length,
     errors,
   });
 }
 
 // GET is convenient for a browser sanity check that the route is reachable.
-// Never leaks state — just confirms the token model is wired.
-export async function GET(request: Request) {
-  const url = new URL(request.url);
-  const token = url.searchParams.get("token") ?? "";
-  const expected = process.env.INTAKE_WEBHOOK_TOKEN ?? "";
-  if (!expected) {
-    return NextResponse.json(
-      { ok: false, error: "INTAKE_WEBHOOK_TOKEN not configured" },
-      { status: 500 },
-    );
-  }
-  if (!constantTimeEq(token, expected)) {
-    return NextResponse.json({ ok: false, error: "unauthorised" }, { status: 401 });
-  }
-  return NextResponse.json({ ok: true, ready: true });
+// No secrets leaked — just confirms the RESEND_WEBHOOK_SECRET env is present.
+export async function GET() {
+  const secret = (process.env.RESEND_WEBHOOK_SECRET ?? "").trim();
+  return NextResponse.json({
+    ok: true,
+    ready: Boolean(secret),
+    hint: secret
+      ? "Ready to receive Resend inbound webhooks."
+      : "RESEND_WEBHOOK_SECRET not configured — set on Vercel before Resend can POST here.",
+  });
 }
 
 // ----------------------------------------------------------------------------
@@ -287,7 +334,6 @@ export async function GET(request: Request) {
 // still route cleanly.
 function parseSubject(raw: string): { intent: Intent; value: string } {
   let s = (raw ?? "").trim();
-  // Strip forward / reply prefixes (Fwd, Fw, Re) at the front.
   s = s.replace(/^\s*(?:fwd?|re)\s*:\s*/gi, "").trim();
 
   const m = s.match(/^(property|client|contact)\s*[:—\-]\s*(.+)$/i);
@@ -310,7 +356,6 @@ async function resolveProperty(
   subjectValue: string,
   fallbackLabel: string,
 ): Promise<ResolveResult> {
-  // Fuzzy match against existing addresses.
   const q = subjectValue.trim();
   if (q.length >= 3) {
     const { data: matches } = await supabase.rpc("match_property_by_address", {
@@ -328,7 +373,6 @@ async function resolveProperty(
     }
   }
 
-  // No match → create.
   const primary_address = q || "(untitled intake)";
   const { data: newProp, error } = await supabase
     .from("property")
@@ -368,9 +412,6 @@ async function resolveParty(
     }
   }
 
-  // No match → create. All name-only intakes default to individual; if the
-  // party turns out to be juristic (trust / company / CC), Bronwyn edits at
-  // review — party_type has an unknown state we never lean on for logic.
   const display_name = q || "(untitled client)";
   const { data: newParty, error } = await supabase
     .from("party")
@@ -392,12 +433,14 @@ async function resolveParty(
 // Helpers
 // ----------------------------------------------------------------------------
 
-function constantTimeEq(a: string, b: string): boolean {
-  if (a.length === 0 || b.length === 0) return false;
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
+// Resend's `from` field is a raw string like `"Bronwyn Eyre <bron@...>"` or
+// just `"bron@..."`. Extract the address and lowercase.
+function normaliseEmail(raw: string | null | undefined): string {
+  if (!raw) return "";
+  const s = String(raw).trim();
+  const m = s.match(/<([^>]+)>/);
+  const addr = (m ? m[1] : s).trim().toLowerCase();
+  return addr;
 }
 
 function safeFilename(raw: string): string {
