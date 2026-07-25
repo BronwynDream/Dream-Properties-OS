@@ -59,19 +59,23 @@ export async function classifyBatchWithClient(
 
   const { data: allFiles } = await supabase
     .from("ingest_file")
-    .select("id, original_filename, byte_size")
+    .select("id, original_filename, byte_size, mime_type")
     .eq("batch_id", batchId);
 
   // De-duplicate: same filename + size ingested twice (folder had .eml AND loose copies).
   const seen = new Set<string>();
   const dupeIds: string[] = [];
-  const files: { id: string; original_filename: string }[] = [];
+  const files: { id: string; original_filename: string; mime_type: string | null }[] = [];
   for (const f of allFiles ?? []) {
     const key = `${f.original_filename}::${f.byte_size ?? ""}`;
     if (seen.has(key)) dupeIds.push(f.id);
     else {
       seen.add(key);
-      files.push({ id: f.id, original_filename: f.original_filename });
+      files.push({
+        id: f.id,
+        original_filename: f.original_filename,
+        mime_type: f.mime_type ?? null,
+      });
     }
   }
   if (dupeIds.length) await supabase.from("ingest_file").delete().in("id", dupeIds);
@@ -88,7 +92,7 @@ export async function classifyBatchWithClient(
   let bestRank = Infinity;
 
   for (const f of files) {
-    const code = classifyFilename(f.original_filename);
+    const code = classifyFilename(f.original_filename, f.mime_type ?? undefined);
     const t = byCode.get(code) ?? byCode.get("other");
     if (t) {
       seenCategories.add(t.category);

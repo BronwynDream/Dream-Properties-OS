@@ -56,10 +56,13 @@ export const JURISTIC_CODES = new Set([
 // above; a file named "IMG_1234.jpg" falls through to here.
 const IMAGE_EXT = /\.(jpe?g|png|heic|heif|webp|tiff?|gif|bmp)$/i;
 
-export function classifyFilename(filename: string): string {
+export function classifyFilename(filename: string, mimeType?: string): string {
   for (const { re, code } of RULES) {
     if (re.test(filename)) return code;
   }
   if (IMAGE_EXT.test(filename)) return "photo";
+  // Forwarded email attachments often arrive with extensionless names like
+  // `img-<uuid>` — trust the MIME type as the last-resort image signal.
+  if (mimeType && /^image\//i.test(mimeType)) return "photo";
   return "other";
 }

@@ -149,7 +149,7 @@ export async function POST(request: Request) {
   const { data: files } = await supabase
     .from("ingest_file")
     .select(
-      "id, original_filename, storage_path, detected_doc_type_id, classification_confidence, byte_size, ocr_text",
+      "id, original_filename, storage_path, detected_doc_type_id, classification_confidence, byte_size, ocr_text, mime_type",
     )
     .eq("batch_id", batchId);
 
@@ -166,12 +166,40 @@ export async function POST(request: Request) {
 
   let changed = 0;
   const results: { file: string; from: string | null; to: string; via: string; conf: number }[] = [];
+  const photoTypeId = byCode.get("photo")?.id;
 
   for (const f of targets) {
     const name = f.original_filename;
 
-    // Skip photos and .eml wrappers — the filename classifier handles those.
-    if (/\.(jpe?g|png|heic|heif|webp|tif|tiff|gif|bmp|eml)$/i.test(name)) continue;
+    // Skip .eml wrappers — the filename classifier handles those.
+    if (/\.eml$/i.test(name)) continue;
+
+    // Images (by extension OR by MIME) get promoted to photo directly — no OCR
+    // will help. Extensionless attachments from forwarded emails (`img-<uuid>`)
+    // only carry the signal in mime_type.
+    const isImageByExt = /\.(jpe?g|png|heic|heif|webp|tif|tiff|gif|bmp)$/i.test(name);
+    const isImageByMime = f.mime_type ? /^image\//i.test(f.mime_type) : false;
+    if (isImageByExt || isImageByMime) {
+      if (photoTypeId && f.detected_doc_type_id !== photoTypeId) {
+        await supabase
+          .from("ingest_file")
+          .update({
+            detected_doc_type_id: photoTypeId,
+            classification_confidence: 0.95,
+            status: "classified",
+          })
+          .eq("id", f.id);
+        changed++;
+        results.push({
+          file: name,
+          from: "other",
+          to: "photo",
+          via: isImageByMime && !isImageByExt ? "mime" : "ext",
+          conf: 0.95,
+        });
+      }
+      continue;
+    }
 
     // Text-first: use cached OCR if we have it, else read the file.
     let text = f.ocr_text ?? "";
