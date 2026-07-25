@@ -339,9 +339,28 @@ function parseSubject(raw: string): { intent: Intent; value: string } {
   const m = s.match(/^(property|client|contact)\s*[:—\-]\s*(.+)$/i);
   if (m) {
     const intent: Intent = /^prop/i.test(m[1]) ? "property" : "client";
-    return { intent, value: m[2].trim() };
+    return { intent, value: normaliseSubjectValue(m[2]) };
   }
-  return { intent: "property", value: s };
+  return { intent: "property", value: normaliseSubjectValue(s) };
+}
+
+// Strip trailing document-type words from the subject so both the fuzzy match
+// AND (if we end up creating) the new property.primary_address land on a clean
+// core address. Bronwyn's convention is `<address> <doc-type words>`, e.g.
+//   "House E105 Pezula Private Estate Information and Mandate"
+// which reduces to "House E105 Pezula Private Estate". Repeated application
+// handles composite tails like "…Information and Mandate".
+const SUBJECT_TAIL_NOISE =
+  /\s+(?:information|info|mandate|mandates|photos?|images?|pictures?|documents?|docs|files|takeon|take[\s-]?on|cma|listing|detailed|and|&)$/i;
+function normaliseSubjectValue(s: string): string {
+  let v = s.trim().replace(/[.,;\s]+$/g, "");
+  // Repeatedly strip trailing noise words (handles "and Mandate", "and Photos", …).
+  for (let i = 0; i < 8; i++) {
+    const next = v.replace(SUBJECT_TAIL_NOISE, "").trim();
+    if (next === v) break;
+    v = next;
+  }
+  return v;
 }
 
 type ResolveResult = {
