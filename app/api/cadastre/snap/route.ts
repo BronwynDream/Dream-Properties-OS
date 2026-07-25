@@ -37,15 +37,35 @@ export async function POST(request: Request) {
 
   try {
     const service = createServiceClient();
-    const { data, error } = await service.rpc("snap_all_to_parcels");
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+
+    // Pass 1 — snap by erf number. Handles the common Mapbox-street-fallback
+    // case where two neighbours (12 + 15 Eagles Way) got the same coord.
+    // The erf-based match ignores current coord and moves each pin to its
+    // actual parcel centroid.
+    const { data: erfData, error: erfErr } = await service.rpc(
+      "snap_all_properties_by_erf",
+    );
+    if (erfErr) {
+      return NextResponse.json({ error: `snap-by-erf: ${erfErr.message}` }, { status: 500 });
     }
-    const row = Array.isArray(data) ? data[0] : data;
+    const erfRow = Array.isArray(erfData) ? erfData[0] : erfData;
+
+    // Pass 2 — snap-by-containment for anything erf-based couldn't help
+    // (property has coords but no assigned erf number; also snaps active
+    // external_listing rows).
+    const { data: containData, error: containErr } = await service.rpc(
+      "snap_all_to_parcels",
+    );
+    if (containErr) {
+      return NextResponse.json({ error: `snap-by-containment: ${containErr.message}` }, { status: 500 });
+    }
+    const containRow = Array.isArray(containData) ? containData[0] : containData;
+
     return NextResponse.json({
       ok: true,
-      propertiesSnapped: Number(row?.properties_snapped ?? 0),
-      listingsSnapped: Number(row?.listings_snapped ?? 0),
+      erfSnapped: Number(erfRow?.snapped ?? 0),
+      propertiesSnapped: Number(containRow?.properties_snapped ?? 0),
+      listingsSnapped: Number(containRow?.listings_snapped ?? 0),
     });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });
