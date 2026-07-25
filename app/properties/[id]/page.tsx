@@ -5,6 +5,7 @@ import TopBar from "@/app/components/TopBar";
 import MergeTransfer from "./MergeTransfer";
 import MarkSoldButton from "./MarkSoldButton";
 import PropertyHero, { type SinceLine } from "./PropertyHero";
+import PhotoLightbox from "./PhotoLightbox";
 import DropZone from "@/app/triage/DropZone";
 import LightstoneFetch from "./LightstoneFetch";
 import { PRODUCTS as LIGHTSTONE_PRODUCTS } from "@/lib/lightstone";
@@ -389,56 +390,70 @@ export default async function PropertyRecord({
                   <span className="doc-group-count">{group.items.length}</span>
                 </p>
                 <div className="doc-chips">
-                  {group.items.map((d) => {
-                    // Render as a thumbnail if the file is an image (by MIME
-                    // or filename extension) AND isn't PII / FICA. Every other
-                    // case (PDFs, docx, PII images) stays as a text chip.
-                    const isImageMime = /^image\//i.test(d.mime_type ?? "");
-                    const isImageExt = /\.(jpe?g|png|heic|heif|webp|tif|tiff|gif|bmp)$/i.test(d.title);
-                    const showThumb =
-                      d.url &&
-                      !d.is_pii &&
-                      d.category !== "fica" &&
-                      (isImageMime || isImageExt);
-
-                    if (showThumb) {
-                      return (
-                        <a
-                          key={d.id}
-                          href={d.url as string}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="doc-thumb"
-                          title={d.title}
-                        >
-                          <img src={d.url as string} alt={d.title} loading="lazy" />
-                        </a>
-                      );
+                  {/* Split the group's items into image thumbnails vs text
+                      chips. Thumbnails hand off to PhotoLightbox so clicking
+                      any one opens the overlay with arrow-key nav across
+                      the whole group. Text chips keep their existing
+                      new-tab-open behaviour. */}
+                  {(() => {
+                    const chipItems: typeof group.items = [];
+                    const thumbItems: { id: string; url: string; title: string }[] = [];
+                    for (const d of group.items) {
+                      // Detect image by MIME first (reliable), then filename
+                      // extension (fallback for octet-stream). Anything
+                      // marked PII or in the fica category stays a text
+                      // chip regardless.
+                      const isImageMime = /^image\//i.test(d.mime_type ?? "");
+                      const isImageExt =
+                        /\.(jpe?g|png|heic|heif|webp|tif|tiff|gif|bmp)$/i.test(d.title);
+                      // Heuristic for Outlook-forwarded images that arrive
+                      // as `img-<uuid>` with mime_type=application/octet-stream:
+                      // treat any small-ish (<10MB) file named `img-*` with
+                      // no known extension as an image. Cheap correction for
+                      // a common upstream nuisance.
+                      const isOutlookInlineImage =
+                        /^img-[0-9a-f]{6,}/i.test(d.title) && !/\.[a-z0-9]+$/i.test(d.title);
+                      const showThumb =
+                        d.url &&
+                        !d.is_pii &&
+                        d.category !== "fica" &&
+                        (isImageMime || isImageExt || isOutlookInlineImage);
+                      if (showThumb) {
+                        thumbItems.push({ id: d.id, url: d.url as string, title: d.title });
+                      } else {
+                        chipItems.push(d);
+                      }
                     }
-
-                    return d.url ? (
-                      <a
-                        key={d.id}
-                        href={d.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="doc-chip"
-                        title={d.label ?? undefined}
-                      >
-                        {d.title}
-                        {d.is_pii && <span className="pii-dot">PII</span>}
-                      </a>
-                    ) : (
-                      <span
-                        key={d.id}
-                        className="doc-chip is-missing"
-                        title="No file attached — this document row has no stored PDF (correspondence often lands as email body only)."
-                      >
-                        {d.title}
-                        {d.is_pii && <span className="pii-dot">PII</span>}
-                      </span>
+                    return (
+                      <>
+                        {chipItems.map((d) =>
+                          d.url ? (
+                            <a
+                              key={d.id}
+                              href={d.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="doc-chip"
+                              title={d.label ?? undefined}
+                            >
+                              {d.title}
+                              {d.is_pii && <span className="pii-dot">PII</span>}
+                            </a>
+                          ) : (
+                            <span
+                              key={d.id}
+                              className="doc-chip is-missing"
+                              title="No file attached — this document row has no stored PDF (correspondence often lands as email body only)."
+                            >
+                              {d.title}
+                              {d.is_pii && <span className="pii-dot">PII</span>}
+                            </span>
+                          ),
+                        )}
+                        {thumbItems.length > 0 && <PhotoLightbox photos={thumbItems} />}
+                      </>
                     );
-                  })}
+                  })()}
                 </div>
               </div>
             ))}
