@@ -13,6 +13,7 @@ import { createClient } from "@/lib/supabase/server";
 export async function attachErfToProperty(
   propertyId: string,
   erfNumber: string,
+  sgNumber?: string | null,
 ): Promise<{ ok: boolean; error?: string }> {
   const supabase = createClient();
   const {
@@ -32,15 +33,29 @@ export async function attachErfToProperty(
   const trimmed = (erfNumber ?? "").trim();
   if (!trimmed) return { ok: false, error: "erf number required" };
   if (!propertyId) return { ok: false, error: "propertyId required" };
+  const sg = sgNumber ? sgNumber.trim() : null;
 
   const { error } = await supabase.from("erf").insert({
     property_id: propertyId,
     erf_number: trimmed,
+    sg_number: sg,
   });
   if (error) {
-    // Unique-constraint violation on (property_id, erf_number, portion) just
-    // means the erf is already attached — treat as success.
-    if (error.code === "23505") return { ok: true };
+    // Unique-constraint violation on (property_id, erf_number, portion) OR
+    // the 0041 partial index on the null-portion pair just means the erf is
+    // already attached — treat as success but still try to backfill the
+    // sg_number if the existing row has none.
+    if (error.code === "23505") {
+      if (sg) {
+        await supabase
+          .from("erf")
+          .update({ sg_number: sg })
+          .eq("property_id", propertyId)
+          .eq("erf_number", trimmed)
+          .is("sg_number", null);
+      }
+      return { ok: true };
+    }
     return { ok: false, error: error.message };
   }
 

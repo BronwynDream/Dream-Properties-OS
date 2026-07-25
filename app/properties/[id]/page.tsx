@@ -48,24 +48,38 @@ export default async function PropertyRecord({
 
   const { data: erven } = await supabase
     .from("erf")
-    .select("erf_number, portion")
+    .select("erf_number, portion, sg_number")
     .eq("property_id", params.id);
 
-  // Muni mirror data for any erven assigned to this property. If the property
-  // has multiple erven (169 Links = 1602 + 1603) we get one row per erf and
-  // render them all. Empty array when no erven yet OR no muni match.
-  const erfNumbers = ((erven ?? []) as { erf_number: string }[])
-    .map((e) => e.erf_number)
-    .filter(Boolean);
-  const { data: muniRows } = erfNumbers.length
-    ? await supabase
-        .from("muni_property")
-        .select(
-          "sg_number, erf_number, street_no, street_name, suburb, tariff, muni_valuation, zoning, ward_no, sectional_title_flag, area_sqm_valroll, extent_sqm, property_type, sect_scheme_name, sect_scheme_unit, title_deed_no, old_title_deed_no, deeds_office, purch_date, registration_date, purch_price, bond_number, bond_amount, bond_institution, refreshed_at",
-        )
-        .in("erf_number", erfNumbers)
-    : { data: [] };
-  const muniRecords = (muniRows ?? []) as any[];
+  // Muni mirror data for each erven assigned to this property. Join priority:
+  //   1. sg_number (exact, unambiguous — populated when the erf was attached
+  //      via the muni-picker UI)
+  //   2. erf_number fallback (for legacy / LLM-extracted erfs with no SG).
+  //      Erf numbers repeat across Knysna suburbs (2934 exists in Sedgefield
+  //      AND on The Heads), so this fallback WILL show extra cards for those
+  //      cases. Fix: re-attach via muni picker to populate sg_number.
+  const ervenRows = (erven ?? []) as { erf_number: string; sg_number: string | null }[];
+  const sgNumbers = ervenRows.map((e) => e.sg_number).filter(Boolean) as string[];
+  const erfsWithoutSg = ervenRows.filter((e) => !e.sg_number).map((e) => e.erf_number).filter(Boolean);
+
+  const muniSelect =
+    "sg_number, erf_number, street_no, street_name, suburb, tariff, muni_valuation, zoning, ward_no, sectional_title_flag, area_sqm_valroll, extent_sqm, property_type, sect_scheme_name, sect_scheme_unit, title_deed_no, old_title_deed_no, deeds_office, purch_date, registration_date, purch_price, bond_number, bond_amount, bond_institution, refreshed_at";
+
+  const muniBySg = sgNumbers.length
+    ? (await supabase.from("muni_property").select(muniSelect).in("sg_number", sgNumbers)).data ?? []
+    : [];
+  const muniByErf = erfsWithoutSg.length
+    ? (await supabase.from("muni_property").select(muniSelect).in("erf_number", erfsWithoutSg)).data ?? []
+    : [];
+  // De-dupe by sg_number in case an erf_number match also came through SG.
+  const seenSgs = new Set<string>();
+  const muniRecords: any[] = [];
+  for (const row of [...muniBySg, ...muniByErf]) {
+    const key = (row as any).sg_number;
+    if (!key || seenSgs.has(key)) continue;
+    seenSgs.add(key);
+    muniRecords.push(row);
+  }
 
   // Try the post-0033 schema first (sold_by, sold_by_note). If those columns
   // don't yet exist in this environment (migration not applied), fall back to

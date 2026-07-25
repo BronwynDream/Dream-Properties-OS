@@ -116,10 +116,10 @@ export default function ErfLookup({
     }
   }
 
-  async function attachErf(erf: string) {
+  async function attachErf(erf: string, sg?: string | null) {
     setBusy(true);
     setMsg(`Attaching ERF ${erf}…`);
-    const res = await attachErfToProperty(propertyId, erf);
+    const res = await attachErfToProperty(propertyId, erf, sg ?? null);
     if (res.ok) {
       setOpen(false);
       router.refresh();
@@ -253,7 +253,7 @@ export default function ErfLookup({
                       return (
                         <li
                           key={c.sgNumber}
-                          onClick={() => !busy && attachErf(c.erfNumber)}
+                          onClick={() => !busy && attachErf(c.erfNumber, c.sgNumber)}
                           style={{
                             padding: "12px 14px",
                             borderRadius: 8,
