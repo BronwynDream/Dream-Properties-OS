@@ -63,7 +63,7 @@ export default async function PropertyRecord({
   const erfsWithoutSg = ervenRows.filter((e) => !e.sg_number).map((e) => e.erf_number).filter(Boolean);
 
   const muniSelect =
-    "sg_number, erf_number, street_no, street_name, suburb, tariff, muni_valuation, zoning, ward_no, sectional_title_flag, area_sqm_valroll, extent_sqm, property_type, sect_scheme_name, sect_scheme_unit, title_deed_no, old_title_deed_no, deeds_office, purch_date, registration_date, purch_price, bond_number, bond_amount, bond_institution, refreshed_at";
+    "sg_number, erf_number, muni_erf_code, street_no, street_name, suburb_hint, suburb, tariff, muni_valuation, zoning, ward_no, sectional_title_flag, usage_, prop_description, town_name, area_sqm_valroll, extent_sqm, property_type, sect_scheme_name, sect_scheme_unit, title_deed_no, old_title_deed_no, deeds_office, purch_date, registration_date, purch_price, bond_number, bond_amount, bond_institution, refreshed_at";
 
   const muniBySg = sgNumbers.length
     ? (await supabase.from("muni_property").select(muniSelect).in("sg_number", sgNumbers)).data ?? []
@@ -698,17 +698,35 @@ export default async function PropertyRecord({
                   marginBottom: 10,
                 }}
               >
+                {/* Header: erf + suburb + full street address + SG code */}
                 <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 14, gap: 12, flexWrap: "wrap" }}>
                   <div>
-                    <p className="eyebrow" style={{ margin: 0 }}>Erf {m.erf_number}{m.suburb ? ` · ${m.suburb}` : ""}</p>
+                    <p className="eyebrow" style={{ margin: 0 }}>
+                      Erf {m.erf_number}
+                      {m.suburb ? ` · ${m.suburb}` : ""}
+                      {m.town_name && m.town_name !== m.suburb ? ` · ${m.town_name}` : ""}
+                    </p>
                     <p style={{ margin: "4px 0 0", fontSize: 15, fontWeight: 600, color: "var(--estuary)" }}>
                       {m.street_no ? `#${m.street_no} · ` : ""}{m.street_name ?? "—"}
                     </p>
+                    {m.suburb_hint && m.suburb_hint !== m.suburb && (
+                      <p style={{ margin: "2px 0 0", fontSize: 11, color: "#a4adc4" }}>
+                        Muni street hint: {m.suburb_hint}
+                      </p>
+                    )}
                   </div>
                   <p style={{ margin: 0, fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 10, color: "#a4adc4" }}>
                     SG: {m.sg_number}
+                    {m.muni_erf_code && (
+                      <>
+                        <br />
+                        Muni ID: {m.muni_erf_code}
+                      </>
+                    )}
                   </p>
                 </div>
+
+                {/* Cadastral + rating attributes */}
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 14 }}>
                   {m.muni_valuation != null && (
                     <div>
@@ -720,6 +738,12 @@ export default async function PropertyRecord({
                     <div>
                       <p className="eyebrow" style={{ margin: 0 }}>Extent</p>
                       <p style={{ margin: "2px 0 0", fontSize: 15 }}>{Number(m.extent_sqm).toLocaleString("en-ZA")} m²</p>
+                    </div>
+                  )}
+                  {m.area_sqm_valroll != null && m.area_sqm_valroll !== m.extent_sqm && (
+                    <div>
+                      <p className="eyebrow" style={{ margin: 0 }}>Valuation roll area</p>
+                      <p style={{ margin: "2px 0 0", fontSize: 14 }}>{Number(m.area_sqm_valroll).toLocaleString("en-ZA")} m²</p>
                     </div>
                   )}
                   {m.zoning && (
@@ -746,30 +770,65 @@ export default async function PropertyRecord({
                       <p style={{ margin: "2px 0 0", fontSize: 14 }}>{m.property_type}</p>
                     </div>
                   )}
+                  {m.usage_ && (
+                    <div>
+                      <p className="eyebrow" style={{ margin: 0 }}>Declared use</p>
+                      <p style={{ margin: "2px 0 0", fontSize: 14 }}>{m.usage_}</p>
+                    </div>
+                  )}
+                  {m.sectional_title_flag && !m.sect_scheme_name && (
+                    <div>
+                      <p className="eyebrow" style={{ margin: 0 }}>Sectional title</p>
+                      <p style={{ margin: "2px 0 0", fontSize: 14 }}>{m.sectional_title_flag}</p>
+                    </div>
+                  )}
                 </div>
-                {(m.title_deed_no || m.purch_date || m.purch_price || m.bond_number) && (
+
+                {m.prop_description && (
+                  <div style={{ marginTop: 12, fontSize: 12, color: "#5b6885" }}>
+                    <span className="eyebrow" style={{ marginRight: 8 }}>Description</span>
+                    {m.prop_description}
+                  </div>
+                )}
+
+                {/* Deed + purchase history */}
+                {(m.title_deed_no || m.old_title_deed_no || m.deeds_office || m.registration_date || m.purch_date || m.purch_price) && (
                   <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px dashed var(--mist)" }}>
                     <p className="eyebrow" style={{ margin: "0 0 6px" }}>Deed & purchase</p>
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, fontSize: 13, color: "#5b6885" }}>
-                      {m.title_deed_no && <div><b>{m.title_deed_no}</b> · deed</div>}
+                      {m.title_deed_no && <div><b>{m.title_deed_no}</b> · current deed</div>}
+                      {m.old_title_deed_no && <div style={{ color: "#7a86a8" }}>{m.old_title_deed_no} · previous deed</div>}
                       {m.deeds_office && <div>{m.deeds_office} deeds office</div>}
                       {m.registration_date && <div>Registered {m.registration_date}</div>}
                       {m.purch_price != null && <div>{money(m.purch_price)} · purchase</div>}
                       {m.purch_date && <div>{m.purch_date} · purchase date</div>}
-                      {m.bond_number && (
-                        <div>{m.bond_institution ?? "Bond"}: {money(m.bond_amount ?? null)}{" "}
-                          <span style={{ color: "#a4adc4" }}>({m.bond_number})</span>
-                        </div>
-                      )}
-                      {m.old_title_deed_no && <div style={{ color: "#a4adc4" }}>Prev: {m.old_title_deed_no}</div>}
                     </div>
                   </div>
                 )}
-                {m.sect_scheme_name && (
-                  <div style={{ marginTop: 10, fontSize: 12, color: "#5b6885" }}>
-                    Sectional: {m.sect_scheme_name}{m.sect_scheme_unit ? ` · unit ${m.sect_scheme_unit}` : ""}
+
+                {/* Bond */}
+                {(m.bond_number || m.bond_amount != null || m.bond_institution) && (
+                  <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px dashed var(--mist)" }}>
+                    <p className="eyebrow" style={{ margin: "0 0 6px" }}>Existing bond</p>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, fontSize: 13, color: "#5b6885" }}>
+                      {m.bond_institution && <div><b>{m.bond_institution}</b></div>}
+                      {m.bond_amount != null && <div>{money(m.bond_amount)} · bond amount</div>}
+                      {m.bond_number && <div style={{ color: "#a4adc4" }}>Bond {m.bond_number}</div>}
+                    </div>
                   </div>
                 )}
+
+                {/* Sectional scheme */}
+                {(m.sect_scheme_name || m.sect_scheme_unit != null) && (
+                  <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px dashed var(--mist)" }}>
+                    <p className="eyebrow" style={{ margin: "0 0 6px" }}>Sectional scheme</p>
+                    <div style={{ fontSize: 13, color: "#5b6885" }}>
+                      {m.sect_scheme_name}
+                      {m.sect_scheme_unit != null ? ` · unit ${m.sect_scheme_unit}` : ""}
+                    </div>
+                  </div>
+                )}
+
                 <p style={{ margin: "12px 0 0", fontSize: 10, color: "#a4adc4", fontFamily: "'JetBrains Mono', ui-monospace, monospace" }}>
                   Muni data refreshed {m.refreshed_at ? new Date(m.refreshed_at).toISOString().slice(0, 10) : "—"}
                 </p>
