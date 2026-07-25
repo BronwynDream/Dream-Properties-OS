@@ -10,6 +10,7 @@ import {
   proposeMatches,
   decideMatch,
   fileBatchAgainstProperty,
+  reextractAndRecommit,
 } from "../actions";
 import DiffPanel from "./DiffPanel";
 import PropertyAttach from "./PropertyAttach";
@@ -328,6 +329,26 @@ export default function ReviewClient({
     }
   }
 
+  async function runReextract() {
+    setExtractBusy(true);
+    setExtractMsg("Re-reading documents…");
+    try {
+      const res = await reextractAndRecommit(batch.id);
+      if (res.ok) {
+        setExtractMsg(
+          `Re-extracted ${res.extracted ?? 0} field(s) from ${(res.used ?? []).join(", ") || "documents"} and updated the property record.`,
+        );
+      } else {
+        setExtractMsg(`Re-extract failed: ${res.error}`);
+      }
+    } catch (e) {
+      setExtractMsg(`Re-extract failed: ${(e as Error).message}`);
+    } finally {
+      setExtractBusy(false);
+      router.refresh();
+    }
+  }
+
   async function runFileAgainstProperty() {
     setExtractBusy(true);
     setExtractMsg(null);
@@ -430,9 +451,19 @@ export default function ReviewClient({
                 {extractBusy ? "Working…" : `Reclassify unknowns (${unknownCount})`}
               </button>
             )}
-            {hasExtractable && (
+            {hasExtractable && !committed && (
               <button className="cta" onClick={runExtract} disabled={extractBusy || classified === 0}>
                 {extractBusy ? "Reading…" : "Extract fields (AI)"}
+              </button>
+            )}
+            {hasExtractable && committed && (
+              <button
+                className="cta"
+                onClick={runReextract}
+                disabled={extractBusy || classified === 0}
+                title="Re-read the documents and refresh the property record. Use when fields (ERF, extent, price…) are missing or wrong on the property page."
+              >
+                {extractBusy ? "Working…" : "Re-extract & update property"}
               </button>
             )}
             {batch.property_id && !committed && !hasExtractable && (

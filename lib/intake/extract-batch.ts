@@ -257,7 +257,17 @@ export async function extractBatchWithClient(
     );
   }
 
-  await supabase.from("ingest_batch").update({ status: "extracted" }).eq("id", batchId);
+  // Advance status to 'extracted' unless the batch is already past that
+  // (committed batches must stay committed — re-extract is a repair action,
+  // not a state regression).
+  const { data: currentBatch } = await supabase
+    .from("ingest_batch")
+    .select("status")
+    .eq("id", batchId)
+    .single();
+  if (currentBatch?.status !== "committed") {
+    await supabase.from("ingest_batch").update({ status: "extracted" }).eq("id", batchId);
+  }
 
   if (rows.length > 0) {
     await supabase.rpc("propose_matches", {

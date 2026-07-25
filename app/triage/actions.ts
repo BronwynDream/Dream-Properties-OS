@@ -7,6 +7,7 @@ import { classifyBatchWithClient } from "@/lib/classify-batch";
 import { reshapeFields } from "@/lib/extract";
 import { normaliseFilename } from "@/lib/diff";
 import { fileBatchAgainstPropertyWithClient } from "@/lib/intake/file-batch";
+import { extractBatchWithClient } from "@/lib/intake/extract-batch";
 
 // Derive a human batch name from a document filename (strip type keywords + extension).
 function deriveLabel(filename: string): string {
@@ -192,20 +193,37 @@ export async function commitBatch(batchId: string, rows: FieldRow[]) {
     }
   }
 
-  // Property take-on fallback: when a batch was created scoped to a property
-  // (drop zone on /properties/[id]), ingest_batch.property_id is set from
-  // creation and no match_candidate 'link' decision exists. Read the batch's
-  // pre-assigned property so commit_batch links to it instead of creating
-  // a new record. The match-candidate 'link' decision takes precedence when
-  // both are set — the reviewer's explicit choice wins.
-  if (!fields.property.id) {
+  // Property + transfer take-on fallbacks: when a batch was created scoped to
+  // a property (drop zone on /properties/[id]) OR is being re-committed after
+  // a re-extract, ingest_batch.property_id / transfer_id are already set and
+  // no match_candidate 'link' decision exists. Read them so commit_batch
+  // links to the existing rows instead of creating duplicates. The
+  // match-candidate 'link' decision takes precedence when both are set —
+  // the reviewer's explicit choice wins.
+  if (!fields.property.id || (fields.transfer && !fields.transfer.id)) {
     const { data: batchRow } = await supabase
       .from("ingest_batch")
-      .select("property_id")
+      .select("property_id, transfer_id")
       .eq("id", batchId)
       .single();
-    if (batchRow?.property_id) {
+    if (!fields.property.id && batchRow?.property_id) {
       fields.property.id = batchRow.property_id;
+    }
+    if (batchRow?.transfer_id) {
+      if (!fields.transfer) fields.transfer = {};
+      if (!fields.transfer.id) fields.transfer.id = batchRow.transfer_id;
+    }
+  } else if (!fields.transfer?.id) {
+    // property.id was provided via match-candidate but we still need to check
+    // for a pre-existing transfer_id on the batch.
+    const { data: batchRow } = await supabase
+      .from("ingest_batch")
+      .select("transfer_id")
+      .eq("id", batchId)
+      .single();
+    if (batchRow?.transfer_id) {
+      if (!fields.transfer) fields.transfer = {};
+      fields.transfer.id = batchRow.transfer_id;
     }
   }
 
@@ -525,5 +543,58 @@ export async function fileBatchAgainstProperty(
   }
 
   return result;
+}
+
+// Re-extract the batch's documents and re-commit the results to the existing
+// property/transfer. Use to repair records that were committed before the
+// auto-extract-at-intake shipped (or before task #28 tightened the
+// registered-advance rule) so their fields now populate correctly.
+//
+// Because commitBatch now falls back to ingest_batch.transfer_id, this
+// action reuses the existing transfer instead of spawning a duplicate.
+export async function reextractAndRecommit(
+  batchId: string,
+): Promise<{
+  ok: boolean;
+  error?: string;
+  extracted?: number;
+  used?: string[];
+  mode?: string;
+}> {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "unauthorized" };
+
+  // Step 1: fresh extraction pass. Deletes prior 'proposed' rows and inserts
+  // new ones; leaves 'accepted' rows in place as historical record.
+  const ex = await extractBatchWithClient(supabase, batchId);
+  if (!ex.ok) return { ok: false, error: ex.error ?? ex.note ?? "extract failed" };
+
+  // Step 2: pull the fresh proposed rows and hand them to commitBatch.
+  const { data: extractions } = await supabase
+    .from("extraction")
+    .select("target_table, target_field, entity_hint, proposed_value")
+    .eq("batch_id", batchId)
+    .eq("status", "proposed");
+  const rows: FieldRow[] = ((extractions ?? []) as any[]).map((e) => ({
+    target_table: e.target_table,
+    target_field: e.target_field,
+    entity_hint: e.entity_hint,
+    value: e.proposed_value ?? "",
+  }));
+
+  const commitResult = await commitBatch(batchId, rows);
+  if (!commitResult.ok) {
+    return { ok: false, error: commitResult.error };
+  }
+
+  return {
+    ok: true,
+    extracted: ex.rowsInserted ?? 0,
+    used: ex.used ?? [],
+    mode: ex.mode,
+  };
 }
 
