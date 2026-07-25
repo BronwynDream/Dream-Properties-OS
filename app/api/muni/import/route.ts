@@ -115,22 +115,30 @@ function splitStreetSuburb(raw: string | null): {
   return { street: raw.trim(), hint: null };
 }
 
-export async function POST(request: Request) {
+// Auth: admin session cookie OR Authorization: Bearer $CRON_SECRET.
+async function authorised(request: Request): Promise<boolean> {
+  const secret = (process.env.CRON_SECRET ?? "").trim();
+  const auth = request.headers.get("authorization") ?? "";
+  const bearer = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
+  if (secret && bearer === secret) return true;
+
   const supabase = createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-
+  if (!user) return false;
   const { data: profile } = await supabase
     .from("app_user")
     .select("role, active")
     .eq("id", user.id)
     .single();
-  if (profile?.role !== "admin" || profile?.active === false) {
-    return NextResponse.json({ error: "admin only" }, { status: 403 });
+  return profile?.role === "admin" && profile?.active !== false;
+}
+
+async function runImport(request: Request) {
+  if (!(await authorised(request))) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  void request;
 
   const service = createServiceClient();
   const startedAt = Date.now();
@@ -256,6 +264,16 @@ export async function POST(request: Request) {
       { status: 500 },
     );
   }
+}
+
+// Exported handlers — POST for the manual admin button, GET for Vercel Cron
+// (Vercel Cron only issues GET). Both go through the same authorised()
+// path; cron auths via CRON_SECRET bearer, admin via session cookie.
+export async function POST(request: Request) {
+  return runImport(request);
+}
+export async function GET(request: Request) {
+  return runImport(request);
 }
 
 function* chunks<T>(arr: T[], size: number): Generator<T[]> {

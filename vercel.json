@@ -3,6 +3,10 @@
     {
       "path": "/api/sources/dream/refresh",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/muni/import",
+      "schedule": "0 4 * * 1"
     }
   ]
 }

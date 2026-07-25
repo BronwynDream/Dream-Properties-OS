@@ -7,6 +7,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { geocodeMissingProperties, savePropertyPin } from "./actions";
 import RefreshDreamButton from "./RefreshDreamButton";
+import RefreshMuniButton from "./RefreshMuniButton";
 import MarketListingAttach from "./MarketListingAttach";
 
 export type MapProperty = {
@@ -779,6 +780,7 @@ export default function MapView({
           </label>
 
           {isAdmin && <RefreshDreamButton />}
+          {isAdmin && <RefreshMuniButton />}
         </section>
 
         <section>
