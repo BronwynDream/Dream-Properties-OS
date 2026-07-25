@@ -7,6 +7,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { geocodeMissingProperties, savePropertyPin } from "./actions";
 import RefreshDreamButton from "./RefreshDreamButton";
+import MarketListingAttach from "./MarketListingAttach";
 
 export type MapProperty = {
   id: string;
@@ -1442,10 +1443,15 @@ function PreviewPanel({
           </div>
         )}
 
-        {pin.matchedPropertyId && (
+        {pin.matchedPropertyId ? (
           <Link href={`/properties/${pin.matchedPropertyId}`} className="pv-cta">
             Open property record →
           </Link>
+        ) : (
+          pin.externals.length > 0 &&
+          isAdmin && (
+            <MarketListingAttach externalIds={pin.externals.map((e) => e.id)} />
+          )
         )}
       </div>
     </>

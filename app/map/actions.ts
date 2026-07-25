@@ -135,3 +135,45 @@ export async function savePropertyPin(
   revalidatePath(`/properties/${propertyId}`);
   return { ok: true };
 }
+
+// Manually link one or more external market listings to an OS property. Used
+// by the "Link to property..." button on the map's market-listing panel when
+// the auto-matcher didn't catch a pair (e.g. address text differs enough that
+// the address matcher missed it, or geo-proximity was outside the threshold).
+//
+// Admin-only. Bumps the pin/panel via revalidatePath("/map") + the specific
+// property page.
+export async function linkExternalListingsToProperty(
+  externalIds: string[],
+  propertyId: string,
+): Promise<{ ok: boolean; error?: string; linked?: number }> {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "unauthorised" };
+
+  const { data: profile } = await supabase
+    .from("app_user")
+    .select("role, active")
+    .eq("id", user.id)
+    .single();
+  if (profile?.role !== "admin" || profile?.active === false) {
+    return { ok: false, error: "admin only" };
+  }
+
+  if (!propertyId) return { ok: false, error: "propertyId required" };
+  if (!Array.isArray(externalIds) || externalIds.length === 0) {
+    return { ok: false, error: "no externalIds" };
+  }
+
+  const { error, count } = await supabase
+    .from("external_listing")
+    .update({ matched_property_id: propertyId }, { count: "exact" })
+    .in("id", externalIds);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/map");
+  revalidatePath(`/properties/${propertyId}`);
+  return { ok: true, linked: count ?? externalIds.length };
+}
