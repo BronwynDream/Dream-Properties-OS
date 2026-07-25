@@ -532,9 +532,7 @@ export default async function PropertyRecord({
           {isAdmin && (
             <ErfLookup
               propertyId={prop.id}
-              propertyLat={(prop as any).lat ?? null}
-              propertyLng={(prop as any).lng ?? null}
-              mapboxToken={mapboxToken}
+              propertyAddress={prop.primary_address ?? ""}
             />
           )}
         </div>

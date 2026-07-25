@@ -2,143 +2,98 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import mapboxgl from "mapbox-gl";
 import { attachErfToProperty } from "./actions";
+
+type Candidate = {
+  muniErfCode: string;
+  erfNumber: string;
+  sgNumber: string;
+  streetNo: string | null;
+  streetName: string;
+};
 
 type LookupResponse = {
   ok: boolean;
-  erf?: string;
-  sg21?: string;
-  propDesc?: string;
-  source?: string;
+  candidates?: Candidate[];
+  parsed?: { streetNo: string | null; streetName: string };
   error?: string;
 };
 
-// Click-on-satellite ERF lookup. Opens a modal with a satellite map centred
-// on the property (or Knysna centre if the property has no coords yet).
-// Agent clicks on the actual roof; we call /api/erf-lookup at that point;
-// on success we attach the returned ERF to the property, which fires the
-// snap trigger and repositions the pin to the cadastre centroid.
-//
-// Free primary source: Knysna Municipality (same data Bronwyn already
-// looks up manually in the valuation roll). Fallback: national CSG mirror.
-const KNYSNA_CENTRE: [number, number] = [23.0479, -34.0363];
-
+// Search the Knysna Municipality valuation roll (the same source Bronwyn
+// looks up manually) for a property's ERF. Pre-fills with the property's
+// current address; agent can edit + search; results show as a picker; pick
+// one → attach → the snap trigger repositions the pin to the cadastre
+// centroid.
 export default function ErfLookup({
   propertyId,
-  propertyLat,
-  propertyLng,
-  mapboxToken,
+  propertyAddress,
 }: {
   propertyId: string;
-  propertyLat: number | null;
-  propertyLng: number | null;
-  mapboxToken: string;
+  propertyAddress: string;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [status, setStatus] = useState<
-    | { kind: "idle" }
-    | { kind: "looking-up" }
-    | { kind: "found"; erf: string; sg21?: string; propDesc?: string; source?: string; lng: number; lat: number }
-    | { kind: "attaching" }
-    | { kind: "error"; message: string }
-  >({ kind: "idle" });
+  const [query, setQuery] = useState(propertyAddress);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [candidates, setCandidates] = useState<Candidate[] | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
-  const mapEl = useRef<HTMLDivElement | null>(null);
-  const mapRef = useRef<mapboxgl.Map | null>(null);
-  const markerRef = useRef<mapboxgl.Marker | null>(null);
-
-  // Escape closes.
   useEffect(() => {
-    if (!open) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") close();
+    if (open) {
+      setQuery(propertyAddress);
+      setCandidates(null);
+      setMsg(null);
+      setTimeout(() => inputRef.current?.focus(), 50);
+      const prevOverflow = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      const onKey = (e: KeyboardEvent) => {
+        if (e.key === "Escape") setOpen(false);
+      };
+      window.addEventListener("keydown", onKey);
+      return () => {
+        document.body.style.overflow = prevOverflow;
+        window.removeEventListener("keydown", onKey);
+      };
     }
-    window.addEventListener("keydown", onKey);
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prevOverflow;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, propertyAddress]);
 
-  // Init map when modal opens.
-  useEffect(() => {
-    if (!open || !mapEl.current) return;
-    if (mapRef.current) return;
-    mapboxgl.accessToken = mapboxToken;
-    const initial: [number, number] = [
-      propertyLng ?? KNYSNA_CENTRE[0],
-      propertyLat ?? KNYSNA_CENTRE[1],
-    ];
-    const map = new mapboxgl.Map({
-      container: mapEl.current,
-      style: "mapbox://styles/mapbox/satellite-streets-v12",
-      center: initial,
-      zoom: propertyLat && propertyLng ? 18 : 15,
-    });
-    mapRef.current = map;
-
-    map.on("click", async (e) => {
-      const { lng, lat } = e.lngLat;
-      // Update marker
-      if (markerRef.current) {
-        markerRef.current.setLngLat([lng, lat]);
-      } else {
-        markerRef.current = new mapboxgl.Marker({ color: "#C8A032" })
-          .setLngLat([lng, lat])
-          .addTo(map);
-      }
-      setStatus({ kind: "looking-up" });
-      try {
-        const res = await fetch(
-          `/api/erf-lookup?lng=${lng}&lat=${lat}`,
-          { cache: "no-store" },
-        );
-        const json = (await res.json()) as LookupResponse;
-        if (json.ok && json.erf) {
-          setStatus({
-            kind: "found",
-            erf: json.erf,
-            sg21: json.sg21,
-            propDesc: json.propDesc,
-            source: json.source,
-            lng,
-            lat,
-          });
-        } else {
-          setStatus({ kind: "error", message: json.error ?? "No erf found." });
+  async function search() {
+    if (!query.trim()) return;
+    setBusy(true);
+    setMsg(null);
+    setCandidates(null);
+    try {
+      const res = await fetch(
+        `/api/erf-lookup?address=${encodeURIComponent(query)}`,
+        { cache: "no-store" },
+      );
+      const json = (await res.json()) as LookupResponse;
+      if (json.ok) {
+        setCandidates(json.candidates ?? []);
+        if ((json.candidates ?? []).length === 0) {
+          setMsg("No matches in the Knysna Muni valuation roll for that address.");
         }
-      } catch (err) {
-        setStatus({ kind: "error", message: (err as Error).message });
+      } else {
+        setMsg(json.error ?? "Lookup failed");
       }
-    });
-
-    return () => {
-      map.remove();
-      mapRef.current = null;
-      markerRef.current = null;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
-
-  function close() {
-    setOpen(false);
-    setStatus({ kind: "idle" });
+    } catch (e) {
+      setMsg(`Lookup failed: ${(e as Error).message}`);
+    } finally {
+      setBusy(false);
+    }
   }
 
-  async function confirm() {
-    if (status.kind !== "found") return;
-    setStatus({ kind: "attaching" });
-    const res = await attachErfToProperty(propertyId, status.erf);
+  async function attach(c: Candidate) {
+    setBusy(true);
+    setMsg(`Attaching ERF ${c.erfNumber}…`);
+    const res = await attachErfToProperty(propertyId, c.erfNumber);
     if (res.ok) {
-      close();
+      setOpen(false);
       router.refresh();
     } else {
-      setStatus({ kind: "error", message: res.error ?? "Attach failed." });
+      setMsg(`Attach failed: ${res.error}`);
+      setBusy(false);
     }
   }
 
@@ -150,32 +105,33 @@ export default function ErfLookup({
         onClick={() => setOpen(true)}
         style={{ padding: "6px 12px", fontSize: 12 }}
       >
-        Find ERF from map
+        Find ERF from Muni
       </button>
 
       {open && (
         <div
           className="erf-lookup-backdrop"
-          onClick={close}
+          onClick={() => setOpen(false)}
           role="dialog"
           aria-modal="true"
-          aria-label="Look up ERF from map"
+          aria-label="Find ERF via Knysna Muni valuation roll"
         >
           <div
             className="erf-lookup-modal"
             onClick={(e) => e.stopPropagation()}
+            style={{ width: "min(90vw, 640px)", maxHeight: "80vh" }}
           >
             <div className="erf-lookup-header">
               <div>
                 <p className="eyebrow" style={{ margin: 0 }}>Cadastre lookup</p>
                 <h2 style={{ margin: "4px 0 0", fontSize: 18 }}>
-                  Click the actual house
+                  Knysna Muni valuation roll
                 </h2>
               </div>
               <button
                 type="button"
                 className="ghost-dark"
-                onClick={close}
+                onClick={() => setOpen(false)}
                 aria-label="Close"
                 style={{ padding: "6px 10px" }}
               >
@@ -183,58 +139,116 @@ export default function ErfLookup({
               </button>
             </div>
 
-            <div ref={mapEl} className="erf-lookup-map" />
+            <div style={{ padding: 20 }}>
+              <label
+                style={{
+                  fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                  fontSize: 10,
+                  letterSpacing: "0.14em",
+                  textTransform: "uppercase",
+                  color: "#6b78a0",
+                  display: "block",
+                  marginBottom: 6,
+                }}
+              >
+                Address to search
+              </label>
+              <div style={{ display: "flex", gap: 8 }}>
+                <input
+                  ref={inputRef}
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && search()}
+                  placeholder="12 Eagles Way"
+                  style={{
+                    flex: 1,
+                    padding: "10px 12px",
+                    fontSize: 14,
+                    borderRadius: 8,
+                    border: "1px solid #e2e8f5",
+                  }}
+                />
+                <button
+                  type="button"
+                  className="cta"
+                  onClick={search}
+                  disabled={busy || !query.trim()}
+                  style={{ padding: "10px 16px", fontSize: 13 }}
+                >
+                  {busy ? "Searching…" : "Search"}
+                </button>
+              </div>
+              <p
+                style={{
+                  margin: "8px 0 0",
+                  fontSize: 11,
+                  color: "#7a86a8",
+                  lineHeight: 1.4,
+                }}
+              >
+                Queries the muni&rsquo;s live rateable-property database
+                (the same source the printed valuation roll comes from). We
+                don&rsquo;t fetch owner names or ID numbers — those stay
+                outside our POPIA scope.
+              </p>
 
-            <div className="erf-lookup-footer">
-              {status.kind === "idle" && (
-                <p style={{ margin: 0, fontSize: 13, color: "var(--slate, #5b6885)" }}>
-                  Zoom in and click on the property&rsquo;s roof.
-                  We&rsquo;ll query the Knysna Municipality cadastre and confirm the erf.
+              {msg && (
+                <p style={{ marginTop: 12, fontSize: 13, color: "#a12020" }}>
+                  {msg}
                 </p>
               )}
-              {status.kind === "looking-up" && (
-                <p style={{ margin: 0, fontSize: 13, color: "var(--estuary)" }}>
-                  Looking up erf…
-                </p>
-              )}
-              {status.kind === "found" && (
-                <div>
-                  <p style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>
-                    ERF {status.erf}
-                    {status.propDesc ? ` · ${status.propDesc}` : ""}
+
+              {candidates && candidates.length > 0 && (
+                <div style={{ marginTop: 16 }}>
+                  <p
+                    style={{
+                      fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                      fontSize: 10,
+                      letterSpacing: "0.14em",
+                      textTransform: "uppercase",
+                      color: "#6b78a0",
+                      margin: "0 0 8px",
+                    }}
+                  >
+                    {candidates.length} match{candidates.length === 1 ? "" : "es"} — pick one
                   </p>
-                  {status.sg21 && (
-                    <p style={{ margin: "4px 0 0", fontSize: 11, color: "#5b6885", fontFamily: "monospace" }}>
-                      SG21: {status.sg21} · via {status.source ?? "cadastre"}
-                    </p>
-                  )}
-                  <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
-                    <button
-                      type="button"
-                      className="cta"
-                      onClick={confirm}
-                      style={{ padding: "8px 14px", fontSize: 13 }}
-                    >
-                      Attach to this property
-                    </button>
-                    <button
-                      type="button"
-                      className="ghost-dark"
-                      onClick={() => setStatus({ kind: "idle" })}
-                      style={{ padding: "8px 14px", fontSize: 13 }}
-                    >
-                      Click somewhere else
-                    </button>
-                  </div>
+                  <ul style={{ listStyle: "none", margin: 0, padding: 0, maxHeight: 340, overflowY: "auto" }}>
+                    {candidates.map((c) => (
+                      <li
+                        key={c.muniErfCode}
+                        onClick={() => !busy && attach(c)}
+                        style={{
+                          padding: "10px 12px",
+                          borderRadius: 8,
+                          border: "1px solid #e2e8f5",
+                          marginBottom: 6,
+                          cursor: busy ? "wait" : "pointer",
+                          background: "#fbfcfe",
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                          <span style={{ fontSize: 15, fontWeight: 600, color: "var(--estuary)" }}>
+                            {c.streetNo ? `#${c.streetNo} · ` : ""}
+                            {c.streetName}
+                          </span>
+                          <span
+                            style={{
+                              fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                              fontSize: 13,
+                              fontWeight: 600,
+                              color: "var(--navy)",
+                            }}
+                          >
+                            ERF {c.erfNumber}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: 11, color: "#7a86a8", marginTop: 3, fontFamily: "monospace" }}>
+                          SG: {c.sgNumber}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
-              )}
-              {status.kind === "attaching" && (
-                <p style={{ margin: 0, fontSize: 13 }}>Attaching…</p>
-              )}
-              {status.kind === "error" && (
-                <p style={{ margin: 0, fontSize: 13, color: "#a12020" }}>
-                  {status.message}
-                </p>
               )}
             </div>
           </div>
