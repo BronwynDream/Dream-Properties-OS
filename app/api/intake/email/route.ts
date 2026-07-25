@@ -258,15 +258,25 @@ export async function POST(request: Request) {
     const path = `${batch.id}/${prefix}-${name}`;
 
     // Skip inline email chrome: signature icons (Instagram, LinkedIn, Facebook,
-    // etc.) come through as image/* attachments with content_disposition=inline
-    // and/or a content_id reference from the HTML body. They aren't documents
-    // Bronwyn meant to send — filter them out so they don't pollute the
-    // property record with social-media pixels.
+    // Spire, YouTube, and the palm tree graphic that live in every Dream
+    // agent's Outlook footer). The reliable signal is the FILENAME shape —
+    // Outlook auto-generates `img-<uuid>` or `image001.png` for embedded
+    // images without a proper attachment name. Real property photos come
+    // through as IMG_1234.JPG, HEIC from iPhones, PHOTO-yyyy-mm-dd.jpg
+    // from WhatsApp downloads — none match these patterns.
+    //
+    // The content_disposition/content_id path stays as a secondary guard for
+    // clients that DO set those headers correctly.
+    const isImage = /^image\//i.test(contentType);
+    const isGeneratedInlineName =
+      isImage &&
+      (/^img-[0-9a-f]{6,}/i.test(name) ||
+        /^image\d+\.(png|jpe?g|gif|webp)$/i.test(name));
     const isInlineImage =
-      /^image\//i.test(contentType) &&
+      isImage &&
       (meta.content_disposition?.toLowerCase() === "inline" ||
         !!meta.content_id);
-    if (isInlineImage) continue;
+    if (isInlineImage || isGeneratedInlineName) continue;
 
     // Skip oversized attachments outright — Resend caps at 40 MB total per
     // email but our storage flow bounds each individual file at 20 MB.
