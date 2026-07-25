@@ -19,6 +19,22 @@ type LookupResponse = {
   error?: string;
 };
 
+// The muni packs suburb into the street field for some entries
+// ("EAGLESWAY BELVIDERE HEIG"). Split off the trailing capitalised tokens
+// that don't look like part of the street name so the reviewer can see
+// "Belvidere Heig" vs blank (implicitly The Heads / other primary suburb).
+function extractSuburbHint(streetName: string, queriedStreet: string): string | null {
+  const s = streetName.trim();
+  const q = queriedStreet.trim().toUpperCase().replace(/\s+/g, "");
+  const stripped = s.toUpperCase().replace(/\s+/g, "");
+  if (!stripped.startsWith(q)) return null;
+  // Take whatever's left after the street name — commonly the suburb.
+  const rest = s.substring(
+    s.toUpperCase().indexOf(q) + q.length,
+  ).trim();
+  return rest.length > 0 ? rest : null;
+}
+
 // Search the Knysna Municipality valuation roll (the same source Bronwyn
 // looks up manually) for a property's ERF. Pre-fills with the property's
 // current address; agent can edit + search; results show as a picker; pick
@@ -37,6 +53,8 @@ export default function ErfLookup({
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [candidates, setCandidates] = useState<Candidate[] | null>(null);
+  const [parsed, setParsed] = useState<{ streetNo: string | null; streetName: string } | null>(null);
+  const [manualErf, setManualErf] = useState("");
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -63,6 +81,7 @@ export default function ErfLookup({
     setBusy(true);
     setMsg(null);
     setCandidates(null);
+    setParsed(null);
     try {
       const res = await fetch(
         `/api/erf-lookup?address=${encodeURIComponent(query)}`,
@@ -71,8 +90,11 @@ export default function ErfLookup({
       const json = (await res.json()) as LookupResponse;
       if (json.ok) {
         setCandidates(json.candidates ?? []);
+        setParsed(json.parsed ?? null);
         if ((json.candidates ?? []).length === 0) {
-          setMsg("No matches in the Knysna Muni valuation roll for that address.");
+          setMsg(
+            "No matches in the Knysna Muni valuation roll — property may be a sectional scheme, newly subdivided, or filed under a slightly different street name. Enter the ERF manually below if you know it.",
+          );
         }
       } else {
         setMsg(json.error ?? "Lookup failed");
@@ -84,10 +106,10 @@ export default function ErfLookup({
     }
   }
 
-  async function attach(c: Candidate) {
+  async function attachErf(erf: string) {
     setBusy(true);
-    setMsg(`Attaching ERF ${c.erfNumber}…`);
-    const res = await attachErfToProperty(propertyId, c.erfNumber);
+    setMsg(`Attaching ERF ${erf}…`);
+    const res = await attachErfToProperty(propertyId, erf);
     if (res.ok) {
       setOpen(false);
       router.refresh();
@@ -211,45 +233,114 @@ export default function ErfLookup({
                     }}
                   >
                     {candidates.length} match{candidates.length === 1 ? "" : "es"} — pick one
+                    {parsed?.streetNo && ` · looking for #${parsed.streetNo}`}
                   </p>
                   <ul style={{ listStyle: "none", margin: 0, padding: 0, maxHeight: 340, overflowY: "auto" }}>
-                    {candidates.map((c) => (
-                      <li
-                        key={c.muniErfCode}
-                        onClick={() => !busy && attach(c)}
-                        style={{
-                          padding: "10px 12px",
-                          borderRadius: 8,
-                          border: "1px solid #e2e8f5",
-                          marginBottom: 6,
-                          cursor: busy ? "wait" : "pointer",
-                          background: "#fbfcfe",
-                        }}
-                      >
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                          <span style={{ fontSize: 15, fontWeight: 600, color: "var(--estuary)" }}>
-                            {c.streetNo ? `#${c.streetNo} · ` : ""}
-                            {c.streetName}
-                          </span>
-                          <span
-                            style={{
+                    {candidates.map((c) => {
+                      const isNumberMatch =
+                        parsed?.streetNo && c.streetNo === parsed.streetNo;
+                      const suburbHint = parsed
+                        ? extractSuburbHint(c.streetName, parsed.streetName)
+                        : null;
+                      return (
+                        <li
+                          key={c.muniErfCode}
+                          onClick={() => !busy && attachErf(c.erfNumber)}
+                          style={{
+                            padding: "10px 12px",
+                            borderRadius: 8,
+                            border: `1px solid ${isNumberMatch ? "var(--gold)" : "#e2e8f5"}`,
+                            marginBottom: 6,
+                            cursor: busy ? "wait" : "pointer",
+                            background: isNumberMatch ? "#fff8e6" : "#fbfcfe",
+                          }}
+                        >
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
+                            <span style={{ fontSize: 15, fontWeight: 600, color: "var(--estuary)" }}>
+                              {c.streetNo ? `#${c.streetNo} · ` : "no number · "}
+                              {c.streetName.replace(/\s+/g, " ")}
+                            </span>
+                            <span
+                              style={{
+                                fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                                fontSize: 13,
+                                fontWeight: 600,
+                                color: "var(--navy)",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              ERF {c.erfNumber}
+                            </span>
+                          </div>
+                          {suburbHint && (
+                            <div style={{
+                              fontSize: 11,
+                              color: "#a24700",
+                              marginTop: 3,
                               fontFamily: "'JetBrains Mono', ui-monospace, monospace",
-                              fontSize: 13,
-                              fontWeight: 600,
-                              color: "var(--navy)",
-                            }}
-                          >
-                            ERF {c.erfNumber}
-                          </span>
-                        </div>
-                        <div style={{ fontSize: 11, color: "#7a86a8", marginTop: 3, fontFamily: "monospace" }}>
-                          SG: {c.sgNumber}
-                        </div>
-                      </li>
-                    ))}
+                              textTransform: "uppercase",
+                              letterSpacing: "0.06em",
+                            }}>
+                              Suburb hint: {suburbHint.toLowerCase().replace(/\b\w/g, l => l.toUpperCase())}
+                            </div>
+                          )}
+                          <div style={{ fontSize: 10, color: "#7a86a8", marginTop: 3, fontFamily: "monospace" }}>
+                            SG: {c.sgNumber}
+                          </div>
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
               )}
+
+              {/* Manual entry fallback — for properties where the muni
+                  doesn't have a matching record, or when the reviewer
+                  already knows the ERF from a deed/mandate. */}
+              <div
+                style={{
+                  marginTop: 20,
+                  paddingTop: 16,
+                  borderTop: "1px solid var(--mist)",
+                }}
+              >
+                <label
+                  style={{
+                    fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                    fontSize: 10,
+                    letterSpacing: "0.14em",
+                    textTransform: "uppercase",
+                    color: "#6b78a0",
+                    display: "block",
+                    marginBottom: 6,
+                  }}
+                >
+                  Or enter ERF number manually
+                </label>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <input
+                    value={manualErf}
+                    onChange={(e) => setManualErf(e.target.value)}
+                    placeholder="e.g. 4497"
+                    style={{
+                      flex: 1,
+                      padding: "10px 12px",
+                      fontSize: 14,
+                      borderRadius: 8,
+                      border: "1px solid #e2e8f5",
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="ghost-dark"
+                    onClick={() => manualErf.trim() && attachErf(manualErf.trim())}
+                    disabled={busy || !manualErf.trim()}
+                    style={{ padding: "10px 16px", fontSize: 13 }}
+                  >
+                    Attach ERF
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -257,3 +348,4 @@ export default function ErfLookup({
     </>
   );
 }
+

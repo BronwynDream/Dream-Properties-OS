@@ -83,13 +83,13 @@ export async function GET(request: Request) {
     .replace(/\s+/g, "%")   // accept "EAGLES WAY" or "EAGLESWAY"
     .replace(/[^A-Z0-9%]/g, "%");
 
-  // Muni data uses ALL CAPS, sometimes packs suburb into the street field
-  // ("EAGLESWAY BELVIDERE HEIG"). LIKE with wildcards catches both.
-  const whereParts = [`PhysicalSt like '%${streetPattern}%'`];
-  if (parsed.streetNo) {
-    whereParts.push(`PhysicalStNo = '${parsed.streetNo}'`);
-  }
-  const where = whereParts.join(" AND ");
+  // Never filter strictly on street number — Knysna has repeated street
+  // names (two Eagles Ways: one in Belvidere Heights, one on The Heads).
+  // If we filter on "#12", we drop everyone else on The Heads Eagles Way
+  // and end up returning only the Belvidere match, which is likely wrong.
+  // Return all matches for the street; the UI ranks/highlights the exact
+  // number match so the reviewer can distinguish visually by suburb hint.
+  const where = `PhysicalSt like '%${streetPattern}%'`;
 
   const params = new URLSearchParams({
     where,
@@ -121,6 +121,17 @@ export async function GET(request: Request) {
         };
       })
       .filter((c) => c.erfNumber);
+
+    // Rank: exact street-number match first (when the caller gave one),
+    // then everything else. Preserves reviewer visual scan when the
+    // muni has 20 rows on a repeated street name.
+    if (parsed.streetNo) {
+      candidates.sort((a, b) => {
+        const am = a.streetNo === parsed.streetNo ? 0 : 1;
+        const bm = b.streetNo === parsed.streetNo ? 0 : 1;
+        return am - bm;
+      });
+    }
 
     return NextResponse.json({
       ok: true,
