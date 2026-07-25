@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServiceClient } from "@/lib/supabase/service";
 import { classifyBatchWithClient } from "@/lib/classify-batch";
 import { deepClassifyBatch } from "@/lib/classify-deep";
+import { extractBatchWithClient } from "@/lib/intake/extract-batch";
 import {
   batchIsFilingOnly,
   fileBatchAgainstPropertyWithClient,
@@ -330,6 +331,7 @@ export async function POST(request: Request) {
   //     common "here are the photos/plans for E105" case. Batches with
   //     agreements/mandates/listings still land in triage for extract review.
   let autoFiled: { filed: number; deduped: number } | null = null;
+  let autoExtracted: { rowsInserted: number; used: string[]; mode?: string } | null = null;
   if (intent === "property" && target.id) {
     try {
       const filingOnly = await batchIsFilingOnly(supabase, batch.id);
@@ -343,6 +345,29 @@ export async function POST(request: Request) {
           autoFiled = { filed: res.filed ?? 0, deduped: res.deduped ?? 0 };
         } else if (res.error) {
           errors.push(`auto-file: ${res.error}`);
+        }
+      } else {
+        // 11b. Extractable content present — auto-run AI extract so ERF,
+        //     extent, address, sellers, price, etc. show up on the batch
+        //     page (and on the property record after commit) without the
+        //     reviewer having to press "Extract fields (AI)". Commit still
+        //     stays manual — the reviewer gets to approve values before
+        //     they hit the property table.
+        try {
+          const ex = await extractBatchWithClient(supabase, batch.id);
+          if (ex.ok) {
+            autoExtracted = {
+              rowsInserted: ex.rowsInserted ?? 0,
+              used: ex.used ?? [],
+              mode: ex.mode,
+            };
+          } else if (ex.error) {
+            errors.push(`auto-extract: ${ex.error}`);
+          } else if (ex.note) {
+            errors.push(`auto-extract: ${ex.note}`);
+          }
+        } catch (e) {
+          errors.push(`auto-extract: ${(e as Error).message}`);
         }
       }
     } catch (e) {
@@ -362,6 +387,7 @@ export async function POST(request: Request) {
     attachmentCount: attachmentMetas.length,
     deepClassified: deepChanged,
     autoFiled,
+    autoExtracted,
     errors,
   });
 }
