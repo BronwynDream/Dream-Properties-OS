@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, type ReactNode } from "react";
 import mapboxgl from "mapbox-gl";
 
@@ -49,6 +50,7 @@ export default function PropertyHero({
   photos,
   mapboxToken,
   actionsSlot,
+  mapHref = "/map",
 }: {
   lat: number | null;
   lng: number | null;
@@ -64,6 +66,7 @@ export default function PropertyHero({
   photos: Photo[];
   mapboxToken: string;
   actionsSlot?: ReactNode;
+  mapHref?: string;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -71,8 +74,17 @@ export default function PropertyHero({
   const hasCoords = (mapboxToken ?? "").trim() && lat != null && lng != null;
   const hasPolygon = hasCoords && !!prclKey;
 
+  // Photo takes visual priority — for an estate agency, a photo of the house
+  // is the primary artefact. The map is a pivot, not the hero. First photo
+  // with a URL becomes the hero image; the rest flow through the strip below.
+  const primaryPhoto = photos.find((p) => !!p.url) ?? null;
+  const remainingPhotos = primaryPhoto
+    ? photos.filter((p) => p.id !== primaryPhoto.id)
+    : photos;
+  const showMap = !primaryPhoto && hasPolygon;
+
   useEffect(() => {
-    if (!hasCoords) return;
+    if (!showMap) return;
     if (!containerRef.current || mapRef.current) return;
     const token = (mapboxToken ?? "").trim();
 
@@ -200,33 +212,47 @@ export default function PropertyHero({
         </div>
       </div>
 
-      {/* Cadastre panel + Schedule */}
+      {/* Hero visual + Schedule */}
       <div className="record-cadastre-row">
         <div className="cadastre-panel">
-          {hasPolygon ? (
+          {primaryPhoto ? (
+            // Primary: photo of the house. This is what an agent actually
+            // wants to see when opening the record. The map moves to a
+            // pivot button below.
+            <a
+              href={primaryPhoto.url ?? "#"}
+              target="_blank"
+              rel="noreferrer"
+              className="hero-photo-link"
+              title={primaryPhoto.title}
+            >
+              <img
+                src={primaryPhoto.url ?? undefined}
+                alt={primaryPhoto.title}
+                className="hero-photo"
+                loading="lazy"
+              />
+            </a>
+          ) : showMap ? (
+            // No photo but we have a bridged polygon — satellite view with
+            // gold erf polygon is the second-best visual anchor.
             <>
               <div ref={containerRef} className="cadastre-panel-canvas" />
               <span className="cadastre-coords">
                 {lat!.toFixed(4)}, {lng!.toFixed(4)}
               </span>
             </>
-          ) : hasCoords ? (
-            // Have coords but no polygon bridge — show the satellite so the
-            // record still has visual anchor, with a hint that the polygon
-            // isn't linked yet.
-            <>
-              <div ref={containerRef} className="cadastre-panel-canvas" />
-              <span className="cadastre-coords">
-                {lat!.toFixed(4)}, {lng!.toFixed(4)} · unlinked
-              </span>
-            </>
           ) : (
+            // Nothing to render — CSG-diagram placeholder. Never a black
+            // rectangle. Also shown when coords exist but no polygon
+            // (satellite alone on forested Knysna is a black square).
             <div className="cadastre-fallback">
               <CompassRose />
               <p className="cadastre-fallback-title">Cadastral diagram</p>
               <p className="cadastre-fallback-body">
-                Not yet linked to a CSG parcel. Use <b>Find ERF from Muni</b>{" "}
-                to attach an ERF; the polygon will render here on refresh.
+                {hasCoords
+                  ? "Coordinates on file but no CSG parcel linked. Use Find ERF from Muni to attach an ERF and see the boundary."
+                  : "No coordinates or cadastre link yet. Use Find ERF from Muni to bring in a location."}
               </p>
               {lat != null && lng != null && (
                 <p className="cadastre-fallback-coords">
@@ -235,6 +261,12 @@ export default function PropertyHero({
               )}
             </div>
           )}
+
+          {/* Always-visible map pivot. Small pill in the bottom-left so it
+              never obscures the hero visual. */}
+          <Link href={mapHref} className="hero-map-pivot" prefetch={false}>
+            <MapPinIcon /> View on map
+          </Link>
         </div>
 
         <div className="schedule">
@@ -253,12 +285,15 @@ export default function PropertyHero({
         </div>
       </div>
 
-      {/* Photos strip — absent entirely when there are no photos */}
-      {photos.length > 0 && (
+      {/* Remaining photos — strip below (primary is up top in the hero visual).
+          Absent entirely when there are no other photos. */}
+      {remainingPhotos.length > 0 && (
         <div className="record-photos">
-          <p className="record-photos-label">Photos · {photos.length}</p>
+          <p className="record-photos-label">
+            More photos · {remainingPhotos.length}
+          </p>
           <div className="record-photos-strip">
-            {photos.slice(0, 8).map((p) =>
+            {remainingPhotos.slice(0, 8).map((p) =>
               p.url ? (
                 <a
                   key={p.id}
@@ -272,8 +307,8 @@ export default function PropertyHero({
                 </a>
               ) : null,
             )}
-            {photos.length > 8 && (
-              <span className="record-photo-more">+{photos.length - 8}</span>
+            {remainingPhotos.length > 8 && (
+              <span className="record-photo-more">+{remainingPhotos.length - 8}</span>
             )}
           </div>
         </div>
@@ -322,6 +357,25 @@ function RegistryStamp({
       )}
       {sgNumber && <p className="registry-stamp-sg">SG {sgNumber}</p>}
     </div>
+  );
+}
+
+// Map-pin glyph for the "View on map" pivot pill.
+function MapPinIcon() {
+  return (
+    <svg
+      width="11"
+      height="11"
+      viewBox="0 0 16 16"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      <path
+        d="M8 1c-2.76 0-5 2.13-5 4.76 0 3.57 5 9.24 5 9.24s5-5.67 5-9.24C13 3.13 10.76 1 8 1zm0 6.5a1.75 1.75 0 1 1 0-3.5 1.75 1.75 0 0 1 0 3.5z"
+        fill="currentColor"
+      />
+    </svg>
   );
 }
 
