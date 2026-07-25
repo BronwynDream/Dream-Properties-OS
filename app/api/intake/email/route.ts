@@ -3,6 +3,7 @@ import { Webhook } from "svix";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServiceClient } from "@/lib/supabase/service";
 import { classifyBatchWithClient } from "@/lib/classify-batch";
+import { deepClassifyBatch } from "@/lib/classify-deep";
 import {
   batchIsFilingOnly,
   fileBatchAgainstPropertyWithClient,
@@ -299,6 +300,19 @@ export async function POST(request: Request) {
     errors.push(`classify: ${(e as Error).message}`);
   }
 
+  // 10b. Deep classify — content extract + regex rules + LLM fallback for
+  //     any file the filename classifier left as "other". Catches the
+  //     "PROPERTY DESCRIPTION.docx" / "features.docx" case without needing
+  //     the reviewer to press the Reclassify button. LLM only fires on
+  //     stragglers, so this stays cheap in the common case.
+  let deepChanged = 0;
+  try {
+    const deep = await deepClassifyBatch(supabase, batch.id);
+    deepChanged = deep.changed;
+  } catch (e) {
+    errors.push(`deep-classify: ${(e as Error).message}`);
+  }
+
   // 11. Auto-file when the batch is a no-brainer: attached to a property on
   //     intake AND every classified file is filing-only (plans, photos,
   //     correspondence — nothing to extract). Skips the triage step for the
@@ -335,6 +349,7 @@ export async function POST(request: Request) {
     propertyId: intent === "property" ? target.id : null,
     partyId: intent === "client" ? target.id : null,
     attachmentCount: attachmentMetas.length,
+    deepClassified: deepChanged,
     autoFiled,
     errors,
   });
