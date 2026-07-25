@@ -63,6 +63,13 @@ create index if not exists idx_muni_property_suburb      on muni_property(suburb
 create index if not exists idx_muni_property_street_name on muni_property using gin (street_name gin_trgm_ops);
 create index if not exists idx_muni_property_street_no   on muni_property(street_no);
 
+-- RLS: staff read the muni mirror. Only the service role (bypasses RLS)
+-- writes — driven by /api/muni/import. Same pattern as cadastral_parcel.
+alter table muni_property enable row level security;
+drop policy if exists "muni_property staff read" on muni_property;
+create policy "muni_property staff read" on muni_property
+  for select using (is_staff());
+
 comment on table muni_property is
   'Local mirror of the Knysna Municipality public rateable-property database. Joins Finance System (57) + Valuation Roll (58) + Ownership Deeds (56) via SG21. Owner PII is deliberately excluded — importer allow-lists fields. Refreshed by /api/muni/import.';
 
