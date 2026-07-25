@@ -255,6 +255,17 @@ export async function POST(request: Request) {
     const prefix = String(i + 1).padStart(2, "0");
     const path = `${batch.id}/${prefix}-${name}`;
 
+    // Skip inline email chrome: signature icons (Instagram, LinkedIn, Facebook,
+    // etc.) come through as image/* attachments with content_disposition=inline
+    // and/or a content_id reference from the HTML body. They aren't documents
+    // Bronwyn meant to send — filter them out so they don't pollute the
+    // property record with social-media pixels.
+    const isInlineImage =
+      /^image\//i.test(contentType) &&
+      (meta.content_disposition?.toLowerCase() === "inline" ||
+        !!meta.content_id);
+    if (isInlineImage) continue;
+
     // Skip oversized attachments outright — Resend caps at 40 MB total per
     // email but our storage flow bounds each individual file at 20 MB.
     if (meta.size > MAX_ATTACHMENT_MB * 1024 * 1024) {
