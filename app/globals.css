@@ -616,6 +616,43 @@ button.doc-thumb {
   background: rgba(255, 255, 255, 0.16);
 }
 
+/* ErfLookup modal — click a house on satellite to look up the erf via
+   Knysna Municipality cadastre. Same overlay pattern as the photo lightbox
+   but with a larger content box (the map needs breathing room). */
+.erf-lookup-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(6, 15, 40, 0.72);
+  z-index: 1000;
+  display: flex; align-items: center; justify-content: center;
+  animation: lightbox-fade 140ms ease;
+}
+.erf-lookup-modal {
+  background: #fff;
+  border-radius: 12px;
+  width: min(90vw, 900px);
+  max-height: 90vh;
+  display: flex; flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5);
+}
+.erf-lookup-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--mist);
+  display: flex; align-items: flex-start; justify-content: space-between;
+}
+.erf-lookup-map {
+  flex: 1;
+  min-height: 480px;
+  width: 100%;
+  cursor: crosshair;
+}
+.erf-lookup-footer {
+  padding: 14px 20px;
+  border-top: 1px solid var(--mist);
+  background: #fbfcfe;
+  min-height: 60px;
+}
+
 /* Document category groups on the Property Record */
 .doc-list { margin-top: 4px; }
 .doc-group { margin-top: 14px; }

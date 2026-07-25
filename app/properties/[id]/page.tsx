@@ -8,6 +8,7 @@ import PropertyHero, { type SinceLine } from "./PropertyHero";
 import PhotoLightbox from "./PhotoLightbox";
 import DropZone from "@/app/triage/DropZone";
 import LightstoneFetch from "./LightstoneFetch";
+import ErfLookup from "./ErfLookup";
 import { PRODUCTS as LIGHTSTONE_PRODUCTS } from "@/lib/lightstone";
 
 export const dynamic = "force-dynamic";
@@ -528,6 +529,14 @@ export default async function PropertyRecord({
               description: p.description,
             }))}
           />
+          {isAdmin && (
+            <ErfLookup
+              propertyId={prop.id}
+              propertyLat={(prop as any).lat ?? null}
+              propertyLng={(prop as any).lng ?? null}
+              mapboxToken={mapboxToken}
+            />
+          )}
         </div>
 
         {/* Hero row: PropertyHero (erf polygon + vitals + photos) on the left,
