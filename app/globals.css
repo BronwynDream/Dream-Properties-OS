@@ -521,6 +521,25 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
 .doc-chip.is-missing:hover { background: transparent; }
 .pii-dot { background: #fdecec; color: #a12020; border-radius: 4px; padding: 0 4px; font-size: 9px; font-weight: 700; }
 
+/* Thumbnail variant of a doc chip — used when the file is an image and
+   not PII / FICA. Same slot in the .doc-chips grid, but shows the actual
+   image instead of the filename. Click behaviour matches the text chip:
+   open in a new tab. */
+.doc-thumb {
+  display: block; width: 72px; height: 72px;
+  border-radius: 8px; overflow: hidden;
+  background: var(--mist);
+  border: 1px solid rgba(19, 43, 132, 0.08);
+  transition: transform 120ms ease, border-color 120ms ease;
+}
+.doc-thumb img {
+  width: 100%; height: 100%; object-fit: cover; display: block;
+}
+.doc-thumb:hover {
+  transform: scale(1.04);
+  border-color: var(--gold);
+}
+
 /* Document category groups on the Property Record */
 .doc-list { margin-top: 4px; }
 .doc-group { margin-top: 14px; }

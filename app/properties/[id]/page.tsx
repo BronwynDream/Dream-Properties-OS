@@ -153,17 +153,12 @@ export default async function PropertyRecord({
     if (signErr) {
       console.error(`[property] signed URL failed for doc ${d.id} (${d.title}):`, signErr.message);
     }
-    // Photos strip: any image-MIME file that isn't PII and isn't in the fica
-    // category. This way image attachments still marked "other" (e.g. photos
-    // that landed with the classifier before the MIME fix, or new ones the
-    // filename classifier missed) show as thumbnails alongside proper
-    // doc_type=photo files, instead of sitting in the OTHER section as ugly
-    // hash-name text chips. Scanned ID cards / passports stay OUT because
-    // their doc_type puts them in fica category or flags them PII.
-    const mime = d.mime_type ?? "";
-    const isImage =
-      d.doc_type?.code === "photo" ||
-      (/^image\//i.test(mime) && d.doc_type?.category !== "fica" && !d.is_pii);
+    // isImage drives the Photos strip below the deal card. Strict on purpose:
+    // only files whose doc_type is 'photo'. Scanned IDs / passports would be
+    // image files too but they belong to fica category — surfacing them in a
+    // public strip is a POPIA problem, so the doc-chip renderer handles them
+    // as text chips instead.
+    const isImage = d.doc_type?.code === "photo";
     docs.push({
       transfer_id: dl.entity_id,
       id: d.id,
@@ -394,8 +389,34 @@ export default async function PropertyRecord({
                   <span className="doc-group-count">{group.items.length}</span>
                 </p>
                 <div className="doc-chips">
-                  {group.items.map((d) => (
-                    d.url ? (
+                  {group.items.map((d) => {
+                    // Render as a thumbnail if the file is an image (by MIME
+                    // or filename extension) AND isn't PII / FICA. Every other
+                    // case (PDFs, docx, PII images) stays as a text chip.
+                    const isImageMime = /^image\//i.test(d.mime_type ?? "");
+                    const isImageExt = /\.(jpe?g|png|heic|heif|webp|tif|tiff|gif|bmp)$/i.test(d.title);
+                    const showThumb =
+                      d.url &&
+                      !d.is_pii &&
+                      d.category !== "fica" &&
+                      (isImageMime || isImageExt);
+
+                    if (showThumb) {
+                      return (
+                        <a
+                          key={d.id}
+                          href={d.url as string}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="doc-thumb"
+                          title={d.title}
+                        >
+                          <img src={d.url as string} alt={d.title} loading="lazy" />
+                        </a>
+                      );
+                    }
+
+                    return d.url ? (
                       <a
                         key={d.id}
                         href={d.url}
@@ -416,8 +437,8 @@ export default async function PropertyRecord({
                         {d.title}
                         {d.is_pii && <span className="pii-dot">PII</span>}
                       </span>
-                    )
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             ))}
