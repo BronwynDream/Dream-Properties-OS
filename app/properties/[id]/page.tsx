@@ -153,11 +153,17 @@ export default async function PropertyRecord({
     if (signErr) {
       console.error(`[property] signed URL failed for doc ${d.id} (${d.title}):`, signErr.message);
     }
-    // Photos strip is strict: only files classified as a photo doc_type. Scanned
-    // ID cards and passports are image files too but are id_document / passport
-    // by doc_type — surfacing them in a public-looking photo strip would be a
-    // POPIA hygiene problem.
-    const isImage = d.doc_type?.code === "photo";
+    // Photos strip: any image-MIME file that isn't PII and isn't in the fica
+    // category. This way image attachments still marked "other" (e.g. photos
+    // that landed with the classifier before the MIME fix, or new ones the
+    // filename classifier missed) show as thumbnails alongside proper
+    // doc_type=photo files, instead of sitting in the OTHER section as ugly
+    // hash-name text chips. Scanned ID cards / passports stay OUT because
+    // their doc_type puts them in fica category or flags them PII.
+    const mime = d.mime_type ?? "";
+    const isImage =
+      d.doc_type?.code === "photo" ||
+      (/^image\//i.test(mime) && d.doc_type?.category !== "fica" && !d.is_pii);
     docs.push({
       transfer_id: dl.entity_id,
       id: d.id,
