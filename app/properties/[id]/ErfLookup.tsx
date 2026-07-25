@@ -5,12 +5,22 @@ import { useRouter } from "next/navigation";
 import { attachErfToProperty } from "./actions";
 
 type Candidate = {
-  muniErfCode: string;
-  erfNumber: string;
   sgNumber: string;
+  erfNumber: string;
   streetNo: string | null;
   streetName: string;
+  suburb: string | null;
+  suburbHint: string | null;
+  muniValuation: number | null;
+  extentSqm: number | null;
+  zoning: string | null;
+  titleDeedNo: string | null;
 };
+
+function formatRands(n: number | null): string {
+  if (n == null) return "—";
+  return `R ${n.toLocaleString("en-ZA")}`;
+}
 
 type LookupResponse = {
   ok: boolean;
@@ -235,19 +245,17 @@ export default function ErfLookup({
                     {candidates.length} match{candidates.length === 1 ? "" : "es"} — pick one
                     {parsed?.streetNo && ` · looking for #${parsed.streetNo}`}
                   </p>
-                  <ul style={{ listStyle: "none", margin: 0, padding: 0, maxHeight: 340, overflowY: "auto" }}>
+                  <ul style={{ listStyle: "none", margin: 0, padding: 0, maxHeight: 400, overflowY: "auto" }}>
                     {candidates.map((c) => {
                       const isNumberMatch =
                         parsed?.streetNo && c.streetNo === parsed.streetNo;
-                      const suburbHint = parsed
-                        ? extractSuburbHint(c.streetName, parsed.streetName)
-                        : null;
+                      const suburbLabel = c.suburb ?? c.suburbHint;
                       return (
                         <li
-                          key={c.muniErfCode}
+                          key={c.sgNumber}
                           onClick={() => !busy && attachErf(c.erfNumber)}
                           style={{
-                            padding: "10px 12px",
+                            padding: "12px 14px",
                             borderRadius: 8,
                             border: `1px solid ${isNumberMatch ? "var(--gold)" : "#e2e8f5"}`,
                             marginBottom: 6,
@@ -259,6 +267,11 @@ export default function ErfLookup({
                             <span style={{ fontSize: 15, fontWeight: 600, color: "var(--estuary)" }}>
                               {c.streetNo ? `#${c.streetNo} · ` : "no number · "}
                               {c.streetName.replace(/\s+/g, " ")}
+                              {suburbLabel && (
+                                <span style={{ color: "#7a86a8", fontWeight: 400, marginLeft: 6 }}>
+                                  · {suburbLabel.toLowerCase().replace(/\b\w/g, l => l.toUpperCase())}
+                                </span>
+                              )}
                             </span>
                             <span
                               style={{
@@ -272,19 +285,21 @@ export default function ErfLookup({
                               ERF {c.erfNumber}
                             </span>
                           </div>
-                          {suburbHint && (
-                            <div style={{
-                              fontSize: 11,
-                              color: "#a24700",
-                              marginTop: 3,
-                              fontFamily: "'JetBrains Mono', ui-monospace, monospace",
-                              textTransform: "uppercase",
-                              letterSpacing: "0.06em",
-                            }}>
-                              Suburb hint: {suburbHint.toLowerCase().replace(/\b\w/g, l => l.toUpperCase())}
+                          <div style={{ display: "flex", gap: 16, marginTop: 6, fontSize: 12, color: "#5b6885" }}>
+                            {c.muniValuation != null && (
+                              <span><b>{formatRands(c.muniValuation)}</b> · muni value</span>
+                            )}
+                            {c.extentSqm != null && (
+                              <span>{c.extentSqm.toLocaleString("en-ZA")} m²</span>
+                            )}
+                            {c.zoning && <span>{c.zoning}</span>}
+                          </div>
+                          {c.titleDeedNo && (
+                            <div style={{ fontSize: 11, color: "#7a86a8", marginTop: 3 }}>
+                              Deed: {c.titleDeedNo}
                             </div>
                           )}
-                          <div style={{ fontSize: 10, color: "#7a86a8", marginTop: 3, fontFamily: "monospace" }}>
+                          <div style={{ fontSize: 10, color: "#a4adc4", marginTop: 3, fontFamily: "monospace" }}>
                             SG: {c.sgNumber}
                           </div>
                         </li>

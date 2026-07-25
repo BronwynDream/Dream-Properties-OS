@@ -4,30 +4,24 @@ import { createClient } from "@/lib/supabase/server";
 export const runtime = "nodejs";
 export const maxDuration = 15;
 
-// Address → ERF lookup via Knysna Municipality's ArcGIS Finance System layer.
-// This is the SAME rateable-property database the muni valuation roll runs
-// on — the paper roll Bronwyn uses is a printed extract. We're just querying
-// the digital source directly. Free, no auth.
-//
-// Fields queried:
-//   PhysicalSt / PhysicalStNo  →  match the property's street address
-//   ErfNo                       →  muni-coded (e.g. 102935000 for erf 2935)
-//   SGNumber                    →  the SG21 code that joins to cadastral_parcel
-//
-// POPIA note: this layer also contains owner names + ID numbers. We
-// deliberately do NOT request those fields — outFields is an allow-list.
+// Address → ERF lookup via the LOCAL muni_property mirror (populated by
+// /api/muni/import). Fast, offline-tolerant, coherent with the rest of
+// the OS. Falls back gracefully if the local table hasn't been populated
+// yet ("no matches" + hint about running the import).
 //
 // GET /api/erf-lookup?address=12+Eagles+Way
 
-const MUNI_FINANCE =
-  "https://services3.arcgis.com/Kb9idbuOS9ILjfGd/arcgis/rest/services/Property_Ownership_Deeds_Test/FeatureServer/57/query";
-
 type Candidate = {
-  muniErfCode: string;   // raw ErfNo (e.g. "102935000")
-  erfNumber: string;     // parsed short erf (e.g. "2935")
-  sgNumber: string;      // full SG21 code
+  sgNumber: string;
+  erfNumber: string;
   streetNo: string | null;
   streetName: string;
+  suburb: string | null;
+  suburbHint: string | null;
+  muniValuation: number | null;
+  extentSqm: number | null;
+  zoning: string | null;
+  titleDeedNo: string | null;
 };
 
 type LookupResponse = {
@@ -37,28 +31,12 @@ type LookupResponse = {
   error?: string;
 };
 
-// "12 Eagles Way, The Heads, Knysna" → { streetNo: '12', streetName: 'Eagles Way' }
-// Accepts leading number + optional letter (12, 12A). Strips suburb / city.
 function parseAddress(address: string): { streetNo: string | null; streetName: string } {
   const trimmed = address.trim();
   const m = trimmed.match(/^(\d+[A-Za-z]?)\s+([^,]+)/);
-  if (m) {
-    return { streetNo: m[1], streetName: m[2].trim() };
-  }
-  // No leading number — treat whole first-comma-block as street name.
+  if (m) return { streetNo: m[1], streetName: m[2].trim() };
   const first = trimmed.split(",")[0].trim();
   return { streetNo: null, streetName: first };
-}
-
-// SG21 code layout: last 10 chars encode "eeeeepppppp" where e = erf number
-// (zero-padded), p = portion. "C03900050000449700000" → erf 4497.
-function erfFromSg(sg: string | null | undefined): string | null {
-  if (!sg) return null;
-  const clean = sg.trim();
-  if (clean.length < 10) return null;
-  const erfPart = clean.slice(-10, -5);
-  const n = parseInt(erfPart, 10);
-  return Number.isFinite(n) && n > 0 ? String(n) : null;
 }
 
 export async function GET(request: Request) {
@@ -78,70 +56,47 @@ export async function GET(request: Request) {
   }
 
   const parsed = parseAddress(address);
-  const streetPattern = parsed.streetName
-    .toUpperCase()
-    .replace(/\s+/g, "%")   // accept "EAGLES WAY" or "EAGLESWAY"
-    .replace(/[^A-Z0-9%]/g, "%");
 
-  // Never filter strictly on street number — Knysna has repeated street
-  // names (two Eagles Ways: one in Belvidere Heights, one on The Heads).
-  // If we filter on "#12", we drop everyone else on The Heads Eagles Way
-  // and end up returning only the Belvidere match, which is likely wrong.
-  // Return all matches for the street; the UI ranks/highlights the exact
-  // number match so the reviewer can distinguish visually by suburb hint.
-  const where = `PhysicalSt like '%${streetPattern}%'`;
+  // Fuzzy street match via trigram (index built in migration 0040).
+  // Case-insensitive. Muni data is uppercase; normalise both sides.
+  const streetSearch = parsed.streetName.toUpperCase().replace(/[^A-Z0-9 ]/g, " ").trim();
 
-  const params = new URLSearchParams({
-    where,
-    outFields: "ErfNo,SGNumber,PhysicalStNo,PhysicalSt",
-    returnGeometry: "false",
-    resultRecordCount: "25",
-    f: "json",
-  });
+  const { data, error } = await supabase
+    .from("muni_property")
+    .select(
+      "sg_number, erf_number, street_no, street_name, suburb, suburb_hint, muni_valuation, extent_sqm, zoning, title_deed_no",
+    )
+    .ilike("street_name", `%${streetSearch.replace(/\s+/g, "%")}%`)
+    .limit(50);
 
-  try {
-    const res = await fetch(`${MUNI_FINANCE}?${params.toString()}`, {
-      cache: "no-store",
-    });
-    if (!res.ok) throw new Error(`Muni HTTP ${res.status}`);
-    const data = await res.json();
-
-    /* eslint-disable @typescript-eslint/no-explicit-any */
-    const features: any[] = data?.features ?? [];
-    const candidates: Candidate[] = features
-      .map((f) => {
-        const a = f.attributes ?? {};
-        const sg = a.SGNumber ? String(a.SGNumber).trim() : "";
-        return {
-          muniErfCode: a.ErfNo ? String(a.ErfNo).trim() : "",
-          erfNumber: erfFromSg(sg) ?? "",
-          sgNumber: sg,
-          streetNo: a.PhysicalStNo ? String(a.PhysicalStNo).trim() : null,
-          streetName: a.PhysicalSt ? String(a.PhysicalSt).trim() : "",
-        };
-      })
-      .filter((c) => c.erfNumber);
-
-    // Rank: exact street-number match first (when the caller gave one),
-    // then everything else. Preserves reviewer visual scan when the
-    // muni has 20 rows on a repeated street name.
-    if (parsed.streetNo) {
-      candidates.sort((a, b) => {
-        const am = a.streetNo === parsed.streetNo ? 0 : 1;
-        const bm = b.streetNo === parsed.streetNo ? 0 : 1;
-        return am - bm;
-      });
-    }
-
-    return NextResponse.json({
-      ok: true,
-      parsed,
-      candidates,
-    } satisfies LookupResponse);
-  } catch (e) {
+  if (error) {
     return NextResponse.json(
-      { ok: false, error: (e as Error).message } satisfies LookupResponse,
-      { status: 502 },
+      { ok: false, error: `local index: ${error.message}` } satisfies LookupResponse,
+      { status: 500 },
     );
   }
+
+  const candidates: Candidate[] = (data ?? []).map((r) => ({
+    sgNumber: r.sg_number,
+    erfNumber: r.erf_number ?? "",
+    streetNo: r.street_no,
+    streetName: r.street_name ?? "",
+    suburb: r.suburb,
+    suburbHint: r.suburb_hint,
+    muniValuation: r.muni_valuation != null ? Number(r.muni_valuation) : null,
+    extentSqm: r.extent_sqm,
+    zoning: r.zoning,
+    titleDeedNo: r.title_deed_no,
+  }));
+
+  // Rank exact-street-number matches first.
+  if (parsed.streetNo) {
+    candidates.sort((a, b) => {
+      const am = a.streetNo === parsed.streetNo ? 0 : 1;
+      const bm = b.streetNo === parsed.streetNo ? 0 : 1;
+      return am - bm;
+    });
+  }
+
+  return NextResponse.json({ ok: true, parsed, candidates } satisfies LookupResponse);
 }

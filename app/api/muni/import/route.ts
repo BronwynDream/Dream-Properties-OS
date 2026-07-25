@@ -1,0 +1,252 @@
+import { NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
+
+export const runtime = "nodejs";
+export const maxDuration = 300;
+
+// POST /api/muni/import
+//
+// Pages through Knysna Municipality's public ArcGIS layers and upserts
+// into muni_property (keyed by SG21). Admin-only. Idempotent — safe to
+// re-run any time; new rows overwrite by primary key.
+//
+// Three passes, each upserts the columns it's responsible for:
+//   Layer 57 (Finance System)   → address, zoning, ward, sect-title flag
+//   Layer 58 (Valuation Roll)   → suburb, tariff, valuation, area
+//   Layer 56 (Ownership Deeds)  → extent, title deed, sect scheme, purchase history
+//
+// Owner names, ID numbers, phone, email are DELIBERATELY NEVER requested.
+// outFields on every query is an explicit allow-list.
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
+const MUNI_HOST =
+  "https://services3.arcgis.com/Kb9idbuOS9ILjfGd/arcgis/rest/services/Property_Ownership_Deeds_Test/FeatureServer";
+const PAGE_SIZE = 2000;
+
+async function fetchPage(
+  layer: number,
+  outFields: string,
+  offset: number,
+): Promise<any[]> {
+  const params = new URLSearchParams({
+    where: "1=1",
+    outFields,
+    returnGeometry: "false",
+    resultOffset: String(offset),
+    resultRecordCount: String(PAGE_SIZE),
+    orderByFields: "OBJECTID",
+    f: "json",
+  });
+  const res = await fetch(`${MUNI_HOST}/${layer}/query?${params.toString()}`, {
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`Layer ${layer} HTTP ${res.status}`);
+  const data = await res.json();
+  return (data?.features ?? []).map((f: any) => f.attributes ?? {});
+}
+
+async function fetchAll(layer: number, outFields: string): Promise<any[]> {
+  const all: any[] = [];
+  let offset = 0;
+  while (true) {
+    const page = await fetchPage(layer, outFields, offset);
+    all.push(...page);
+    if (page.length < PAGE_SIZE) break;
+    offset += PAGE_SIZE;
+    if (offset > 200_000) break; // safety cap
+  }
+  return all;
+}
+
+function erfFromSg(sg: string | null | undefined): string | null {
+  if (!sg) return null;
+  const clean = String(sg).trim();
+  if (clean.length < 10) return null;
+  const erfPart = clean.slice(-10, -5);
+  const n = parseInt(erfPart, 10);
+  return Number.isFinite(n) && n > 0 ? String(n) : null;
+}
+
+function safeInt(v: any): number | null {
+  if (v == null || v === "") return null;
+  const n = parseInt(String(v).replace(/[^0-9-]/g, ""), 10);
+  return Number.isFinite(n) ? n : null;
+}
+function safeNum(v: any): number | null {
+  if (v == null || v === "") return null;
+  const n = parseFloat(String(v).replace(/[^0-9.-]/g, ""));
+  return Number.isFinite(n) ? n : null;
+}
+function safeStr(v: any): string | null {
+  if (v == null) return null;
+  const s = String(v).trim();
+  return s.length > 0 ? s : null;
+}
+function safeDate(v: any): string | null {
+  if (v == null || v === "") return null;
+  // ArcGIS dates come as unix millis
+  const ms = typeof v === "number" ? v : parseInt(String(v), 10);
+  if (!Number.isFinite(ms) || ms <= 0) return null;
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
+// Split "EAGLESWAY BELVIDERE HEIG" into street + suburb hint. Anything after
+// the first two "words" (or the entire trailing chunk with a known suburb
+// marker) is the suburb hint. Heuristic — the muni doesn't structure it.
+function splitStreetSuburb(raw: string | null): {
+  street: string | null;
+  hint: string | null;
+} {
+  if (!raw) return { street: null, hint: null };
+  const parts = raw.trim().split(/\s+/);
+  if (parts.length <= 2) return { street: raw.trim(), hint: null };
+  // Look for a suburb marker (HEIG, HEIGHTS, ISLAND, PARK, TOWN, EXT, etc.)
+  const markers = /^(HEIG|HEIGHTS?|ISLAND|PARK|BAY|POINT|EXT|EXTENSION|VILLAGE|ESTATE|CENTRAL|WEST|EAST|NORTH|SOUTH)$/i;
+  for (let i = 1; i < parts.length; i++) {
+    if (markers.test(parts[i])) {
+      return {
+        street: parts.slice(0, i).join(" "),
+        hint: parts.slice(i - 1 >= 1 ? i - 1 : i).join(" "),
+      };
+    }
+  }
+  return { street: raw.trim(), hint: null };
+}
+
+export async function POST(request: Request) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
+  const { data: profile } = await supabase
+    .from("app_user")
+    .select("role, active")
+    .eq("id", user.id)
+    .single();
+  if (profile?.role !== "admin" || profile?.active === false) {
+    return NextResponse.json({ error: "admin only" }, { status: 403 });
+  }
+  void request;
+
+  const service = createServiceClient();
+  const startedAt = Date.now();
+  const counts = { finance: 0, valroll: 0, deeds: 0 };
+
+  try {
+    // --- Pass 1: Finance System (57) — address, zoning, ward, sect flag ---
+    const finance = await fetchAll(
+      57,
+      "SGNumber,ErfNo,PhysicalSt,PhysicalStNo,Zoning,Area,WardNo,SectionalTitle,Usage_,PropertyDescription",
+    );
+    for (const chunk of chunks(finance, 500)) {
+      const rows = chunk
+        .filter((r) => safeStr(r.SGNumber))
+        .map((r) => {
+          const split = splitStreetSuburb(safeStr(r.PhysicalSt));
+          return {
+            sg_number: String(r.SGNumber).trim(),
+            erf_number: erfFromSg(String(r.SGNumber)),
+            muni_erf_code: safeStr(r.ErfNo),
+            street_no: safeStr(r.PhysicalStNo),
+            street_name: split.street,
+            suburb_hint: split.hint,
+            zoning: safeStr(r.Zoning),
+            ward_no: safeStr(r.WardNo),
+            sectional_title_flag: safeStr(r.SectionalTitle),
+            usage_: safeStr(r.Usage_),
+            prop_description: safeStr(r.PropertyDescription),
+            refreshed_at: new Date().toISOString(),
+          };
+        });
+      if (rows.length === 0) continue;
+      const { error, count } = await service
+        .from("muni_property")
+        .upsert(rows, { onConflict: "sg_number", count: "exact" });
+      if (error) throw new Error(`finance upsert: ${error.message}`);
+      counts.finance += count ?? rows.length;
+    }
+
+    // --- Pass 2: Valuation Roll (58) — suburb (structured!), tariff, valuation ---
+    const valroll = await fetchAll(58, "SG_NUMBER,SUBURB,TARIFF,AREA,VALUATION,ERF__");
+    for (const chunk of chunks(valroll, 500)) {
+      const rows = chunk
+        .filter((r) => safeStr(r.SG_NUMBER))
+        .map((r) => ({
+          sg_number: String(r.SG_NUMBER).trim(),
+          erf_number: safeStr(r.ERF__) ?? erfFromSg(String(r.SG_NUMBER)),
+          suburb: safeStr(r.SUBURB),
+          tariff: safeStr(r.TARIFF),
+          area_sqm_valroll: safeInt(r.AREA),
+          muni_valuation: safeNum(r.VALUATION),
+          refreshed_at: new Date().toISOString(),
+        }));
+      if (rows.length === 0) continue;
+      const { error, count } = await service
+        .from("muni_property")
+        .upsert(rows, { onConflict: "sg_number", count: "exact" });
+      if (error) throw new Error(`valroll upsert: ${error.message}`);
+      counts.valroll += count ?? rows.length;
+    }
+
+    // --- Pass 3: Ownership Deeds (56) — extent, title deed, sect scheme, purchase ---
+    // WARNING: this layer has PII fields (Buyer_name, Seller_name, IDs).
+    // Our outFields is an ALLOW-LIST — never request them.
+    const deeds = await fetchAll(
+      56,
+      "SG21CODE,LPI,TOWNNAME,ERF,PORTION,EXTENT_SQM,Property_Type,SECT_SCHEME_NAME,UNIT,Title_Deed_No,OLD_TITLE_DEED_NO,DeedOffice,Purch_Date,Registration_Date,Purch_Price,BOND_NUMBER,BOND_AMOUNT,INSTITUTION",
+    );
+    for (const chunk of chunks(deeds, 500)) {
+      const rows = chunk
+        .filter((r) => safeStr(r.SG21CODE) || safeStr(r.LPI))
+        .map((r) => {
+          const sg = safeStr(r.SG21CODE) ?? safeStr(r.LPI)!;
+          return {
+            sg_number: sg,
+            erf_number: safeStr(r.ERF) ?? erfFromSg(sg),
+            town_name: safeStr(r.TOWNNAME),
+            extent_sqm: safeInt(r.EXTENT_SQM),
+            property_type: safeStr(r.Property_Type),
+            sect_scheme_name: safeStr(r.SECT_SCHEME_NAME),
+            sect_scheme_unit: safeInt(r.UNIT),
+            title_deed_no: safeStr(r.Title_Deed_No),
+            old_title_deed_no: safeStr(r.OLD_TITLE_DEED_NO),
+            deeds_office: safeStr(r.DeedOffice),
+            purch_date: safeDate(r.Purch_Date),
+            registration_date: safeDate(r.Registration_Date),
+            purch_price: safeNum(r.Purch_Price),
+            bond_number: safeStr(r.BOND_NUMBER),
+            bond_amount: safeNum(r.BOND_AMOUNT),
+            bond_institution: safeStr(r.INSTITUTION),
+            refreshed_at: new Date().toISOString(),
+          };
+        });
+      if (rows.length === 0) continue;
+      const { error, count } = await service
+        .from("muni_property")
+        .upsert(rows, { onConflict: "sg_number", count: "exact" });
+      if (error) throw new Error(`deeds upsert: ${error.message}`);
+      counts.deeds += count ?? rows.length;
+    }
+
+    const elapsed = Math.round((Date.now() - startedAt) / 1000);
+    return NextResponse.json({
+      ok: true,
+      elapsedSec: elapsed,
+      counts,
+      total: finance.length + valroll.length + deeds.length,
+    });
+  } catch (e) {
+    return NextResponse.json(
+      { ok: false, error: (e as Error).message, counts },
+      { status: 500 },
+    );
+  }
+}
+
+function* chunks<T>(arr: T[], size: number): Generator<T[]> {
+  for (let i = 0; i < arr.length; i += size) yield arr.slice(i, i + size);
+}
