@@ -21,6 +21,7 @@ given schema. Rules:
 - Return JSON only. No commentary, no markdown fences.
 - property.property_type is ONE of: house, apartment, townhouse, vacant_land, estate_plot, farm, commercial. A property inside a named estate (Pezula, Thesen Islands, Simola, Leisure Isle, Belvidere) is usually 'estate_plot' unless the doc clearly says apartment/townhouse.
 - property.ownership_type is ONE of: full_freehold, sectional, share_block, leasehold, fractional, timeshare. 'Full title' / 'freehold' → full_freehold. 'Sectional title' → sectional. If nothing indicates otherwise for a single-erf freestanding house/plot, use full_freehold.
+- property.erf_numbers is an ARRAY of every erf number the documents show for the property. A single erf → one-item array; a consolidated plot (e.g. 169 Links = Erf 1602 + 1603) → list both. Don't invent — if only one erf is shown, only list one.
 
 CRITICAL — the mandating agency is NOT a party to the sale.
 The listing agency for these documents is Dream Knysna (Dream Knysna CC, reg 98/32181/23),
@@ -35,7 +36,7 @@ applies to Pam Golding Properties Knysna (Knysna Plett Property Professionals Pt
 Dream is co-mandated on a joint mandate: the co-agent is not a party to the sale.`;
 
 export const JSON_SHAPE = `{
-  "property": { "title_deed_no": null, "erf_number": null, "extent_sqm": null, "address": null, "suburb": null, "property_type": null, "ownership_type": null },
+  "property": { "title_deed_no": null, "erf_numbers": [], "extent_sqm": null, "address": null, "suburb": null, "property_type": null, "ownership_type": null },
   "sellers": [ { "party_type": "individual", "name": "", "entity_name": null, "registration_no": null, "id_number": null, "matrimonial_regime": null, "members": [ { "name": "", "id_number": null, "role": "director", "share_pct": null } ] } ],
   "purchasers": [ { "party_type": "individual", "name": "", "entity_name": null, "registration_no": null, "id_number": null, "members": [] } ],
   "agreement": { "price": null, "deposit": null, "transfer_date": null },
@@ -101,7 +102,20 @@ export function mapExtractionToRows(data: Extracted): ExtractionRow[] {
   push("property", "suburb", p.suburb);
   push("property", "property_type", p.property_type);
   push("property", "ownership_type", p.ownership_type);
-  push("erf", "erf_number", p.erf_number);
+
+  // Erf numbers arrive as an array — one row per erf so commit_batch can
+  // insert each into the `erf` table (a property can hold multiple erven,
+  // e.g. 169 Links = 1602 + 1603). Backwards compat: also accept a stray
+  // legacy `erf_number` string in case an old cached prompt output is
+  // reused during a re-extract.
+  const erfList: unknown[] = Array.isArray((p as any).erf_numbers)
+    ? ((p as any).erf_numbers as unknown[])
+    : (p as any).erf_number != null && (p as any).erf_number !== ""
+      ? [(p as any).erf_number]
+      : [];
+  erfList.forEach((n, i) => {
+    push("erf", "erf_number", n, `erf_${i + 1}`);
+  });
 
   const pushParty = (side: "seller" | "purchaser", s: Record<string, unknown>, i: number) => {
     const hint = `${side}_${i + 1}`;
@@ -163,6 +177,7 @@ export function reshapeFields(rows: FlatRow[]): any {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const fields: any = {
     property: {},
+    erfs: [],
     sellers: [],
     purchasers: [],
     agreement: {},
@@ -187,9 +202,19 @@ export function reshapeFields(rows: FlatRow[]): any {
     const f = r.target_field;
     switch (r.target_table) {
       case "property":
-      case "erf":
         fields.property[f] = v;
         break;
+      case "erf": {
+        // Route erf rows into fields.erfs[] so commit_batch can insert one
+        // row per erf. entity_hint carries the 1-based index (erf_1, erf_2)
+        // so multi-erf batches keep their order; fallback to append when
+        // hint is missing or malformed.
+        const em = (r.entity_hint ?? "").match(/^erf_(\d+)$/);
+        const idx = em ? parseInt(em[1], 10) - 1 : fields.erfs.length;
+        while (fields.erfs.length <= idx) fields.erfs.push({});
+        fields.erfs[idx][f] = v;
+        break;
+      }
       case "agreement":
         fields.agreement[f] = v;
         break;
