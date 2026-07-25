@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import TopBar from "@/app/components/TopBar";
 import MergeTransfer from "./MergeTransfer";
 import MarkSoldButton from "./MarkSoldButton";
-import PropertyHero, { type SinceLine } from "./PropertyHero";
+import PropertyHero, { type SinceLine, type ScheduleRow } from "./PropertyHero";
 import PhotoLightbox from "./PhotoLightbox";
 import DropZone from "@/app/triage/DropZone";
 import LightstoneFetch from "./LightstoneFetch";
@@ -300,21 +300,103 @@ export default async function PropertyRecord({
     url: p.url,
     title: p.title,
   }));
-  const heroErven = (erven ?? []).map((e: any) => e.erf_number).join(", ");
 
-  // Muni fallback for hero fields. The property table's own columns take
-  // precedence (agent-entered or LLM-extracted values from actual deeds are
-  // higher-fidelity than the muni's roll data), but where those are blank the
-  // muni fills the gap — that's the whole point of holding the muni mirror.
-  // We use the first muni row: for multi-erf properties (169 Links etc.) the
-  // headline attributes are effectively the same across erven; the per-erf
-  // detail is in the Muni panel below.
+  // Muni fallback: property row wins where present (agent-entered / LLM-
+  // extracted deeds are higher-fidelity than roll data), muni fills gaps.
+  // Primary muni row = first erf's row; multi-erf properties (169 Links)
+  // share the important attributes across erven.
   const muniPrimary = muniRecords[0] ?? null;
   const heroTitleDeed = prop.title_deed_no ?? muniPrimary?.title_deed_no ?? null;
   const heroExtent = prop.extent_sqm ?? muniPrimary?.extent_sqm ?? null;
   const heroSuburb = prop.suburb?.name ?? muniPrimary?.suburb ?? null;
   const heroType = prop.property_type?.label ?? muniPrimary?.property_type ?? null;
   const heroMuniValuation = muniPrimary?.muni_valuation ?? null;
+
+  // Registry Stamp identity: primary erf + SG code.
+  const ervenList = (erven ?? []) as { erf_number: string; sg_number: string | null }[];
+  const primaryErf = ervenList[0]?.erf_number ?? null;
+  const primarySg = ervenList[0]?.sg_number ?? muniPrimary?.sg_number ?? null;
+  const extraErvenCount = Math.max(0, ervenList.length - 1);
+
+  // Muni valuation subtitle: tariff + declared use if we have them.
+  const valuationSubtitleParts: string[] = [];
+  if (muniPrimary?.tariff) valuationSubtitleParts.push(muniPrimary.tariff);
+  if (muniPrimary?.usage_) valuationSubtitleParts.push(`use ${muniPrimary.usage_}`);
+  const heroMuniValuationSubtitle = valuationSubtitleParts.length
+    ? valuationSubtitleParts.join(" · ").toLowerCase()
+    : null;
+
+  // Schedule rows — the property's cadastral vitals table. Primary rows first
+  // (extent, zoning, ward, suburb, type/use), then a hairline break, then
+  // secondary muni-detail rows (deeds office, prev deed, bond, sectional).
+  // Every row renders; missing values show as `—` aligned in the value column
+  // — absence is information on a schedule table.
+  const fmtM2 = (n: number | null | undefined) =>
+    n != null ? `${Number(n).toLocaleString("en-ZA")} m²` : null;
+
+  const scheduleRows: ScheduleRow[] = [
+    { key: "extent", label: "Extent", value: fmtM2(heroExtent) },
+    { key: "zoning", label: "Zoning", value: muniPrimary?.zoning ?? null },
+    { key: "ward", label: "Ward", value: muniPrimary?.ward_no ?? null },
+    { key: "suburb", label: "Suburb", value: heroSuburb },
+    {
+      key: "type",
+      label: "Type / Use",
+      value: [heroType, muniPrimary?.usage_].filter(Boolean).join(" · ") || null,
+    },
+    { key: "ownership", label: "Ownership", value: prop.ownership_type?.label ?? null },
+  ];
+
+  // Secondary rows only rendered if there's muni detail worth showing.
+  const secondaryRows: ScheduleRow[] = [];
+  if (muniPrimary?.old_title_deed_no) {
+    secondaryRows.push({
+      key: "prevdeed",
+      label: "Previous deed",
+      value: muniPrimary.old_title_deed_no,
+      mono: true,
+      breakBefore: true,
+    });
+  }
+  if (muniPrimary?.deeds_office) {
+    secondaryRows.push({
+      key: "deedsoffice",
+      label: "Deeds office",
+      value: muniPrimary.deeds_office,
+      breakBefore: !muniPrimary?.old_title_deed_no,
+    });
+  }
+  if (muniPrimary?.registration_date) {
+    secondaryRows.push({
+      key: "regdate",
+      label: "Registered",
+      value: muniPrimary.registration_date,
+      mono: true,
+    });
+  }
+  if (muniPrimary?.bond_institution || muniPrimary?.bond_amount != null) {
+    const amt = muniPrimary?.bond_amount != null
+      ? `R ${Number(muniPrimary.bond_amount).toLocaleString("en-ZA")}`
+      : null;
+    const inst = muniPrimary?.bond_institution ?? "Bond";
+    secondaryRows.push({
+      key: "bond",
+      label: "Existing bond",
+      value: amt ? `${amt} · ${inst}` : inst,
+      breakBefore: secondaryRows.length === 0,
+    });
+  }
+  if (muniPrimary?.sect_scheme_name) {
+    secondaryRows.push({
+      key: "sectscheme",
+      label: "Sectional scheme",
+      value: muniPrimary.sect_scheme_unit
+        ? `${muniPrimary.sect_scheme_name} · unit ${muniPrimary.sect_scheme_unit}`
+        : muniPrimary.sect_scheme_name,
+      breakBefore: secondaryRows.length === 0,
+    });
+  }
+  const allScheduleRows = [...scheduleRows, ...secondaryRows];
 
   // Split transfers into the active one (most recent) and the historical
   // ones. Active sits in the hero row alongside PropertyHero so the agent
@@ -567,62 +649,59 @@ export default async function PropertyRecord({
       <hr className="tideline" />
 
       <section className="app-body property-record-body">
-        {/* Compact action row — always visible so Fetch from Lightstone stays
-            reachable on established records where the Take-on section is
-            hidden. Small vertical footprint. */}
-        <div className="property-record-actions">
-          <LightstoneFetch
-            propertyId={prop.id}
-            products={LIGHTSTONE_PRODUCTS.map((p) => ({
-              code: p.code,
-              label: p.label,
-              description: p.description,
-            }))}
-          />
-          {isAdmin && (
-            <ErfLookup
-              propertyId={prop.id}
-              propertyAddress={prop.primary_address ?? ""}
-            />
-          )}
-        </div>
+        {/* The record plate — identity (Registry Stamp + valuation), cadastre,
+            schedule, photos. All action buttons for the record live inside
+            the plate via actionsSlot so they belong to the identity, not
+            floating in a bar above. */}
+        <PropertyHero
+          lat={(prop as any).lat ?? null}
+          lng={(prop as any).lng ?? null}
+          prclKey={(prop as any).prcl_key ?? null}
+          primaryErf={primaryErf}
+          extraErvenCount={extraErvenCount}
+          titleDeed={heroTitleDeed}
+          sgNumber={primarySg}
+          muniValuation={heroMuniValuation}
+          muniValuationSubtitle={heroMuniValuationSubtitle}
+          since={since}
+          scheduleRows={allScheduleRows}
+          photos={heroPhotos}
+          mapboxToken={mapboxToken}
+          actionsSlot={
+            <>
+              <LightstoneFetch
+                propertyId={prop.id}
+                products={LIGHTSTONE_PRODUCTS.map((p) => ({
+                  code: p.code,
+                  label: p.label,
+                  description: p.description,
+                }))}
+              />
+              {isAdmin && (
+                <ErfLookup
+                  propertyId={prop.id}
+                  propertyAddress={prop.primary_address ?? ""}
+                />
+              )}
+            </>
+          }
+        />
 
-        {/* Hero row: PropertyHero (erf polygon + vitals + photos) on the left,
-            the active transfer's deal card on the right. Fits property + live
-            deal on one laptop screen without scrolling. Past transfers go
-            below in the Ownership history section. */}
-        <div className="property-record-hero-row">
-          <PropertyHero
-            lat={(prop as any).lat ?? null}
-            lng={(prop as any).lng ?? null}
-            prclKey={(prop as any).prcl_key ?? null}
-            erven={heroErven}
-            titleDeed={heroTitleDeed}
-            extentSqm={heroExtent}
-            suburb={heroSuburb}
-            type={heroType}
-            ownership={prop.ownership_type?.label ?? null}
-            muniValuation={heroMuniValuation}
-            since={since}
-            photos={heroPhotos}
-            mapboxToken={mapboxToken}
-          />
+        {/* Active deal — sits below the plate as a wide strip. Not competing
+            with the identity above; deal state is context, not identity. */}
+        <section className="record-deal-band">
           {activeTransfer ? (
-            <div className="property-record-deal">
-              {renderTransferCard(activeTransfer, { showMarker: false })}
-            </div>
+            renderTransferCard(activeTransfer, { showMarker: false })
           ) : (
-            <div className="property-record-deal property-record-deal--empty">
-              <p className="eyebrow">Current deal</p>
+            <div className="record-deal-empty">
+              <p className="eyebrow">Active deal</p>
               <p>
-                No live transfer on this property yet.
-                <br />
-                Drop a folder in the Take-on section below (or via Triage) to
-                bring in the ownership history and start a deal.
+                No live transfer yet. Drop a folder in the Take-on section below
+                (or via Triage) to bring in ownership history and start a deal.
               </p>
             </div>
           )}
-        </div>
+        </section>
 
         {/* Sample-data banner — surfaces whenever Lightstone stub results are
             attached to this record so nobody mistakes the SAMPLE placeholder
@@ -678,197 +757,22 @@ export default async function PropertyRecord({
           </section>
         )}
 
-        {muniRecords.length > 0 && (
-          <section style={{ marginTop: 28 }}>
-            <p className="col-title" style={{ margin: "0 0 12px" }}>
-              Municipal record{muniRecords.length > 1 ? "s" : ""}
-              <span style={{
-                fontSize: 11,
-                color: "#7a86a8",
-                marginLeft: 10,
-                fontFamily: "'JetBrains Mono', ui-monospace, monospace",
-                textTransform: "none",
-                letterSpacing: "normal",
-              }}>
-                from Knysna Muni valuation roll
-              </span>
-            </p>
-            {muniRecords.map((m: any) => (
-              <div
-                key={m.sg_number}
-                style={{
-                  background: "var(--white)",
-                  border: "1px solid var(--mist)",
-                  borderRadius: 12,
-                  padding: "18px 20px",
-                  marginBottom: 10,
-                }}
-              >
-                {/* Header: erf + suburb + full street address + SG code */}
-                <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 14, gap: 12, flexWrap: "wrap" }}>
-                  <div>
-                    <p className="eyebrow" style={{ margin: 0 }}>
-                      Erf {m.erf_number}
-                      {m.suburb ? ` · ${m.suburb}` : ""}
-                      {m.town_name && m.town_name !== m.suburb ? ` · ${m.town_name}` : ""}
-                    </p>
-                    <p style={{ margin: "4px 0 0", fontSize: 15, fontWeight: 600, color: "var(--estuary)" }}>
-                      {m.street_no ? `#${m.street_no} · ` : ""}{m.street_name ?? "—"}
-                    </p>
-                    {m.suburb_hint && m.suburb_hint !== m.suburb && (
-                      <p style={{ margin: "2px 0 0", fontSize: 11, color: "#a4adc4" }}>
-                        Muni street hint: {m.suburb_hint}
-                      </p>
-                    )}
-                  </div>
-                  <p style={{ margin: 0, fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 10, color: "#a4adc4" }}>
-                    SG: {m.sg_number}
-                    {m.muni_erf_code && (
-                      <>
-                        <br />
-                        Muni ID: {m.muni_erf_code}
-                      </>
-                    )}
-                  </p>
-                </div>
+        {/* NOTE: Municipal Record panel + bottom Photos strip were removed —
+            everything the muni knows is now folded into the Schedule inside
+            the record plate, and photos live in the plate's photo strip.
+            One source per fact. If a muni field surfaces that we're not yet
+            rendering, add it to `secondaryRows` in the setup above rather
+            than reviving a separate panel here. */}
 
-                {/* Cadastral + rating attributes */}
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 14 }}>
-                  {m.muni_valuation != null && (
-                    <div>
-                      <p className="eyebrow" style={{ margin: 0 }}>Muni valuation</p>
-                      <p style={{ margin: "2px 0 0", fontSize: 15, fontWeight: 600 }}>{money(m.muni_valuation)}</p>
-                    </div>
-                  )}
-                  {m.extent_sqm != null && (
-                    <div>
-                      <p className="eyebrow" style={{ margin: 0 }}>Extent</p>
-                      <p style={{ margin: "2px 0 0", fontSize: 15 }}>{Number(m.extent_sqm).toLocaleString("en-ZA")} m²</p>
-                    </div>
-                  )}
-                  {m.area_sqm_valroll != null && m.area_sqm_valroll !== m.extent_sqm && (
-                    <div>
-                      <p className="eyebrow" style={{ margin: 0 }}>Valuation roll area</p>
-                      <p style={{ margin: "2px 0 0", fontSize: 14 }}>{Number(m.area_sqm_valroll).toLocaleString("en-ZA")} m²</p>
-                    </div>
-                  )}
-                  {m.zoning && (
-                    <div>
-                      <p className="eyebrow" style={{ margin: 0 }}>Zoning</p>
-                      <p style={{ margin: "2px 0 0", fontSize: 14 }}>{m.zoning}</p>
-                    </div>
-                  )}
-                  {m.tariff && (
-                    <div>
-                      <p className="eyebrow" style={{ margin: 0 }}>Tariff</p>
-                      <p style={{ margin: "2px 0 0", fontSize: 14 }}>{m.tariff}</p>
-                    </div>
-                  )}
-                  {m.ward_no && (
-                    <div>
-                      <p className="eyebrow" style={{ margin: 0 }}>Ward</p>
-                      <p style={{ margin: "2px 0 0", fontSize: 14 }}>{m.ward_no}</p>
-                    </div>
-                  )}
-                  {m.property_type && (
-                    <div>
-                      <p className="eyebrow" style={{ margin: 0 }}>Type</p>
-                      <p style={{ margin: "2px 0 0", fontSize: 14 }}>{m.property_type}</p>
-                    </div>
-                  )}
-                  {m.usage_ && (
-                    <div>
-                      <p className="eyebrow" style={{ margin: 0 }}>Declared use</p>
-                      <p style={{ margin: "2px 0 0", fontSize: 14 }}>{m.usage_}</p>
-                    </div>
-                  )}
-                  {m.sectional_title_flag && !m.sect_scheme_name && (
-                    <div>
-                      <p className="eyebrow" style={{ margin: 0 }}>Sectional title</p>
-                      <p style={{ margin: "2px 0 0", fontSize: 14 }}>{m.sectional_title_flag}</p>
-                    </div>
-                  )}
-                </div>
-
-                {m.prop_description && (
-                  <div style={{ marginTop: 12, fontSize: 12, color: "#5b6885" }}>
-                    <span className="eyebrow" style={{ marginRight: 8 }}>Description</span>
-                    {m.prop_description}
-                  </div>
-                )}
-
-                {/* Deed + purchase history */}
-                {(m.title_deed_no || m.old_title_deed_no || m.deeds_office || m.registration_date || m.purch_date || m.purch_price) && (
-                  <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px dashed var(--mist)" }}>
-                    <p className="eyebrow" style={{ margin: "0 0 6px" }}>Deed & purchase</p>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, fontSize: 13, color: "#5b6885" }}>
-                      {m.title_deed_no && <div><b>{m.title_deed_no}</b> · current deed</div>}
-                      {m.old_title_deed_no && <div style={{ color: "#7a86a8" }}>{m.old_title_deed_no} · previous deed</div>}
-                      {m.deeds_office && <div>{m.deeds_office} deeds office</div>}
-                      {m.registration_date && <div>Registered {m.registration_date}</div>}
-                      {m.purch_price != null && <div>{money(m.purch_price)} · purchase</div>}
-                      {m.purch_date && <div>{m.purch_date} · purchase date</div>}
-                    </div>
-                  </div>
-                )}
-
-                {/* Bond */}
-                {(m.bond_number || m.bond_amount != null || m.bond_institution) && (
-                  <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px dashed var(--mist)" }}>
-                    <p className="eyebrow" style={{ margin: "0 0 6px" }}>Existing bond</p>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, fontSize: 13, color: "#5b6885" }}>
-                      {m.bond_institution && <div><b>{m.bond_institution}</b></div>}
-                      {m.bond_amount != null && <div>{money(m.bond_amount)} · bond amount</div>}
-                      {m.bond_number && <div style={{ color: "#a4adc4" }}>Bond {m.bond_number}</div>}
-                    </div>
-                  </div>
-                )}
-
-                {/* Sectional scheme */}
-                {(m.sect_scheme_name || m.sect_scheme_unit != null) && (
-                  <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px dashed var(--mist)" }}>
-                    <p className="eyebrow" style={{ margin: "0 0 6px" }}>Sectional scheme</p>
-                    <div style={{ fontSize: 13, color: "#5b6885" }}>
-                      {m.sect_scheme_name}
-                      {m.sect_scheme_unit != null ? ` · unit ${m.sect_scheme_unit}` : ""}
-                    </div>
-                  </div>
-                )}
-
-                <p style={{ margin: "12px 0 0", fontSize: 10, color: "#a4adc4", fontFamily: "'JetBrains Mono', ui-monospace, monospace" }}>
-                  Muni data refreshed {m.refreshed_at ? new Date(m.refreshed_at).toISOString().slice(0, 10) : "—"}
-                </p>
-              </div>
-            ))}
-          </section>
-        )}
-
-        {uniquePhotos.length > 0 && (
-          <section className="photo-strip">
-            <p className="col-title" style={{ margin: "24px 0 10px" }}>
-              Photos ({uniquePhotos.length})
-            </p>
-            <div className="photo-strip-scroll">
-              {uniquePhotos.slice(0, 24).map((p) => (
-                <a
-                  key={p.id}
-                  href={p.url ?? "#"}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="photo-tile"
-                  title={p.title}
-                  style={{ backgroundImage: p.url ? `url(${p.url})` : undefined }}
-                >
-                  {!p.url && <span className="photo-tile-fallback">📷</span>}
-                </a>
-              ))}
-              {uniquePhotos.length > 24 && (
-                <div className="photo-tile more">
-                  <span>+{uniquePhotos.length - 24} more</span>
-                </div>
-              )}
-            </div>
-          </section>
+        {/* Muni-refresh footnote — small, at the bottom, so it's clear the
+            plate reflects a cached mirror not a live query. */}
+        {muniPrimary?.refreshed_at && (
+          <p className="muni-refresh-footnote">
+            Muni mirror refreshed{" "}
+            {new Date(muniPrimary.refreshed_at).toISOString().slice(0, 10)}
+            {" · "}
+            <span className="mono">SG {muniPrimary.sg_number}</span>
+          </p>
         )}
 
         {/* Ownership history: only past transfers. The active transfer lives

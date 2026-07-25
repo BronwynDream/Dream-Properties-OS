@@ -6,6 +6,16 @@
   --mist: #EDF0F8;
   --ink: #15203A;
   --white: #ffffff;
+
+  /* Property Record — cadastral document palette.
+     The record surface reads as vellum, not UI: subtle warm wash,
+     warm-cast hairlines, red reserved for the registration stamp
+     (borrows real title-deed practice — registration is stamped
+     in red ink at the Deeds Office). */
+  --paper: #FBF9F4;
+  --paper-mute: #6B7A8C;
+  --paper-line: #DED5C2;
+  --stamp: #A13333;
   color-scheme: light;
 }
 
@@ -368,99 +378,336 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
   .property-record-hero-row { grid-template-columns: 1fr; gap: 16px; }
 }
 
-/* Property Record hero — erf polygon on satellite (left) + vital stats
-   stack (right). The polygon is the identity; everything around it stays
-   quiet. Signature move of the record. See PropertyHero.tsx. */
-.property-hero {
-  display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(180px, 1fr);
-  gap: 16px;
-  margin-top: 0;
-  margin-bottom: 0;
-}
-.property-hero-left { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-.property-hero-map {
-  position: relative;
-  height: 220px;
-  border-radius: 14px;
-  overflow: hidden;
-  background: var(--mist);
-  box-shadow: 0 1px 2px rgba(19, 43, 132, 0.05);
-}
-.property-hero-map-canvas { position: absolute; inset: 0; }
-.property-hero-coords {
-  position: absolute; bottom: 8px; right: 10px;
-  font-family: "JetBrains Mono", ui-monospace, monospace;
-  font-size: 10px; color: rgba(255, 255, 255, 0.9);
-  background: rgba(13, 58, 82, 0.55);
-  padding: 3px 7px; border-radius: 5px;
-  pointer-events: none; z-index: 5;
-  letter-spacing: 0.01em;
-}
-.property-hero-mapless {
-  height: 220px; border-radius: 14px; background: var(--mist);
-  display: flex; align-items: center; justify-content: center;
-  color: var(--slate, #6b7789); font-size: 13px; padding: 20px; text-align: center;
-  line-height: 1.5;
-}
-.property-hero-photos {
-  display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
-}
-.property-hero-photo {
-  width: 72px; height: 72px; border-radius: 8px; overflow: hidden;
-  background: var(--mist); display: block; flex-shrink: 0;
-  transition: transform 0.12s;
-}
-.property-hero-photo:hover { transform: scale(1.03); }
-.property-hero-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.property-hero-photo-more {
-  width: 72px; height: 72px; border-radius: 8px;
-  background: var(--mist); color: var(--slate, #6b7789);
-  display: flex; align-items: center; justify-content: center;
-  font-family: "JetBrains Mono", ui-monospace, monospace;
-  font-size: 13px; font-weight: 600; letter-spacing: -0.01em;
+/* ============================================================================
+   Property Record — cadastral document, not a SaaS card.
+   ----------------------------------------------------------------------------
+   The record surface reads as paper (vellum wash), not a UI panel. Type
+   hierarchy is anchored by the Registry Stamp — a bordered identity block
+   (top-left) borrowing the reference-block format of real SA title deeds,
+   set in JetBrains Mono. The Muni valuation is the mid-page headline number.
+   Cadastre polygon + Schedule table live in a two-column row below. All
+   secondary muni data (bond, sectional scheme, prev deed) folds into the
+   schedule — one source per fact.
+   ============================================================================ */
+
+.record-plate {
+  background: var(--paper);
+  border: 1px solid var(--paper-line);
+  border-radius: 6px;
+  padding: 26px 32px 24px;
+  color: var(--estuary);
 }
 
-.property-hero-stats {
-  display: flex; flex-direction: column; gap: 10px;
+/* Identity row: Registry Stamp (left) alongside the Muni valuation
+   headline + Since line + action buttons (right). */
+.record-identity {
+  display: grid;
+  grid-template-columns: minmax(240px, 320px) 1fr;
+  gap: 32px;
+  align-items: stretch;
+  margin-bottom: 24px;
+}
+
+/* The Registry Stamp — the signature element. Borders + hairline internal
+   rule + monospace numeric render like the reference block on a real
+   Deeds Office title deed. This is the ONLY bordered block on the plate. */
+.registry-stamp {
+  border: 1px solid var(--gold);
+  padding: 14px 18px 16px;
+  background: rgba(200, 160, 50, 0.03);
+  display: flex; flex-direction: column;
+  min-height: 100%;
+}
+.registry-stamp-eyebrow {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 9px; letter-spacing: 0.22em; text-transform: uppercase;
+  color: var(--gold); font-weight: 700; margin: 0 0 12px;
+}
+.registry-stamp-label {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--paper-mute); font-weight: 600; margin: 0 0 2px;
+}
+.registry-stamp-erf {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 38px; font-weight: 700; letter-spacing: 0.02em;
+  color: var(--estuary); margin: 0; line-height: 1;
+}
+.registry-stamp-erf-more {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11px; color: var(--paper-mute); font-weight: 500;
+  margin: 4px 0 0; letter-spacing: 0.02em;
+}
+.registry-stamp-rule {
+  height: 1px; background: var(--gold); border: 0; margin: 14px 0 12px;
+  opacity: 0.55;
+}
+.registry-stamp-deed {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 14px; font-weight: 500; color: var(--estuary);
+  margin: 0; letter-spacing: -0.005em;
+}
+.registry-stamp-sg {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px; color: var(--paper-mute); margin: 4px 0 0;
+  letter-spacing: 0.01em; word-break: break-all;
+}
+.registry-stamp-empty {
+  font-family: "Inter", sans-serif;
+  font-size: 12px; color: var(--paper-mute); font-style: italic;
+  margin: 0; line-height: 1.4;
+}
+
+/* Headline column: big valuation number + since line + actions row */
+.record-headline {
+  display: flex; flex-direction: column; justify-content: space-between;
+  min-width: 0;
+}
+.record-headline-eyebrow {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--paper-mute); font-weight: 600; margin: 0 0 6px;
+}
+.record-headline-value {
+  font-family: "Inter", -apple-system, sans-serif;
+  font-size: 34px; font-weight: 700; letter-spacing: -0.02em;
+  color: var(--estuary); margin: 0; line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.record-headline-sub {
+  font-size: 12px; color: var(--paper-mute); margin: 8px 0 0;
+  letter-spacing: 0.01em;
+}
+.record-headline-empty {
+  font-family: "Inter", sans-serif;
+  font-size: 13px; color: var(--paper-mute); font-style: italic;
+  margin: 0; line-height: 1.5;
+}
+
+/* Since line — italicised, small, muted. Sits under the valuation. */
+.record-since {
+  margin-top: 18px; padding-top: 14px;
+  border-top: 1px dashed var(--paper-line);
+  font-size: 13px; color: var(--estuary);
+}
+.record-since-eyebrow {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--paper-mute); font-weight: 600; margin: 0 0 4px;
+}
+.record-since-value b { font-weight: 700; color: var(--navy); }
+.record-since-value .mono { color: var(--paper-mute); font-size: 12px; }
+
+/* Actions slot — for Lightstone + Find ERF buttons. They belong to the
+   identity block, not floating above the whole record. */
+.record-actions {
+  display: flex; gap: 8px; margin-top: 20px;
+  flex-wrap: wrap;
+}
+.record-actions button, .record-actions .ghost-dark {
+  background: transparent;
+  border: 1px solid var(--paper-line);
+  color: var(--estuary);
+  padding: 7px 14px;
+  border-radius: 4px;
+  font-size: 12px; font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+  font-family: inherit;
+}
+.record-actions button:hover, .record-actions .ghost-dark:hover {
   background: var(--white);
-  border-radius: 14px;
-  padding: 14px 18px 14px;
-  box-shadow: 0 1px 2px rgba(19, 43, 132, 0.05);
+  border-color: var(--gold);
 }
-.property-hero-stat { line-height: 1.15; }
-.property-hero-eyebrow {
+
+/* Cadastre + Schedule row */
+.record-cadastre-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 24px;
+  align-items: stretch;
+}
+.cadastre-panel {
+  position: relative;
+  min-height: 260px;
+  background: var(--white);
+  border: 1px solid var(--paper-line);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.cadastre-panel-canvas { position: absolute; inset: 0; }
+.cadastre-coords {
+  position: absolute; bottom: 8px; right: 10px;
   font-family: "JetBrains Mono", ui-monospace, monospace;
-  font-size: 9.5px; letter-spacing: 0.14em; text-transform: uppercase;
-  color: var(--slate, #6b7789); margin: 0 0 2px; font-weight: 700;
+  font-size: 10px; color: rgba(255, 255, 255, 0.92);
+  background: rgba(13, 58, 82, 0.7);
+  padding: 3px 7px; border-radius: 3px;
+  pointer-events: none; z-index: 5;
+  letter-spacing: 0.02em;
 }
-.property-hero-value {
+/* Fallback when no polygon / no lat-lng — a stylised SG-diagram placeholder
+   with compass rose + coords. NEVER a black rectangle. */
+.cadastre-fallback {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  padding: 24px; text-align: center;
+  color: var(--paper-mute);
+  background:
+    repeating-linear-gradient(45deg, transparent 0, transparent 22px,
+      rgba(15, 42, 99, 0.03) 22px, rgba(15, 42, 99, 0.03) 23px),
+    var(--paper);
+}
+.cadastre-fallback-compass {
+  color: var(--gold);
+  opacity: 0.7;
+  margin-bottom: 12px;
+}
+.cadastre-fallback-title {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+  font-weight: 700; color: var(--estuary); margin: 0 0 4px;
+}
+.cadastre-fallback-body {
+  font-size: 12px; color: var(--paper-mute);
+  margin: 0 0 10px; line-height: 1.5;
+  max-width: 260px;
+}
+.cadastre-fallback-coords {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12px; color: var(--estuary);
+  letter-spacing: 0.03em;
+}
+
+/* Schedule — proper hairline table, deed-schedule aesthetic.
+   Labels left in small caps, values right in Inter. Missing values show as
+   an em-dash aligned to the value column so absence is information. */
+.schedule {
+  background: var(--white);
+  border: 1px solid var(--paper-line);
+  border-radius: 4px;
+  padding: 4px 18px;
+}
+.schedule table {
+  width: 100%; border-collapse: collapse;
+}
+.schedule tr {
+  border-bottom: 1px solid var(--paper-line);
+}
+.schedule tr:last-child { border-bottom: 0; }
+.schedule tr.schedule-break td {
+  padding-top: 14px;
+  border-top: 1px dashed var(--paper-line);
+}
+.schedule td {
+  padding: 9px 0;
+  vertical-align: baseline;
+}
+.schedule td.k {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--paper-mute); font-weight: 600;
+  width: 44%;
+}
+.schedule td.v {
   font-family: "Inter", -apple-system, sans-serif;
-  color: var(--estuary); font-size: 14px; font-weight: 600; margin: 0;
-  line-height: 1.2;
+  font-size: 13.5px; font-weight: 600; color: var(--estuary);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
-.property-hero-value.mono {
+.schedule td.v.mono {
   font-family: "JetBrains Mono", ui-monospace, monospace;
-  font-size: 14px; letter-spacing: -0.005em; font-weight: 500;
+  font-size: 12.5px; font-weight: 500;
 }
-.property-hero-unit {
+.schedule td.v.dim {
+  color: var(--paper-mute); font-weight: 400;
+}
+
+/* Photo strip — sits below the cadastre row when photos exist. Absent when
+   they don't (no empty scroll container). */
+.record-photos {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px dashed var(--paper-line);
+}
+.record-photos-label {
   font-family: "JetBrains Mono", ui-monospace, monospace;
-  font-size: 12px; color: var(--slate, #6b7789); font-weight: 400;
-  margin-left: 2px;
+  font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--paper-mute); font-weight: 600; margin: 0 0 10px;
 }
-.property-hero-since {
-  margin-top: 4px; padding-top: 10px;
-  border-top: 1px dashed var(--gold);
+.record-photos-strip {
+  display: flex; gap: 6px; flex-wrap: wrap;
 }
-.property-hero-since-value {
-  font-family: "Inter", -apple-system, sans-serif;
-  color: var(--estuary); font-size: 14px; font-weight: 500; margin: 0;
+.record-photo {
+  width: 80px; height: 80px; border-radius: 3px; overflow: hidden;
+  background: var(--paper-line); display: block; flex-shrink: 0;
+  transition: transform 0.12s;
+  border: 1px solid var(--paper-line);
 }
-.property-hero-since-value b { font-weight: 700; color: var(--navy); }
-.property-hero-since-price {
-  color: var(--slate, #6b7789); font-size: 12px;
-  font-weight: 500; margin: 3px 0 0;
-  letter-spacing: -0.005em;
+.record-photo:hover { transform: scale(1.04); }
+.record-photo img {
+  width: 100%; height: 100%; object-fit: cover; display: block;
+}
+.record-photo-more {
+  width: 80px; height: 80px; border-radius: 3px;
+  background: var(--paper); color: var(--paper-mute);
+  display: flex; align-items: center; justify-content: center;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12px; font-weight: 600;
+  border: 1px dashed var(--paper-line);
+}
+
+@media (max-width: 900px) {
+  .record-plate { padding: 20px; }
+  .record-identity { grid-template-columns: 1fr; gap: 20px; }
+  .record-cadastre-row { grid-template-columns: 1fr; gap: 16px; }
+  .registry-stamp-erf { font-size: 32px; }
+  .record-headline-value { font-size: 28px; }
+}
+
+/* Deal band — sits below the record plate. Deal state is context, not
+   identity; it doesn't compete with the plate for attention. */
+.record-deal-band {
+  margin-top: 20px;
+}
+.record-deal-band .transfer-card {
+  margin: 0;
+  border: 1px solid var(--paper-line);
+  background: var(--paper);
+  box-shadow: none;
+}
+.record-deal-empty {
+  padding: 22px 26px;
+  background: var(--paper);
+  border: 1px dashed var(--paper-line);
+  border-radius: 6px;
+  color: var(--paper-mute);
+}
+.record-deal-empty .eyebrow {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--paper-mute); font-weight: 700; margin: 0 0 6px;
+}
+.record-deal-empty p:not(.eyebrow) {
+  margin: 0; font-size: 13px; line-height: 1.55;
+}
+
+/* Ownership history timeline on the paper aesthetic — the whole page reads
+   as one cadastral document, not two conflicting card systems. */
+.property-record-body .timeline .transfer-card {
+  background: var(--paper);
+  border: 1px solid var(--paper-line);
+  box-shadow: none;
+}
+
+.muni-refresh-footnote {
+  margin: 24px 0 0;
+  padding-top: 12px;
+  border-top: 1px dashed var(--paper-line);
+  font-size: 11px;
+  color: var(--paper-mute);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 0.02em;
 }
 
 @media (max-width: 900px) {
