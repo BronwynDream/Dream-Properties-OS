@@ -4,6 +4,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServiceClient } from "@/lib/supabase/service";
 import { classifyBatchWithClient } from "@/lib/classify-batch";
 import {
+  batchIsFilingOnly,
+  fileBatchAgainstPropertyWithClient,
+} from "@/lib/intake/file-batch";
+import {
   fetchInboundEmailComplete,
   fetchAttachmentBytes,
 } from "@/lib/resend/inbound";
@@ -295,6 +299,32 @@ export async function POST(request: Request) {
     errors.push(`classify: ${(e as Error).message}`);
   }
 
+  // 11. Auto-file when the batch is a no-brainer: attached to a property on
+  //     intake AND every classified file is filing-only (plans, photos,
+  //     correspondence — nothing to extract). Skips the triage step for the
+  //     common "here are the photos/plans for E105" case. Batches with
+  //     agreements/mandates/listings still land in triage for extract review.
+  let autoFiled: { filed: number; deduped: number } | null = null;
+  if (intent === "property" && target.id) {
+    try {
+      const filingOnly = await batchIsFilingOnly(supabase, batch.id);
+      if (filingOnly) {
+        const res = await fileBatchAgainstPropertyWithClient(
+          supabase,
+          batch.id,
+          appUser.id,
+        );
+        if (res.ok) {
+          autoFiled = { filed: res.filed ?? 0, deduped: res.deduped ?? 0 };
+        } else if (res.error) {
+          errors.push(`auto-file: ${res.error}`);
+        }
+      }
+    } catch (e) {
+      errors.push(`auto-file: ${(e as Error).message}`);
+    }
+  }
+
   return NextResponse.json({
     ok: true,
     batchId: batch.id,
@@ -305,6 +335,7 @@ export async function POST(request: Request) {
     propertyId: intent === "property" ? target.id : null,
     partyId: intent === "client" ? target.id : null,
     attachmentCount: attachmentMetas.length,
+    autoFiled,
     errors,
   });
 }

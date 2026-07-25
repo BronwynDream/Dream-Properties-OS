@@ -599,13 +599,18 @@ export default function ReviewClient({
             {/* If the auto-matcher didn't propose a Property target at all
                 (e.g. FICA-only batch with no address extracted), still let
                 the reviewer attach manually — otherwise commit falls back to
-                "Unknown address" and creates a phantom record. */}
+                "Unknown address" and creates a phantom record.
+                When the batch was auto-attached at intake (property_id set),
+                show that state rather than the misleading "no property
+                fields extracted" copy. */}
             {!matchesByTarget.has("property") && (
               <div className="match-target" style={{ marginTop: 20 }}>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
                   <strong>Property</strong>
                   <span style={{ color: "#5b6885", fontSize: 13 }}>
-                    No property fields extracted for this batch — attach it manually.
+                    {batch.property_id
+                      ? `Attached to ${attachedPropertyAddress ?? "an existing property"} on intake — pick another below to reassign.`
+                      : "No property attached yet — search or create one below."}
                   </span>
                 </div>
                 <PropertyAttach batchId={batch.id} />
