@@ -51,6 +51,22 @@ export default async function PropertyRecord({
     .select("erf_number, portion")
     .eq("property_id", params.id);
 
+  // Muni mirror data for any erven assigned to this property. If the property
+  // has multiple erven (169 Links = 1602 + 1603) we get one row per erf and
+  // render them all. Empty array when no erven yet OR no muni match.
+  const erfNumbers = ((erven ?? []) as { erf_number: string }[])
+    .map((e) => e.erf_number)
+    .filter(Boolean);
+  const { data: muniRows } = erfNumbers.length
+    ? await supabase
+        .from("muni_property")
+        .select(
+          "sg_number, erf_number, street_no, street_name, suburb, tariff, muni_valuation, zoning, ward_no, sectional_title_flag, area_sqm_valroll, extent_sqm, property_type, sect_scheme_name, sect_scheme_unit, title_deed_no, old_title_deed_no, deeds_office, purch_date, registration_date, purch_price, bond_number, bond_amount, bond_institution, refreshed_at",
+        )
+        .in("erf_number", erfNumbers)
+    : { data: [] };
+  const muniRecords = (muniRows ?? []) as any[];
+
   // Try the post-0033 schema first (sold_by, sold_by_note). If those columns
   // don't yet exist in this environment (migration not applied), fall back to
   // the legacy select — otherwise the page silently renders as if the property
@@ -624,6 +640,112 @@ export default async function PropertyRecord({
               variant="compact"
               redirectToBatch
             />
+          </section>
+        )}
+
+        {muniRecords.length > 0 && (
+          <section style={{ marginTop: 28 }}>
+            <p className="col-title" style={{ margin: "0 0 12px" }}>
+              Municipal record{muniRecords.length > 1 ? "s" : ""}
+              <span style={{
+                fontSize: 11,
+                color: "#7a86a8",
+                marginLeft: 10,
+                fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                textTransform: "none",
+                letterSpacing: "normal",
+              }}>
+                from Knysna Muni valuation roll
+              </span>
+            </p>
+            {muniRecords.map((m: any) => (
+              <div
+                key={m.sg_number}
+                style={{
+                  background: "var(--white)",
+                  border: "1px solid var(--mist)",
+                  borderRadius: 12,
+                  padding: "18px 20px",
+                  marginBottom: 10,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 14, gap: 12, flexWrap: "wrap" }}>
+                  <div>
+                    <p className="eyebrow" style={{ margin: 0 }}>Erf {m.erf_number}{m.suburb ? ` · ${m.suburb}` : ""}</p>
+                    <p style={{ margin: "4px 0 0", fontSize: 15, fontWeight: 600, color: "var(--estuary)" }}>
+                      {m.street_no ? `#${m.street_no} · ` : ""}{m.street_name ?? "—"}
+                    </p>
+                  </div>
+                  <p style={{ margin: 0, fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 10, color: "#a4adc4" }}>
+                    SG: {m.sg_number}
+                  </p>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 14 }}>
+                  {m.muni_valuation != null && (
+                    <div>
+                      <p className="eyebrow" style={{ margin: 0 }}>Muni valuation</p>
+                      <p style={{ margin: "2px 0 0", fontSize: 15, fontWeight: 600 }}>{money(m.muni_valuation)}</p>
+                    </div>
+                  )}
+                  {m.extent_sqm != null && (
+                    <div>
+                      <p className="eyebrow" style={{ margin: 0 }}>Extent</p>
+                      <p style={{ margin: "2px 0 0", fontSize: 15 }}>{Number(m.extent_sqm).toLocaleString("en-ZA")} m²</p>
+                    </div>
+                  )}
+                  {m.zoning && (
+                    <div>
+                      <p className="eyebrow" style={{ margin: 0 }}>Zoning</p>
+                      <p style={{ margin: "2px 0 0", fontSize: 14 }}>{m.zoning}</p>
+                    </div>
+                  )}
+                  {m.tariff && (
+                    <div>
+                      <p className="eyebrow" style={{ margin: 0 }}>Tariff</p>
+                      <p style={{ margin: "2px 0 0", fontSize: 14 }}>{m.tariff}</p>
+                    </div>
+                  )}
+                  {m.ward_no && (
+                    <div>
+                      <p className="eyebrow" style={{ margin: 0 }}>Ward</p>
+                      <p style={{ margin: "2px 0 0", fontSize: 14 }}>{m.ward_no}</p>
+                    </div>
+                  )}
+                  {m.property_type && (
+                    <div>
+                      <p className="eyebrow" style={{ margin: 0 }}>Type</p>
+                      <p style={{ margin: "2px 0 0", fontSize: 14 }}>{m.property_type}</p>
+                    </div>
+                  )}
+                </div>
+                {(m.title_deed_no || m.purch_date || m.purch_price || m.bond_number) && (
+                  <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px dashed var(--mist)" }}>
+                    <p className="eyebrow" style={{ margin: "0 0 6px" }}>Deed & purchase</p>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, fontSize: 13, color: "#5b6885" }}>
+                      {m.title_deed_no && <div><b>{m.title_deed_no}</b> · deed</div>}
+                      {m.deeds_office && <div>{m.deeds_office} deeds office</div>}
+                      {m.registration_date && <div>Registered {m.registration_date}</div>}
+                      {m.purch_price != null && <div>{money(m.purch_price)} · purchase</div>}
+                      {m.purch_date && <div>{m.purch_date} · purchase date</div>}
+                      {m.bond_number && (
+                        <div>{m.bond_institution ?? "Bond"}: {money(m.bond_amount ?? null)}{" "}
+                          <span style={{ color: "#a4adc4" }}>({m.bond_number})</span>
+                        </div>
+                      )}
+                      {m.old_title_deed_no && <div style={{ color: "#a4adc4" }}>Prev: {m.old_title_deed_no}</div>}
+                    </div>
+                  </div>
+                )}
+                {m.sect_scheme_name && (
+                  <div style={{ marginTop: 10, fontSize: 12, color: "#5b6885" }}>
+                    Sectional: {m.sect_scheme_name}{m.sect_scheme_unit ? ` · unit ${m.sect_scheme_unit}` : ""}
+                  </div>
+                )}
+                <p style={{ margin: "12px 0 0", fontSize: 10, color: "#a4adc4", fontFamily: "'JetBrains Mono', ui-monospace, monospace" }}>
+                  Muni data refreshed {m.refreshed_at ? new Date(m.refreshed_at).toISOString().slice(0, 10) : "—"}
+                </p>
+              </div>
+            ))}
           </section>
         )}
 
