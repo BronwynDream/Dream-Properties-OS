@@ -122,9 +122,12 @@ export async function POST(request: Request) {
     .slice(0, 6);
 
   if (candidates.length === 0) {
+    const anyUnclassified = (files ?? []).some((f) => !f.detected_doc_type_id);
     return NextResponse.json({
       ok: false,
-      note: "No deal documents found. Classify the batch first.",
+      note: anyUnclassified
+        ? "No deal documents found. Classify the batch first."
+        : "Nothing to extract — this batch has no agreements, mandates, or listings (only plans, photos, or email).",
     });
   }
 

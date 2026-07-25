@@ -210,8 +210,16 @@ export default function ReviewClient({
   }
 
   function runClassify() {
+    const beforeUnknown = files.filter(
+      (f) => !f.detected_doc_type_id || (f.classification_confidence ?? 1) < 0.5,
+    ).length;
     startTransition(async () => {
       await classifyBatch(batch.id);
+      setExtractMsg(
+        beforeUnknown === 0
+          ? `All ${files.length} file(s) already classified — no changes.`
+          : `Classification complete. Re-check the file types below; use “Reclassify unknowns” for any still marked Other.`,
+      );
       router.refresh();
     });
   }
