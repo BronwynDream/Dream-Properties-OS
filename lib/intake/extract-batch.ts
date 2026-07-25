@@ -137,99 +137,83 @@ export async function extractBatchWithClient(
     };
   }
 
-  const gathered: { id: string; filename: string; buf: Buffer; text: string }[] = [];
+  // Gather text from every candidate. Text-extraction-first (mammoth for docx,
+  // pdf-parse for PDFs with a real text layer, utf8 for txt/eml); if that
+  // yields nothing AND the file is a PDF/image under the vision cap, run
+  // OCR via Mistral-through-OpenRouter. This is the key change from the
+  // previous version — before, only the PRIMARY doc got OCRed, so an ERF
+  // living inside an SG diagram or a scanned title deed was invisible when
+  // that doc wasn't the top-ranked candidate.
+  //
+  // OCR is sequential per doc (avoids OpenRouter concurrency issues) and can
+  // add 10–30s per scanned doc to the intake latency. Acceptable within the
+  // 300s Vercel ceiling; a single batch rarely has more than 2–3 scanned docs.
+  const gathered: {
+    id: string;
+    filename: string;
+    text: string;
+    source: "text" | "ocr";
+  }[] = [];
   for (const f of candidates as any[]) {
     const { data: blob } = await supabase.storage.from("staging").download(f.storage_path);
     if (!blob) continue;
     const buf = Buffer.from(await blob.arrayBuffer());
-    const text = await textFromFile(f.original_filename, buf);
+
+    let text = await textFromFile(f.original_filename, buf);
+    let source: "text" | "ocr" = "text";
+
+    if (
+      text.trim().length < 40 &&
+      apiKey &&
+      /\.(pdf|png|jpe?g|webp)$/i.test(f.original_filename) &&
+      buf.length <= MAX_VISION_BYTES
+    ) {
+      try {
+        const ocrText = await ocrScanViaOpenRouter(apiKey, model, f.original_filename, buf);
+        if (ocrText.trim().length >= 40) {
+          text = ocrText;
+          source = "ocr";
+        }
+      } catch {
+        // OCR failed for this file — skip it silently and let the others carry
+        // the batch. One bad scan shouldn't fail the whole extract.
+      }
+    }
+
     if (text.trim().length >= 40) {
       await supabase
         .from("ingest_file")
         .update({ ocr_text: text.slice(0, 100000) })
         .eq("id", f.id);
+      gathered.push({ id: f.id, filename: f.original_filename, text, source });
     }
-    gathered.push({ id: f.id, filename: f.original_filename, buf, text });
   }
 
-  const primary = gathered[0];
-  const others = gathered.slice(1);
-  const otherText = others
-    .filter((g) => g.text.trim().length >= 40)
-    .map((g) => `\n\n===== ${g.filename} =====\n${g.text}`)
-    .join("");
+  if (gathered.length === 0) {
+    return {
+      ok: false,
+      note: "No extractable text from any document (all likely scanned and OCR failed).",
+    };
+  }
+
+  // Combine every doc's text into one prompt so the LLM can cross-reference
+  // (e.g. ERF from the SG diagram + title deed no from the mandate + price
+  // from the agreement — all in a single JSON reply).
+  const combined = gathered
+    .map((g) => `===== ${g.filename} =====\n${g.text}`)
+    .join("\n\n");
+  const primaryFileId = gathered[0].id;
+  const usedFiles = gathered.map((g) => g.filename);
+  const anyOcr = gathered.some((g) => g.source === "ocr");
+  const allOcr = gathered.every((g) => g.source === "ocr");
+  const mode = allOcr ? "ocr" : anyOcr ? "mixed" : "text";
 
   let modelContent = "";
-  let usedFiles: string[] = [];
-  let primaryFileId: string | null = null;
-  let mode = "text";
-
   try {
-    if (primary && primary.text.trim().length >= 40) {
-      const combined = `===== ${primary.filename} =====\n${primary.text}${otherText}`;
-      primaryFileId = primary.id;
-      usedFiles = [primary, ...others.filter((g) => g.text.trim().length >= 40)].map(
-        (g) => g.filename,
-      );
-      modelContent = await callOpenRouter(apiKey, model, [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: buildUserPrompt(combined) },
-      ]);
-    } else if (
-      primary &&
-      /\.(pdf|png|jpe?g|webp)$/i.test(primary.filename) &&
-      primary.buf.length <= MAX_VISION_BYTES
-    ) {
-      const name = primary.filename.toLowerCase();
-      const isPdf = name.endsWith(".pdf");
-      const b64 = primary.buf.toString("base64");
-      mode = isPdf ? "ocr-pdf" : "vision-image";
-      primaryFileId = primary.id;
-      usedFiles = [primary.filename];
-
-      const contentPart = isPdf
-        ? { type: "file", file: { filename: primary.filename, file_data: `data:application/pdf;base64,${b64}` } }
-        : {
-            type: "image_url",
-            image_url: {
-              url: `data:image/${name.endsWith(".png") ? "png" : "jpeg"};base64,${b64}`,
-            },
-          };
-      const plugins = isPdf ? [{ id: "file-parser", pdf: { engine: "mistral-ocr" } }] : undefined;
-
-      modelContent = await callOpenRouter(
-        apiKey,
-        model,
-        [
-          { role: "system", content: SYSTEM_PROMPT },
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: buildUserPrompt(
-                  `(The primary document is attached — read it in full. Additional context from related documents:)${otherText}`,
-                ),
-              },
-              contentPart,
-            ],
-          },
-        ],
-        plugins,
-      );
-    } else if (otherText.trim().length >= 40) {
-      primaryFileId = others.find((g) => g.text.trim().length >= 40)?.id ?? null;
-      usedFiles = others.filter((g) => g.text.trim().length >= 40).map((g) => g.filename);
-      modelContent = await callOpenRouter(apiKey, model, [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: buildUserPrompt(otherText) },
-      ]);
-    } else {
-      return {
-        ok: false,
-        note: "Documents had no extractable text (likely scanned images).",
-      };
-    }
+    modelContent = await callOpenRouter(apiKey, model, [
+      { role: "system", content: SYSTEM_PROMPT },
+      { role: "user", content: buildUserPrompt(combined) },
+    ]);
   } catch (e) {
     return { ok: false, error: (e as Error).message };
   }
