@@ -88,6 +88,45 @@ async function callOpenRouter(
   return (json?.choices?.[0]?.message?.content ?? "") as string;
 }
 
+// OCR fallback for scanned PDFs / images. Uses OpenRouter's file-parser
+// plugin (Mistral OCR under the hood) for PDFs; vision-model direct read
+// for images. Returns extracted text or "" on failure.
+async function ocrScanViaOpenRouter(
+  apiKey: string,
+  model: string,
+  filename: string,
+  buf: Buffer,
+): Promise<string> {
+  const isPdf = filename.toLowerCase().endsWith(".pdf");
+  const b64 = buf.toString("base64");
+  const contentPart = isPdf
+    ? { type: "file", file: { filename, file_data: `data:application/pdf;base64,${b64}` } }
+    : {
+        type: "image_url",
+        image_url: {
+          url: `data:image/${filename.toLowerCase().endsWith(".png") ? "png" : "jpeg"};base64,${b64}`,
+        },
+      };
+  const plugins = isPdf ? [{ id: "file-parser", pdf: { engine: "mistral-ocr" } }] : undefined;
+  return callOpenRouter(
+    apiKey,
+    model,
+    [
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: "Extract the raw text from the attached document. Preserve headings and key phrases as written. Reply with just the text, no commentary.",
+          },
+          contentPart,
+        ],
+      },
+    ],
+    plugins,
+  );
+}
+
 export type ExtractBatchResult = {
   ok: boolean;
   rowsInserted?: number;
