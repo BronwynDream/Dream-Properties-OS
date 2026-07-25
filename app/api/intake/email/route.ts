@@ -5,6 +5,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { classifyBatchWithClient } from "@/lib/classify-batch";
 import { deepClassifyBatch } from "@/lib/classify-deep";
 import { extractBatchWithClient } from "@/lib/intake/extract-batch";
+import { commitBatchWithClient } from "@/lib/intake/commit-batch";
 import {
   batchIsFilingOnly,
   fileBatchAgainstPropertyWithClient,
@@ -332,6 +333,12 @@ export async function POST(request: Request) {
   //     agreements/mandates/listings still land in triage for extract review.
   let autoFiled: { filed: number; deduped: number } | null = null;
   let autoExtracted: { rowsInserted: number; used: string[]; mode?: string } | null = null;
+  let autoCommitted: {
+    propertyId: string | null;
+    transferId: string | null;
+    filed: number;
+    deduped: number;
+  } | null = null;
   if (intent === "property" && target.id) {
     try {
       const filingOnly = await batchIsFilingOnly(supabase, batch.id);
@@ -348,11 +355,8 @@ export async function POST(request: Request) {
         }
       } else {
         // 11b. Extractable content present — auto-run AI extract so ERF,
-        //     extent, address, sellers, price, etc. show up on the batch
-        //     page (and on the property record after commit) without the
-        //     reviewer having to press "Extract fields (AI)". Commit still
-        //     stays manual — the reviewer gets to approve values before
-        //     they hit the property table.
+        //     extent, address, sellers, price, etc. get pulled from the
+        //     documents without the reviewer having to press Extract fields.
         try {
           const ex = await extractBatchWithClient(supabase, batch.id);
           if (ex.ok) {
@@ -361,6 +365,34 @@ export async function POST(request: Request) {
               used: ex.used ?? [],
               mode: ex.mode,
             };
+
+            // 11c. Auto-commit — populate the property record end-to-end.
+            //     Runs when extraction produced rows AND the batch is
+            //     attached to a property (so we know where to write).
+            //     commit_batch's upsert semantics keep existing property
+            //     data safe: null-or-empty extracted values leave existing
+            //     values alone; non-null extracted values win.
+            if ((ex.rowsInserted ?? 0) > 0) {
+              try {
+                const commit = await commitBatchWithClient(
+                  supabase,
+                  batch.id,
+                  appUser.id,
+                );
+                if (commit.ok) {
+                  autoCommitted = {
+                    propertyId: commit.propertyId ?? null,
+                    transferId: commit.transferId ?? null,
+                    filed: commit.filed ?? 0,
+                    deduped: commit.deduped ?? 0,
+                  };
+                } else if (commit.error) {
+                  errors.push(`auto-commit: ${commit.error}`);
+                }
+              } catch (e) {
+                errors.push(`auto-commit: ${(e as Error).message}`);
+              }
+            }
           } else if (ex.error) {
             errors.push(`auto-extract: ${ex.error}`);
           } else if (ex.note) {
@@ -388,6 +420,7 @@ export async function POST(request: Request) {
     deepClassified: deepChanged,
     autoFiled,
     autoExtracted,
+    autoCommitted,
     errors,
   });
 }
