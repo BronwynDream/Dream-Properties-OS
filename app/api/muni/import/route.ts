@@ -142,8 +142,8 @@ export async function POST(request: Request) {
       57,
       "SGNumber,ErfNo,PhysicalSt,PhysicalStNo,Zoning,Area,WardNo,SectionalTitle,Usage_,PropertyDescription",
     );
-    for (const chunk of chunks(finance, 500)) {
-      const rows = chunk
+    const financeRows = dedupeBySg(
+      finance
         .filter((r) => safeStr(r.SGNumber))
         .map((r) => {
           const split = splitStreetSuburb(safeStr(r.PhysicalSt));
@@ -161,19 +161,20 @@ export async function POST(request: Request) {
             prop_description: safeStr(r.PropertyDescription),
             refreshed_at: new Date().toISOString(),
           };
-        });
-      if (rows.length === 0) continue;
+        }),
+    );
+    for (const chunk of chunks(financeRows, 500)) {
       const { error, count } = await service
         .from("muni_property")
-        .upsert(rows, { onConflict: "sg_number", count: "exact" });
+        .upsert(chunk, { onConflict: "sg_number", count: "exact" });
       if (error) throw new Error(`finance upsert: ${error.message}`);
-      counts.finance += count ?? rows.length;
+      counts.finance += count ?? chunk.length;
     }
 
     // --- Pass 2: Valuation Roll (58) — suburb (structured!), tariff, valuation ---
     const valroll = await fetchAll(58, "SG_NUMBER,SUBURB,TARIFF,AREA,VALUATION,ERF__");
-    for (const chunk of chunks(valroll, 500)) {
-      const rows = chunk
+    const valrollRows = dedupeBySg(
+      valroll
         .filter((r) => safeStr(r.SG_NUMBER))
         .map((r) => ({
           sg_number: String(r.SG_NUMBER).trim(),
@@ -183,25 +184,34 @@ export async function POST(request: Request) {
           area_sqm_valroll: safeInt(r.AREA),
           muni_valuation: safeNum(r.VALUATION),
           refreshed_at: new Date().toISOString(),
-        }));
-      if (rows.length === 0) continue;
+        })),
+    );
+    for (const chunk of chunks(valrollRows, 500)) {
       const { error, count } = await service
         .from("muni_property")
-        .upsert(rows, { onConflict: "sg_number", count: "exact" });
+        .upsert(chunk, { onConflict: "sg_number", count: "exact" });
       if (error) throw new Error(`valroll upsert: ${error.message}`);
-      counts.valroll += count ?? rows.length;
+      counts.valroll += count ?? chunk.length;
     }
 
     // --- Pass 3: Ownership Deeds (56) — extent, title deed, sect scheme, purchase ---
     // WARNING: this layer has PII fields (Buyer_name, Seller_name, IDs).
     // Our outFields is an ALLOW-LIST — never request them.
+    // Deeds are naturally multi-per-property (multiple sales over time). We
+    // sort by registration/purchase date so dedupeBySg keeps the latest.
     const deeds = await fetchAll(
       56,
       "SG21CODE,LPI,TOWNNAME,ERF,PORTION,EXTENT_SQM,Property_Type,SECT_SCHEME_NAME,UNIT,Title_Deed_No,OLD_TITLE_DEED_NO,DeedOffice,Purch_Date,Registration_Date,Purch_Price,BOND_NUMBER,BOND_AMOUNT,INSTITUTION",
     );
-    for (const chunk of chunks(deeds, 500)) {
-      const rows = chunk
+    const deedsRows = dedupeBySg(
+      deeds
         .filter((r) => safeStr(r.SG21CODE) || safeStr(r.LPI))
+        .sort((a, b) => {
+          // Ascending — later entries win in dedupeBySg (Map.set overwrites).
+          const ad = a.Registration_Date ?? a.Purch_Date ?? 0;
+          const bd = b.Registration_Date ?? b.Purch_Date ?? 0;
+          return (ad as number) - (bd as number);
+        })
         .map((r) => {
           const sg = safeStr(r.SG21CODE) ?? safeStr(r.LPI)!;
           return {
@@ -223,13 +233,14 @@ export async function POST(request: Request) {
             bond_institution: safeStr(r.INSTITUTION),
             refreshed_at: new Date().toISOString(),
           };
-        });
-      if (rows.length === 0) continue;
+        }),
+    );
+    for (const chunk of chunks(deedsRows, 500)) {
       const { error, count } = await service
         .from("muni_property")
-        .upsert(rows, { onConflict: "sg_number", count: "exact" });
+        .upsert(chunk, { onConflict: "sg_number", count: "exact" });
       if (error) throw new Error(`deeds upsert: ${error.message}`);
-      counts.deeds += count ?? rows.length;
+      counts.deeds += count ?? chunk.length;
     }
 
     const elapsed = Math.round((Date.now() - startedAt) / 1000);
@@ -249,4 +260,18 @@ export async function POST(request: Request) {
 
 function* chunks<T>(arr: T[], size: number): Generator<T[]> {
   for (let i = 0; i < arr.length; i += size) yield arr.slice(i, i + size);
+}
+
+// Dedupe rows by sg_number keeping the LAST occurrence. The muni's Valuation
+// Roll layer contains multiple entries per SG21 for some properties (rated
+// revisions, sectional-scheme units sharing an SG). Postgres won't allow an
+// upsert to touch the same row twice in one statement, so we collapse
+// duplicates client-side. Later rows win by insertion order.
+function dedupeBySg<T extends { sg_number: string }>(rows: T[]): T[] {
+  const map = new Map<string, T>();
+  for (const r of rows) {
+    if (!r.sg_number) continue;
+    map.set(r.sg_number, r);
+  }
+  return Array.from(map.values());
 }
