@@ -4,7 +4,118 @@ Running log of what's decided, built, and next. Updated at the end of each worki
 session. `PROJECT.md` remains the canonical business/design doc; this file is the
 "where are we right now" companion.
 
-_Last updated: 2026-07-24_
+_Last updated: 2026-07-25_
+
+---
+
+## PROPERTY RECORD REDESIGN + MUNI EXTENSIONS (2026-07-25)
+
+Session focus: turn the Property Record from a generic SaaS card into
+a specific cadastral artifact, and make the muni mirror pull its
+weight.
+
+### Muni disambiguation (0042_erf_sg_number.sql)
+- Real bug on 12 Eagles Way: ERF 2934 rendered TWO muni cards — one
+  for the actual Heads property, one for a Sedgefield Erf 2934 that
+  happens to share the number. Erf numbers aren't unique across the
+  muni; suburbs are.
+- Fix: `erf.sg_number` column (nullable) storing the full SG21 code
+  when the erf was attached via muni-picker. Query joins muni_property
+  by SG first, falls back to erf_number for legacy rows.
+- `attachErfToProperty` accepts `sg_number` and backfills on unique-
+  conflict so re-picking a Muni row from an existing erf populates the
+  SG on the existing row.
+
+### Muni panel: render every field
+- Panel now surfaces the full column set from `muni_property`: town,
+  suburb hint, muni_erf_code, valuation-roll area (as cross-check when
+  it differs from extent), declared use, sectional-title flag,
+  descriptions, prev deed, bond info, sectional scheme. Empty fields
+  render nothing; rich records show more.
+
+### Compact layout pass
+- Navy header padding + hero-row margins + stats-card gaps + transfer-
+  card padding all tightened. When a preparing transfer has no
+  parties + no agreement, the 3-column empty grid collapses to a
+  single-line placeholder.
+
+### Property Record redesign (cadastral document aesthetic)
+The record now reads as a working title-deed / valuation-roll extract,
+not a SaaS card. Six moves:
+
+1. **Registry Stamp** — gold-bordered identity block, JetBrains Mono
+   at 38px for the ERF, hairline internal rule, deed + SG below.
+   Real SA title-deed reference-block format. Signature move.
+2. **Muni valuation headline** — 34px Inter tabular, mid-page anchor.
+   What Bronwyn reaches for in pricing conversations.
+3. **Cadastre + Schedule two-column row** — Schedule is a proper
+   hairline-ruled deed schedule. Primary rows first (extent, zoning,
+   ward, suburb, type/use, ownership); secondary rows (prev deed,
+   deeds office, registered date, bond, sectional) hidden when null.
+4. **Cadastre panel NEVER a black rectangle** — polygon on satellite
+   when bridged; CSG-diagram placeholder (compass rose + hatched
+   paper + coords) when not. Then further improved: **photo primary**
+   when the record has photos, since agents care about the house
+   more than the boundary. Always-visible "View on map" pill in the
+   bottom-left pivots to /map.
+5. **Municipal Record panel REMOVED entirely** — every field folded
+   into the Schedule inside the plate. One source per fact.
+6. **--paper surface** — subtle vellum wash (`#FBF9F4`) with warm
+   hairlines. Ownership timeline + deal card inherit the paper
+   aesthetic so the whole page reads as one document. New tokens:
+   `--paper`, `--paper-mute`, `--paper-line`, `--stamp` (reserved for
+   a future REGISTERED red-ink overprint).
+
+Deal card moved from parallel column to a wide strip BELOW the plate.
+Actions (Fetch from Lightstone, Find ERF from Muni) folded INTO the
+identity block via `actionsSlot` — they belong to the identity, not
+floating in an unattached bar above.
+
+### ERF lookup fuzzy matching
+19 Glenview Road returned zero muni matches despite existing. Muni's
+street_name field is inconsistent about word breaks and abbreviations
+("GLENVIEW ROAD" vs "GLEN VIEW RD" vs "GLENVIEWRD"). New strategy:
+
+- Two parallel broad fetches: contains-first-word + short-prefix
+- Merge, dedupe by SG, then normalise-and-score in-process
+- Compact form strips spaces and street-type suffixes on BOTH sides —
+  all variants collapse to the same key
+- Score bands: 100 = exact root match, 40+ = shared prefix ≥5 chars
+- Handles Road/Rd, Street/St, Avenue/Ave, Drive/Dr, Lane/Ln, Close/Cl,
+  Crescent/Cres, Boulevard/Blvd, Way, Park, Place/Pl, Square/Sq,
+  Court/Ct, Loop, Circle/Cir, Terrace/Ter, Ridge, View, Heights/Hts,
+  Alley/Al, Walk, Mews. Confirmed working.
+
+### Ship
+- `supabase/migrations/0041_erf_unique_null_portion.sql` — partial
+  unique index (Postgres NULL != NULL edge case caused ERF 2934 dup)
+- `supabase/migrations/0042_erf_sg_number.sql` — nullable SG column
+  + partial index on non-null values
+- `app/properties/[id]/PropertyHero.tsx` — full rewrite around
+  Registry Stamp + Schedule + photo-primary visual + map pivot
+- `app/properties/[id]/page.tsx` — muni fallback logic, schedule
+  builder, muni panel removed
+- `app/properties/[id]/actions.ts` — attachErfToProperty accepts
+  sg_number, backfills on conflict
+- `app/properties/[id]/ErfLookup.tsx` — passes SG when attaching
+- `app/api/erf-lookup/route.ts` — fuzzy street-name matching
+- `app/globals.css` — --paper token family, Registry Stamp styles,
+  Schedule table styles, cadastre-fallback with compass rose, hero-
+  photo, hero-map-pivot pill
+
+### Not built this arc
+- Migration 0041 + 0042 SQL still needs to be applied to Bon Bon's DB
+  (Simon has the DDL; apply via Studio at his convenience)
+- Photo classification for embedded images in listing PDFs / EMLs —
+  many properties (like 15 Eagles) have listings + correspondence
+  attached but no `doc_type='photo'` records, so the new photo-primary
+  hero can't show anything for them yet
+- Focus-on-property support on /map — "View on map" pill currently
+  just opens /map; extending MapView to accept `?focus=<id>` and pan
+  there is a separate task
+- The muni's `usage_` field is a numeric code ("27") without a lookup
+  table; renders as "use 27" in the valuation subtitle and "Erf · 27"
+  in Type/Use. Cosmetic; needs the muni code map or LLM interpretation
 
 ---
 
