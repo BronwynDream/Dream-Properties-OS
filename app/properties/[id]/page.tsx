@@ -302,6 +302,20 @@ export default async function PropertyRecord({
   }));
   const heroErven = (erven ?? []).map((e: any) => e.erf_number).join(", ");
 
+  // Muni fallback for hero fields. The property table's own columns take
+  // precedence (agent-entered or LLM-extracted values from actual deeds are
+  // higher-fidelity than the muni's roll data), but where those are blank the
+  // muni fills the gap — that's the whole point of holding the muni mirror.
+  // We use the first muni row: for multi-erf properties (169 Links etc.) the
+  // headline attributes are effectively the same across erven; the per-erf
+  // detail is in the Muni panel below.
+  const muniPrimary = muniRecords[0] ?? null;
+  const heroTitleDeed = prop.title_deed_no ?? muniPrimary?.title_deed_no ?? null;
+  const heroExtent = prop.extent_sqm ?? muniPrimary?.extent_sqm ?? null;
+  const heroSuburb = prop.suburb?.name ?? muniPrimary?.suburb ?? null;
+  const heroType = prop.property_type?.label ?? muniPrimary?.property_type ?? null;
+  const heroMuniValuation = muniPrimary?.muni_valuation ?? null;
+
   // Split transfers into the active one (most recent) and the historical
   // ones. Active sits in the hero row alongside PropertyHero so the agent
   // sees property + current deal on one screen. Past transfers get their own
@@ -577,11 +591,12 @@ export default async function PropertyRecord({
             lng={(prop as any).lng ?? null}
             prclKey={(prop as any).prcl_key ?? null}
             erven={heroErven}
-            titleDeed={prop.title_deed_no ?? null}
-            extentSqm={prop.extent_sqm ?? null}
-            suburb={prop.suburb?.name ?? null}
-            type={prop.property_type?.label ?? null}
+            titleDeed={heroTitleDeed}
+            extentSqm={heroExtent}
+            suburb={heroSuburb}
+            type={heroType}
             ownership={prop.ownership_type?.label ?? null}
+            muniValuation={heroMuniValuation}
             since={since}
             photos={heroPhotos}
             mapboxToken={mapboxToken}

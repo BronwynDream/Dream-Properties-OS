@@ -34,6 +34,7 @@ export default function PropertyHero({
   suburb,
   type,
   ownership,
+  muniValuation,
   since,
   photos,
   mapboxToken,
@@ -47,6 +48,7 @@ export default function PropertyHero({
   suburb: string | null;
   type: string | null;
   ownership: string | null;
+  muniValuation: number | null;
   since: SinceLine;
   photos: Photo[];
   mapboxToken: string;
@@ -225,6 +227,14 @@ export default function PropertyHero({
           <p className="property-hero-eyebrow">Ownership</p>
           <p className="property-hero-value">{ownership ?? "—"}</p>
         </div>
+        {muniValuation != null && (
+          <div className="property-hero-stat">
+            <p className="property-hero-eyebrow">Muni valuation</p>
+            <p className="property-hero-value">
+              R {Number(muniValuation).toLocaleString("en-ZA")}
+            </p>
+          </div>
+        )}
 
         {since && (
           <div className="property-hero-since">
