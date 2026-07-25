@@ -26,10 +26,21 @@ export default async function BatchReview({
 
   const { data: batch } = await supabase
     .from("ingest_batch")
-    .select("id, label, status, tier, priority")
+    .select("id, label, status, tier, priority, property_id")
     .eq("id", params.id)
     .single();
   if (!batch) notFound();
+
+  // Resolve the attached property's address for the "File against …" button.
+  let attachedPropertyAddress: string | null = null;
+  if (batch.property_id) {
+    const { data: attached } = await supabase
+      .from("property")
+      .select("primary_address")
+      .eq("id", batch.property_id)
+      .single();
+    attachedPropertyAddress = attached?.primary_address ?? null;
+  }
 
   const { data: files } = await supabase
     .from("ingest_file")
@@ -104,6 +115,7 @@ export default async function BatchReview({
         matches={matches ?? []}
         propertyDiff={propertyDiff}
         linkedPropertyTransfers={linkedPropertyTransfers}
+        attachedPropertyAddress={attachedPropertyAddress}
       />
     </>
   );

@@ -3,7 +3,14 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { classifyBatch, setFileType, commitBatch, proposeMatches, decideMatch } from "../actions";
+import {
+  classifyBatch,
+  setFileType,
+  commitBatch,
+  proposeMatches,
+  decideMatch,
+  fileBatchAgainstProperty,
+} from "../actions";
 import DiffPanel from "./DiffPanel";
 import PropertyAttach from "./PropertyAttach";
 import TransferPicker from "./TransferPicker";
@@ -16,6 +23,7 @@ type Batch = {
   status: string;
   tier: string | null;
   priority: string;
+  property_id: string | null;
 };
 type FileRow = {
   id: string;
@@ -93,6 +101,7 @@ export default function ReviewClient({
   matches,
   propertyDiff,
   linkedPropertyTransfers,
+  attachedPropertyAddress,
 }: {
   batch: Batch;
   files: FileRow[];
@@ -101,6 +110,7 @@ export default function ReviewClient({
   matches: Match[];
   propertyDiff: PropertyDiff | null;
   linkedPropertyTransfers: LinkedTransfer[];
+  attachedPropertyAddress: string | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -318,6 +328,31 @@ export default function ReviewClient({
     }
   }
 
+  async function runFileAgainstProperty() {
+    setExtractBusy(true);
+    setExtractMsg(null);
+    try {
+      const res = await fileBatchAgainstProperty(batch.id);
+      if (res.ok) {
+        const parts = [];
+        if (res.filed) parts.push(`${res.filed} filed`);
+        if (res.deduped) parts.push(`${res.deduped} already on property (deduped)`);
+        setExtractMsg(
+          parts.length > 0
+            ? `Filed against ${attachedPropertyAddress ?? "property"}. ${parts.join(", ")}.`
+            : `Filed against ${attachedPropertyAddress ?? "property"}.`,
+        );
+      } else {
+        setExtractMsg(`File failed: ${res.error}`);
+      }
+    } catch (e) {
+      setExtractMsg(`File failed: ${(e as Error).message}`);
+    } finally {
+      setExtractBusy(false);
+      router.refresh();
+    }
+  }
+
   const classified = files.filter((f) => f.detected_doc_type_id).length;
   const hasEml = files.some((f) =>
     f.original_filename.toLowerCase().endsWith(".eml"),
@@ -329,6 +364,21 @@ export default function ReviewClient({
       f.detected_doc_type_id === otherTypeId ||
       (f.classification_confidence ?? 1) < 0.5,
   ).length;
+
+  // Categories that produce structured fields → extract → commit_batch.
+  // Anything not in this set is filing-only (plans, photos, correspondence).
+  const EXTRACTABLE_CATEGORIES = new Set([
+    "agreement",
+    "fica",
+    "listing",
+    "municipal",
+    "company",
+  ]);
+  const hasExtractable = files.some((f) => {
+    if (!f.detected_doc_type_id) return false;
+    const dt = docTypes.find((d) => d.id === f.detected_doc_type_id);
+    return dt ? EXTRACTABLE_CATEGORIES.has(dt.category) : false;
+  });
 
   // group extractions by entity_hint (seller_1, purchaser_2…) else by table
   const groups = new Map<string, Extraction[]>();
@@ -380,9 +430,23 @@ export default function ReviewClient({
                 {extractBusy ? "Working…" : `Reclassify unknowns (${unknownCount})`}
               </button>
             )}
-            <button className="cta" onClick={runExtract} disabled={extractBusy || classified === 0}>
-              {extractBusy ? "Reading…" : "Extract fields (AI)"}
-            </button>
+            {hasExtractable && (
+              <button className="cta" onClick={runExtract} disabled={extractBusy || classified === 0}>
+                {extractBusy ? "Reading…" : "Extract fields (AI)"}
+              </button>
+            )}
+            {batch.property_id && !committed && !hasExtractable && (
+              <button
+                className="cta"
+                onClick={runFileAgainstProperty}
+                disabled={extractBusy || classified === 0}
+                title="Promote the classified files to the property's document folder and close the batch."
+              >
+                {extractBusy
+                  ? "Filing…"
+                  : `File against ${attachedPropertyAddress ?? "property"}`}
+              </button>
+            )}
           </div>
         </div>
         {extractMsg && <p className="dz-msg" style={{ marginTop: 0 }}>{extractMsg}</p>}
