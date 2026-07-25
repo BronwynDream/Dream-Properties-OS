@@ -392,28 +392,34 @@ export default async function PropertyRecord({
           )}
         </div>
 
-        <div className="transfer-cols">
-          <div>
-            <p className="col-title">Sellers</p>
-            {sellers.length ? sellers.map(renderParty) : <p className="muted">—</p>}
+        {(sellers.length > 0 || buyers.length > 0 || agr) ? (
+          <div className="transfer-cols">
+            <div>
+              <p className="col-title">Sellers</p>
+              {sellers.length ? sellers.map(renderParty) : <p className="muted">—</p>}
+            </div>
+            <div>
+              <p className="col-title">Purchasers</p>
+              {buyers.length ? buyers.map(renderParty) : <p className="muted">—</p>}
+            </div>
+            <div>
+              <p className="col-title">Agreement</p>
+              {agr ? (
+                <>
+                  <div className="party-line">Price <b>{money(agr.price)}</b></div>
+                  <div className="party-line">Deposit <b>{money(agr.deposit)}</b></div>
+                  <div className="party-line">Transfer <b>{agr.transfer_date ?? "—"}</b></div>
+                </>
+              ) : (
+                <p className="muted">—</p>
+              )}
+            </div>
           </div>
-          <div>
-            <p className="col-title">Purchasers</p>
-            {buyers.length ? buyers.map(renderParty) : <p className="muted">—</p>}
-          </div>
-          <div>
-            <p className="col-title">Agreement</p>
-            {agr ? (
-              <>
-                <div className="party-line">Price <b>{money(agr.price)}</b></div>
-                <div className="party-line">Deposit <b>{money(agr.deposit)}</b></div>
-                <div className="party-line">Transfer <b>{agr.transfer_date ?? "—"}</b></div>
-              </>
-            ) : (
-              <p className="muted">—</p>
-            )}
-          </div>
-        </div>
+        ) : (
+          <p className="muted" style={{ margin: "10px 0 0", fontSize: 12, fontStyle: "italic" }}>
+            No sellers, purchasers, or agreement yet — drop docs on this record to bring them in.
+          </p>
+        )}
 
         {ms.length > 0 && (
           <div className="milestones">
