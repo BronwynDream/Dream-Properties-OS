@@ -10,7 +10,7 @@
     },
     {
       "path": "/api/sources/property24/refresh",
-      "schedule": "0 5 * * 1"
+      "schedule": "0 * * * *"
     }
   ]
 }
