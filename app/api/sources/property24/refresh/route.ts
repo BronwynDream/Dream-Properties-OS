@@ -104,68 +104,81 @@ async function run(request: Request) {
   // not match the expected pattern" (Safari's JSON.parse error on HTML).
   // Wrap here so the button gets an actionable message.
   try {
-    // 1. Discover: walk the paginated Knysna index, collect detail URLs.
-    console.log("[property24] discovering listings...");
-    const detailUrls = await scrapeListingIndex(apiKey, KNYSNA_INDEX_URL);
-    console.log(`[property24] found ${detailUrls.length} detail URLs`);
+    // 1. Discovery gate: only walk the P24 index when the queue is empty.
+    //    Discovery is 100-200s per run (5-10s per index page × 5-20 pages);
+    //    doing it every time leaves no budget for detail scrapes. The queue
+    //    persists across invocations, so re-runs just drain pending URLs.
+    let discoveredThisRun = 0;
+    const { count: pendingCount } = await supabase
+      .from("property24_url_queue")
+      .select("*", { count: "exact", head: true })
+      .is("processed_at", null);
 
-    if (detailUrls.length === 0) {
-      return NextResponse.json({
-        ok: true,
-        discovered: 0,
-        upserted: 0,
-        failed: 0,
-        durationMs: Date.now() - startedAt,
-        note: "No listings discovered — Firecrawl returned no links from the Knysna index. Check Firecrawl dashboard for the raw response.",
-      });
+    if ((pendingCount ?? 0) === 0) {
+      console.log("[property24] queue empty — running full index discovery");
+      const detailUrls = await scrapeListingIndex(apiKey, KNYSNA_INDEX_URL);
+      console.log(`[property24] discovered ${detailUrls.length} URLs`);
+      if (detailUrls.length > 0) {
+        const rows = detailUrls.map((url) => ({ url }));
+        const { error: enqueueErr } = await supabase
+          .from("property24_url_queue")
+          .upsert(rows, { onConflict: "url", ignoreDuplicates: true });
+        if (enqueueErr) {
+          console.error(`[property24] enqueue failed: ${enqueueErr.message}`);
+        }
+        discoveredThisRun = detailUrls.length;
+      }
+    } else {
+      console.log(`[property24] queue has ${pendingCount} pending URLs — skipping discovery`);
     }
 
-    // 2. Prioritise: process URLs we don't have yet before re-scraping
-    //    known ones. So successive runs cover fresh ground until every
-    //    listing has been ingested at least once. Extract the source_ref
-    //    (numeric id from the URL) and left-anti-join against DB.
-    const urlByRef: Record<string, string> = {};
-    for (const u of detailUrls) {
-      const m = u.match(/\/for-sale\/[^/]+\/[^/]+\/[^/]+\/(\d+)/);
-      if (m) urlByRef[m[1]] = u;
+    // 2. Drain: take the next N pending URLs from the queue (FIFO). Cap by
+    //    MAX_DETAILS_PER_RUN. If we still have wall-time budget, we scrape
+    //    each and mark processed. Any URL we couldn't process this run
+    //    stays pending for the next invocation.
+    const remainingBudgetMs = MAX_WALL_MS - (Date.now() - startedAt);
+    // Rough estimate: 20s per detail scrape + 1s delay. Cap batch by
+    // whichever is smaller: MAX_DETAILS_PER_RUN or the wall-time budget.
+    const timeCappedBudget = Math.max(0, Math.floor(remainingBudgetMs / 21_000));
+    const batchSize = Math.min(MAX_DETAILS_PER_RUN, timeCappedBudget);
+
+    let pendingRows: { url: string }[] = [];
+    if (batchSize > 0) {
+      const { data } = await supabase
+        .from("property24_url_queue")
+        .select("url")
+        .is("processed_at", null)
+        .order("discovered_at", { ascending: true })
+        .limit(batchSize);
+      pendingRows = (data ?? []) as { url: string }[];
     }
-    const allRefs = Object.keys(urlByRef);
-    const { data: existingRows } = await supabase
-      .from("external_listing")
-      .select("source_ref")
-      .eq("source", "property24")
-      .in("source_ref", allRefs);
-    const existingSet = new Set((existingRows ?? []).map((r) => r.source_ref));
-    const freshRefs = allRefs.filter((r) => !existingSet.has(r));
-    const staleRefs = allRefs.filter((r) => existingSet.has(r));
-    // Fresh first, then round-robin through stale (refreshes existing data
-    // over time without starving new listings).
-    const orderedRefs = [...freshRefs, ...staleRefs];
-    const budget = orderedRefs.slice(0, MAX_DETAILS_PER_RUN);
-    const remaining = orderedRefs.length - budget.length;
+
     console.log(
-      `[property24] plan: ${freshRefs.length} fresh + ${staleRefs.length} stale · processing ${budget.length} this run · ${remaining} deferred`,
+      `[property24] drain: batch=${batchSize} available=${pendingRows.length} discoveredThisRun=${discoveredThisRun}`,
     );
 
-    // 3. Scrape each detail with a polite delay between calls. Bail out
-    //    early if wall time exceeds the safety budget.
-    const seenSourceRefs: string[] = [];
     let ok = 0;
     let failed = 0;
     let budgetExhausted = false;
-    for (const ref of budget) {
+
+    for (const { url } of pendingRows) {
       if (Date.now() - startedAt > MAX_WALL_MS) {
         budgetExhausted = true;
         console.warn(`[property24] wall-time budget exhausted after ${ok + failed} scrapes`);
         break;
       }
-      const url = urlByRef[ref];
       const listing = await scrapeListingDetail(apiKey, url);
       if (!listing) {
+        // Mark processed anyway so we don't retry forever — a broken URL
+        // stays broken. If this becomes a maintenance concern we can add
+        // a retry_count column later.
+        await supabase
+          .from("property24_url_queue")
+          .update({ processed_at: new Date().toISOString() })
+          .eq("url", url);
         failed++;
         continue;
       }
-      seenSourceRefs.push(listing.sourceRef);
 
       const now = new Date().toISOString();
       const { error } = await supabase.from("external_listing").upsert(
@@ -195,41 +208,47 @@ async function run(request: Request) {
         failed++;
       } else {
         ok++;
+        await supabase
+          .from("property24_url_queue")
+          .update({ processed_at: now })
+          .eq("url", url);
       }
 
       await new Promise((r) => setTimeout(r, DETAIL_DELAY_MS));
     }
 
-    // 4. Sunset step is DISABLED during batched runs — we haven't seen the
-    //    full catalogue this invocation, so we can't tell what's genuinely
-    //    delisted from what we simply skipped. When the backlog is empty
-    //    (remaining === 0 AND we processed everything), do the sunset then.
-    if (remaining === 0 && !budgetExhausted && seenSourceRefs.length > 0) {
-      const { error: sunsetErr } = await supabase
-        .from("external_listing")
-        .update({ active: false })
-        .eq("source", "property24")
-        .not("source_ref", "in", `(${seenSourceRefs.map((s) => `"${s}"`).join(",")})`);
-      if (sunsetErr) {
-        console.error("[property24] sunset failed:", sunsetErr.message);
-      }
-    }
+    // Count remaining pending URLs for the response note.
+    const { count: stillPending } = await supabase
+      .from("property24_url_queue")
+      .select("*", { count: "exact", head: true })
+      .is("processed_at", null);
+    const remaining = stillPending ?? 0;
+
+    // Sunset step deferred — with the queue model, we'd need to know when
+    // a full discovery-plus-drain cycle completed to safely mark unseen
+    // rows inactive. Track that in a future iteration; for now stale rows
+    // just sit as active until the next discovery re-observes (or doesn't)
+    // them. Low-cost oversight at Dream's scale.
 
     const durationMs = Date.now() - startedAt;
-    console.log(`[property24] done: ok=${ok} failed=${failed} in ${durationMs}ms`);
+    console.log(
+      `[property24] done: discoveredThisRun=${discoveredThisRun} upserted=${ok} failed=${failed} remaining=${remaining} in ${durationMs}ms`,
+    );
     return NextResponse.json({
       ok: true,
-      discovered: detailUrls.length,
-      processedThisRun: budget.length,
+      discoveredThisRun,
+      processedThisRun: pendingRows.length,
       upserted: ok,
       failed,
-      remaining: remaining + (budgetExhausted ? budget.length - (ok + failed) : 0),
+      remaining,
       budgetExhausted,
       durationMs,
       note:
-        remaining + (budgetExhausted ? budget.length - (ok + failed) : 0) > 0
-          ? `${remaining + (budgetExhausted ? budget.length - (ok + failed) : 0)} listings still to process — click Refresh again (or wait for the next cron) to continue.`
-          : "Full catalogue processed.",
+        remaining > 0
+          ? `${remaining} listings still queued — click Refresh again to continue.`
+          : discoveredThisRun > 0
+          ? "Full catalogue discovered and processed."
+          : "Queue empty — nothing new to process.",
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

@@ -10,7 +10,7 @@ import { useRouter } from "next/navigation";
 
 type RefreshResponse = {
   ok?: boolean;
-  discovered?: number;
+  discoveredThisRun?: number;
   processedThisRun?: number;
   upserted?: number;
   failed?: number;
@@ -42,12 +42,16 @@ export default function RefreshProperty24Button() {
           return;
         }
         const sec = json.durationMs != null ? Math.round(json.durationMs / 1000) : "?";
+        const discoverPart =
+          json.discoveredThisRun && json.discoveredThisRun > 0
+            ? `Discovered ${json.discoveredThisRun} URLs · `
+            : "";
         const remainingPart =
           json.remaining && json.remaining > 0
             ? ` · ${json.remaining} left — click again to continue`
             : "";
         setMsg(
-          `Property24 refreshed in ${sec}s · ${json.upserted ?? 0} upserted · ${json.failed ?? 0} failed${remainingPart}`,
+          `${discoverPart}Refreshed in ${sec}s · ${json.upserted ?? 0} upserted · ${json.failed ?? 0} failed${remainingPart}`,
         );
         router.refresh();
       } catch (e) {
