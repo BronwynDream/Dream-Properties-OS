@@ -8,6 +8,7 @@ type Tab = { href: string; label: string; adminOnly?: boolean };
 
 const TABS: Tab[] = [
   { href: "/dashboard", label: "Overview" },
+  { href: "/inbox", label: "Inbox" },
   { href: "/map", label: "Map" },
   { href: "/properties", label: "Properties" },
   { href: "/triage", label: "Triage" },
