@@ -9,7 +9,8 @@ your row when done.
 
 | Plan | Title | Priority | Effort | Depends on | Status |
 |------|-------|----------|--------|------------|--------|
-| 001  | Parallelise signed-URL generation on Property Record | P1 | S | — | TODO |
+| 001  | Parallelise signed-URL generation on Property Record | P1 | S | — | DONE (merged 2026-07-26 as `daf44f0`) |
+| 004  | Firecrawl Property24 scraper as a new `external_listing` source | P2 | M | — | IN PROGRESS |
 | 002  | Harden LLM extraction against document-borne prompt injection | P1 | M | — | TODO |
 | 003  | Lead Inbox v1 — unified view of email-sourced enquiries | P1 | M | 002 | TODO |
 | 004  | Firecrawl Property24 scraper as a new `external_listing` source | P2 | M | — | TODO |
