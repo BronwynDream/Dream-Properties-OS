@@ -65,6 +65,32 @@ export function parseListingIdFromUrl(url: string): string | null {
 }
 
 /**
+ * Normalise a link discovered on Firecrawl's `links` output to an absolute
+ * URL against a base page. Firecrawl usually returns absolute URLs, but
+ * some sites emit relative hrefs and Firecrawl passes them through as-is.
+ * Passing a relative path back to /v1/scrape as `url` earns a Firecrawl
+ * 400: "The string did not match the expected pattern". Guard here.
+ *
+ * Returns null for anything that isn't a Property24 URL (external ads,
+ * social links, mailto:, javascript:, etc.).
+ */
+export function toAbsoluteProperty24Url(link: string, baseUrl: string): string | null {
+  const trimmed = link.trim();
+  if (!trimmed) return null;
+  // Filter obvious non-URLs early.
+  if (/^(mailto:|tel:|javascript:|#)/i.test(trimmed)) return null;
+  try {
+    const abs = new URL(trimmed, baseUrl).toString();
+    // Only keep Property24 host — cross-site links (analytics, ad networks)
+    // aren't listings and shouldn't be scraped.
+    if (!/^https?:\/\/(www\.)?property24\.com\//i.test(abs)) return null;
+    return abs;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Walk the Knysna index pages until we stop finding new listing links.
  * Returns a de-duplicated array of detail URLs.
  */
@@ -86,7 +112,16 @@ export async function scrapeListingIndex(
       break;
     }
     const links = (data.links ?? []) as string[];
-    const detailLinks = links.filter((l) => parseListingIdFromUrl(l) != null);
+    // Absolute-URL + property24-host guard. Firecrawl can emit relative
+    // hrefs; those would 400 when passed back to /v1/scrape.
+    const detailLinks: string[] = [];
+    for (const l of links) {
+      const abs = toAbsoluteProperty24Url(l, pageUrl);
+      if (abs && parseListingIdFromUrl(abs) != null) detailLinks.push(abs);
+    }
+    console.log(
+      `[property24] page ${page}: ${links.length} raw links → ${detailLinks.length} detail URLs`,
+    );
     const before = seen.size;
     for (const l of detailLinks) seen.add(l);
     // Stop when a page adds no new detail links (past the last real page).
