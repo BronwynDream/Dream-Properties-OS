@@ -13,6 +13,18 @@ const KNYSNA_INDEX_URL =
   "https://www.property24.com/for-sale/knysna/western-cape/468";
 const DETAIL_DELAY_MS = 1000; // 1/sec; adjust after Firecrawl plan is chosen
 
+// Cap detail scrapes per invocation. Firecrawl extract mode is ~10-20s per
+// URL (JS render + LLM structured extract). Vercel Hobby caps functions at
+// 60s; Pro at 300s. Even Pro can't finish 200-400 listings in one shot.
+// Cap keeps every run finishing safely; subsequent runs pick up fresh URLs
+// (prefer-not-yet-in-DB ordering). Full backfill happens over several runs.
+const MAX_DETAILS_PER_RUN = 12;
+
+// Time-budget guard. Once we've spent this long, stop starting new detail
+// scrapes and finalise cleanly — better to return honest partial results
+// than get 504'd by Vercel with an unparseable HTML response.
+const MAX_WALL_MS = 240_000; // 4 min (safe for both Hobby+ and Pro).
+
 // GET/POST /api/sources/property24/refresh
 //
 // Weekly Property24 scraper via Firecrawl. Two callers:
@@ -105,11 +117,46 @@ async function run(request: Request) {
       });
     }
 
-    // 2. Scrape each detail with a polite delay between calls.
+    // 2. Prioritise: process URLs we don't have yet before re-scraping
+    //    known ones. So successive runs cover fresh ground until every
+    //    listing has been ingested at least once. Extract the source_ref
+    //    (numeric id from the URL) and left-anti-join against DB.
+    const urlByRef: Record<string, string> = {};
+    for (const u of detailUrls) {
+      const m = u.match(/\/for-sale\/[^/]+\/[^/]+\/[^/]+\/(\d+)/);
+      if (m) urlByRef[m[1]] = u;
+    }
+    const allRefs = Object.keys(urlByRef);
+    const { data: existingRows } = await supabase
+      .from("external_listing")
+      .select("source_ref")
+      .eq("source", "property24")
+      .in("source_ref", allRefs);
+    const existingSet = new Set((existingRows ?? []).map((r) => r.source_ref));
+    const freshRefs = allRefs.filter((r) => !existingSet.has(r));
+    const staleRefs = allRefs.filter((r) => existingSet.has(r));
+    // Fresh first, then round-robin through stale (refreshes existing data
+    // over time without starving new listings).
+    const orderedRefs = [...freshRefs, ...staleRefs];
+    const budget = orderedRefs.slice(0, MAX_DETAILS_PER_RUN);
+    const remaining = orderedRefs.length - budget.length;
+    console.log(
+      `[property24] plan: ${freshRefs.length} fresh + ${staleRefs.length} stale · processing ${budget.length} this run · ${remaining} deferred`,
+    );
+
+    // 3. Scrape each detail with a polite delay between calls. Bail out
+    //    early if wall time exceeds the safety budget.
     const seenSourceRefs: string[] = [];
     let ok = 0;
     let failed = 0;
-    for (const url of detailUrls) {
+    let budgetExhausted = false;
+    for (const ref of budget) {
+      if (Date.now() - startedAt > MAX_WALL_MS) {
+        budgetExhausted = true;
+        console.warn(`[property24] wall-time budget exhausted after ${ok + failed} scrapes`);
+        break;
+      }
+      const url = urlByRef[ref];
       const listing = await scrapeListingDetail(apiKey, url);
       if (!listing) {
         failed++;
@@ -150,8 +197,11 @@ async function run(request: Request) {
       await new Promise((r) => setTimeout(r, DETAIL_DELAY_MS));
     }
 
-    // 3. Sunset: mark any property24 row not seen this run as inactive.
-    if (seenSourceRefs.length > 0) {
+    // 4. Sunset step is DISABLED during batched runs — we haven't seen the
+    //    full catalogue this invocation, so we can't tell what's genuinely
+    //    delisted from what we simply skipped. When the backlog is empty
+    //    (remaining === 0 AND we processed everything), do the sunset then.
+    if (remaining === 0 && !budgetExhausted && seenSourceRefs.length > 0) {
       const { error: sunsetErr } = await supabase
         .from("external_listing")
         .update({ active: false })
@@ -167,9 +217,16 @@ async function run(request: Request) {
     return NextResponse.json({
       ok: true,
       discovered: detailUrls.length,
+      processedThisRun: budget.length,
       upserted: ok,
       failed,
+      remaining: remaining + (budgetExhausted ? budget.length - (ok + failed) : 0),
+      budgetExhausted,
       durationMs,
+      note:
+        remaining + (budgetExhausted ? budget.length - (ok + failed) : 0) > 0
+          ? `${remaining + (budgetExhausted ? budget.length - (ok + failed) : 0)} listings still to process — click Refresh again (or wait for the next cron) to continue.`
+          : "Full catalogue processed.",
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
