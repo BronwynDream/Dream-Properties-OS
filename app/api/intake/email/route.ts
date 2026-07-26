@@ -198,12 +198,16 @@ export async function POST(request: Request) {
       : await resolveProperty(supabase, subjectValue, label);
 
   // 7. Create the batch — one of property_id / party_id is set.
+  // auto_commit_allowed is set to true here (the intake webhook) so the
+  // auto-commit gate below can distinguish webhook-created batches from any
+  // other path (manual upload, imported, historical) that must go via /triage.
   const batchInsert: Record<string, unknown> = {
     label: target.batchLabel,
     source: "email",
     created_by: appUser.id,
     sender_email: fromEmail,
     provider_message_id: providerMessageId,
+    auto_commit_allowed: true,
   };
   if (intent === "property") batchInsert.property_id = target.id;
   else batchInsert.party_id = target.id;
@@ -384,6 +388,22 @@ export async function POST(request: Request) {
             //     values alone; non-null extracted values win.
             if ((ex.rowsInserted ?? 0) > 0) {
               try {
+                // Defence-in-depth: only auto-commit batches the webhook
+                // itself flagged. Any other batch (manual upload, imported,
+                // historical) requires a human to hit Commit in /triage.
+                const { data: batchRow } = await supabase
+                  .from("ingest_batch")
+                  .select("auto_commit_allowed")
+                  .eq("id", batch.id)
+                  .single();
+
+                if (batchRow?.auto_commit_allowed !== true) {
+                  console.warn(
+                    `[intake] skipping auto-commit for batch ${batch.id} — auto_commit_allowed not set`,
+                  );
+                  return NextResponse.json({ ok: true, batchId: batch.id, autoCommitted: false });
+                }
+
                 const commit = await commitBatchWithClient(
                   supabase,
                   batch.id,
