@@ -1,10 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   SYSTEM_PROMPT,
-  buildUserPrompt,
   mapExtractionToRows,
   parseModelJson,
   reshapeFields,
+  wrapDocumentsForPrompt,
+  validateExtracted,
 } from "@/lib/extract";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -238,9 +239,8 @@ export async function extractBatchWithClient(
   // Combine every doc's text into one prompt so the LLM can cross-reference
   // (e.g. ERF from the SG diagram + title deed no from the mandate + price
   // from the agreement — all in a single JSON reply).
-  const combined = gathered
-    .map((g) => `===== ${g.filename} =====\n${g.text}`)
-    .join("\n\n");
+  // Documents are wrapped in explicit boundary tags to guard against
+  // document-borne prompt injection (see wrapDocumentsForPrompt).
   const primaryFileId = gathered[0].id;
   const usedFiles = gathered.map((g) => g.filename);
   const anyOcr = gathered.some((g) => g.source === "ocr");
@@ -251,18 +251,41 @@ export async function extractBatchWithClient(
   try {
     modelContent = await callOpenRouter(apiKey, model, [
       { role: "system", content: SYSTEM_PROMPT },
-      { role: "user", content: buildUserPrompt(combined) },
+      {
+        role: "user",
+        content: wrapDocumentsForPrompt(
+          gathered.map((g) => ({
+            filename: g.filename,
+            text: g.text,
+            bytes: g.text.length,
+          })),
+        ),
+      },
     ]);
   } catch (e) {
     return { ok: false, error: (e as Error).message };
   }
 
-  let rows;
+  let parsed;
   try {
-    rows = mapExtractionToRows(parseModelJson(modelContent));
+    parsed = parseModelJson(modelContent);
   } catch {
     return { ok: false, error: "Model did not return parseable JSON." };
   }
+
+  const validation = validateExtracted(parsed);
+  if (!validation.ok) {
+    // Log the specific violations so admins can inspect the offending batch.
+    console.error(
+      `[extract] validation failed for batch ${batchId}: ${validation.errors.join("; ")}`,
+    );
+    return {
+      ok: false,
+      error: `Extraction produced values that failed sanity checks: ${validation.errors.slice(0, 3).join("; ")}`,
+    };
+  }
+
+  const rows = mapExtractionToRows(validation.data);
 
   await supabase.from("extraction").delete().eq("batch_id", batchId).eq("status", "proposed");
   if (rows.length > 0) {
