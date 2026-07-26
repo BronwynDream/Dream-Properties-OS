@@ -170,6 +170,9 @@ export default async function PropertyRecord({
   };
   const docs: DocRow[] = [];
   const seenIds = new Set<string>();
+
+  // Pass 1: dedupe. Keep the original document + docLink pair for pass 3.
+  const staged: { d: any; dl: any }[] = [];
   for (const dl of docLinks) {
     const d = dl.document;
     if (!d) continue;
@@ -178,10 +181,22 @@ export default async function PropertyRecord({
     const dedupeKey = `${d.id}::${dl.entity_id}`;
     if (seenIds.has(dedupeKey)) continue;
     seenIds.add(dedupeKey);
+    staged.push({ d, dl });
+  }
 
-    const { data: signed, error: signErr } = d.storage_bucket && d.storage_path
-      ? await supabase.storage.from(d.storage_bucket).createSignedUrl(d.storage_path, 3600)
-      : { data: null, error: null };
+  // Pass 2: parallel sign. Preserve input order via array index.
+  const signed = await Promise.all(
+    staged.map(({ d }) =>
+      d.storage_bucket && d.storage_path
+        ? supabase.storage.from(d.storage_bucket).createSignedUrl(d.storage_path, 3600)
+        : Promise.resolve({ data: null, error: null }),
+    ),
+  );
+
+  // Pass 3: build the DocRow array in the original order.
+  for (let i = 0; i < staged.length; i++) {
+    const { d, dl } = staged[i];
+    const { data, error: signErr } = signed[i];
     if (signErr) {
       console.error(`[property] signed URL failed for doc ${d.id} (${d.title}):`, signErr.message);
     }
@@ -200,7 +215,7 @@ export default async function PropertyRecord({
       category: d.doc_type?.category ?? "other",
       mime_type: d.mime_type ?? null,
       is_pii: d.is_pii,
-      url: signed?.signedUrl ?? null,
+      url: data?.signedUrl ?? null,
       isImage,
     });
   }
