@@ -56,12 +56,72 @@ async function firecrawlScrape(
 
 /**
  * Parse a Property24 detail-page URL to extract the numeric listing id.
- * URL shape: https://www.property24.com/for-sale/<slug>/<suburb>/knysna/<id>
+ * URL shape: https://www.property24.com/for-sale/<slug>/<suburb>/<town>/<id>
  * Returns null if the URL doesn't match the expected shape.
  */
 export function parseListingIdFromUrl(url: string): string | null {
   const m = url.match(/\/for-sale\/[^/]+\/[^/]+\/[^/]+\/(\d+)/);
   return m?.[1] ?? null;
+}
+
+/**
+ * Property24 index pages sometimes surface cross-region listings (agent
+ * promos, "you might also like", national featured). We only want Knysna-
+ * area properties. The URL's 3rd path segment is the town.
+ *
+ * Knysna Municipality covers: Knysna, Sedgefield, Rheenendal, Buffels Bay,
+ * Karatara, Belvidere, Brenton, Pezula, Thesen Islands, Leisure Isle.
+ * P24 uses these as the town segment.
+ */
+const KNYSNA_AREA_TOWNS = new Set([
+  "knysna",
+  "sedgefield",
+  "rheenendal",
+  "buffels-bay",
+  "buffalo-bay",
+  "karatara",
+  "belvidere",
+  "brenton-on-sea",
+  "brenton",
+  "pezula",
+  "thesen-islands",
+  "thesen-island",
+  "leisure-isle",
+  "the-heads",
+  "eastford",
+  "simola",
+  "goukamma",
+  "noetzie",
+]);
+
+export function isKnysnaAreaUrl(url: string): boolean {
+  const m = url.match(/\/for-sale\/[^/]+\/[^/]+\/([^/]+)\/\d+/);
+  const town = m?.[1]?.toLowerCase();
+  return !!town && KNYSNA_AREA_TOWNS.has(town);
+}
+
+/**
+ * Knysna's rough geographic envelope. Anything outside this box is either
+ * a hallucinated coord (0,0), a Cape Town listing that snuck in, or a
+ * botched extract. Nullify rather than store — a listing without coords
+ * won't render on the map but its metadata stays useful.
+ */
+const KNYSNA_BBOX = {
+  latMin: -34.25,
+  latMax: -33.75,
+  lngMin: 22.5,
+  lngMax: 23.6,
+};
+
+function coordInKnysnaBbox(lat: number | null, lng: number | null): boolean {
+  if (lat == null || lng == null) return false;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+  return (
+    lat >= KNYSNA_BBOX.latMin &&
+    lat <= KNYSNA_BBOX.latMax &&
+    lng >= KNYSNA_BBOX.lngMin &&
+    lng <= KNYSNA_BBOX.lngMax
+  );
 }
 
 /**
@@ -112,15 +172,26 @@ export async function scrapeListingIndex(
       break;
     }
     const links = (data.links ?? []) as string[];
-    // Absolute-URL + property24-host guard. Firecrawl can emit relative
-    // hrefs; those would 400 when passed back to /v1/scrape.
+    // Three guards on discovered links:
+    //   1. absolute-URL — Firecrawl can emit relative hrefs; those would
+    //      400 when passed back to /v1/scrape.
+    //   2. property24 host — filters ad / analytics / social outbound.
+    //   3. Knysna-area town segment — the index sometimes surfaces cross-
+    //      region promos (agent bios, featured national listings). We
+    //      only want Knysna Muni properties.
     const detailLinks: string[] = [];
     for (const l of links) {
       const abs = toAbsoluteProperty24Url(l, pageUrl);
-      if (abs && parseListingIdFromUrl(abs) != null) detailLinks.push(abs);
+      if (
+        abs &&
+        parseListingIdFromUrl(abs) != null &&
+        isKnysnaAreaUrl(abs)
+      ) {
+        detailLinks.push(abs);
+      }
     }
     console.log(
-      `[property24] page ${page}: ${links.length} raw links → ${detailLinks.length} detail URLs`,
+      `[property24] page ${page}: ${links.length} raw links → ${detailLinks.length} Knysna detail URLs`,
     );
     const before = seen.size;
     for (const l of detailLinks) seen.add(l);
@@ -186,20 +257,45 @@ export async function scrapeListingDetail(
   }
 
   const extracted = data.extract ?? {};
+
+  // Coord sanity: nullify anything outside Knysna's bbox (0,0 hallucinations,
+  // Cape Town coord confusions, etc.). Keeps the row — its metadata is still
+  // useful — but stops it from rendering as an errant pin on the map.
+  let lat = extracted.lat != null ? Number(extracted.lat) : null;
+  let lng = extracted.lng != null ? Number(extracted.lng) : null;
+  if (!coordInKnysnaBbox(lat, lng)) {
+    if (lat != null || lng != null) {
+      console.warn(
+        `[property24] rejecting out-of-bbox coord for ${sourceRef}: ${lat},${lng}`,
+      );
+    }
+    lat = null;
+    lng = null;
+  }
+
+  // Price sanity: 0 is always a scrape failure for a real listing. Store null
+  // instead of a nonsense R0 pin label.
+  let price: number | null = null;
+  if (extracted.price != null) {
+    const n = Math.round(Number(extracted.price));
+    if (Number.isFinite(n) && n > 0) price = n;
+    else console.warn(`[property24] rejecting non-positive price for ${sourceRef}: ${extracted.price}`);
+  }
+
   return {
     sourceRef,
     url,
     headline: extracted.headline ?? null,
     addressRaw: extracted.address ?? null,
     suburb: extracted.suburb ?? null,
-    price: extracted.price != null ? Math.round(Number(extracted.price)) : null,
+    price,
     bedrooms: extracted.bedrooms != null ? Math.round(Number(extracted.bedrooms)) : null,
     bathrooms: extracted.bathrooms != null ? Math.round(Number(extracted.bathrooms)) : null,
     propertyType: extracted.property_type ?? null,
     agencyName: extracted.agency_name ?? null,
     imageUrl: extracted.image_url ?? null,
-    lat: extracted.lat != null ? Number(extracted.lat) : null,
-    lng: extracted.lng != null ? Number(extracted.lng) : null,
+    lat,
+    lng,
     raw: data,
   };
 }
