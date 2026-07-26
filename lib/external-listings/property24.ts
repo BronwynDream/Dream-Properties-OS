@@ -56,48 +56,32 @@ async function firecrawlScrape(
 
 /**
  * Parse a Property24 detail-page URL to extract the numeric listing id.
- * URL shape: https://www.property24.com/for-sale/<slug>/<suburb>/<town>/<id>
- * Returns null if the URL doesn't match the expected shape.
+ *
+ * Real P24 detail URL structure (verified 2026-07-26):
+ *   /for-sale/<suburb-slug>/<town>/<province>/<suburb-code>/<listing-id>
+ * Example:
+ *   /for-sale/brenton-on-sea/knysna/western-cape/7467/117436137
+ *   ↑              ↑              ↑         ↑          ↑
+ *   /for-sale      suburb-slug    town      province   suburb-code  listing-id
+ *
+ * Suburb landing pages are 5 segments (no listing-id trailing); we skip
+ * those. Query string is ignored.
  */
 export function parseListingIdFromUrl(url: string): string | null {
-  const m = url.match(/\/for-sale\/[^/]+\/[^/]+\/[^/]+\/(\d+)/);
+  const clean = url.split("?")[0].split("#")[0];
+  const m = clean.match(/\/for-sale\/[^/]+\/[^/]+\/[^/]+\/\d+\/(\d+)(?:\/|$)/);
   return m?.[1] ?? null;
 }
 
 /**
- * Property24 index pages sometimes surface cross-region listings (agent
- * promos, "you might also like", national featured). We only want Knysna-
- * area properties. The URL's 3rd path segment is the town.
- *
- * Knysna Municipality covers: Knysna, Sedgefield, Rheenendal, Buffels Bay,
- * Karatara, Belvidere, Brenton, Pezula, Thesen Islands, Leisure Isle.
- * P24 uses these as the town segment.
+ * A URL belongs to the Knysna area when its town segment (3rd path segment
+ * after /for-sale) is "knysna". Sedgefield / Plettenberg Bay have their own
+ * area codes (324 / 325) — those are separate scraper targets, not scoped
+ * to Knysna's index.
  */
-const KNYSNA_AREA_TOWNS = new Set([
-  "knysna",
-  "sedgefield",
-  "rheenendal",
-  "buffels-bay",
-  "buffalo-bay",
-  "karatara",
-  "belvidere",
-  "brenton-on-sea",
-  "brenton",
-  "pezula",
-  "thesen-islands",
-  "thesen-island",
-  "leisure-isle",
-  "the-heads",
-  "eastford",
-  "simola",
-  "goukamma",
-  "noetzie",
-]);
-
 export function isKnysnaAreaUrl(url: string): boolean {
-  const m = url.match(/\/for-sale\/[^/]+\/[^/]+\/([^/]+)\/\d+/);
-  const town = m?.[1]?.toLowerCase();
-  return !!town && KNYSNA_AREA_TOWNS.has(town);
+  const clean = url.split("?")[0].split("#")[0];
+  return /\/for-sale\/[^/]+\/knysna\/western-cape\/\d+\/\d+(?:\/|$)/.test(clean);
 }
 
 /**
@@ -172,22 +156,22 @@ export async function scrapeListingIndex(
       break;
     }
     const links = (data.links ?? []) as string[];
-    // Three guards on discovered links:
+    // Four guards on discovered links:
     //   1. absolute-URL — Firecrawl can emit relative hrefs; those would
     //      400 when passed back to /v1/scrape.
     //   2. property24 host — filters ad / analytics / social outbound.
     //   3. Knysna-area town segment — the index sometimes surfaces cross-
     //      region promos (agent bios, featured national listings). We
     //      only want Knysna Muni properties.
+    //   4. Query-string strip — P24 emits ?plId=X&imgFocus=2/3/4 variants
+    //      of the same listing; strip so dedup collapses them.
     const detailLinks: string[] = [];
     for (const l of links) {
       const abs = toAbsoluteProperty24Url(l, pageUrl);
-      if (
-        abs &&
-        parseListingIdFromUrl(abs) != null &&
-        isKnysnaAreaUrl(abs)
-      ) {
-        detailLinks.push(abs);
+      if (!abs) continue;
+      const clean = abs.split("?")[0].split("#")[0];
+      if (parseListingIdFromUrl(clean) != null && isKnysnaAreaUrl(clean)) {
+        detailLinks.push(clean);
       }
     }
     console.log(

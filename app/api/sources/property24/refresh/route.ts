@@ -9,8 +9,11 @@ import {
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
+// Property24's canonical area URL for Knysna. The area code is 322 (verified
+// 2026-07-26 by browsing the canonical redirect). Do NOT change to 468 —
+// that redirects to Beaufort West and quietly returns wrong-town listings.
 const KNYSNA_INDEX_URL =
-  "https://www.property24.com/for-sale/knysna/western-cape/468";
+  "https://www.property24.com/for-sale/knysna/western-cape/322";
 const DETAIL_DELAY_MS = 1000; // 1/sec; adjust after Firecrawl plan is chosen
 
 // Cap detail scrapes per invocation. Firecrawl extract mode is ~10-20s per
