@@ -17,11 +17,68 @@
 
 import type { PdfItem } from "./types";
 
+// pdfjs-dist v6 uses browser-only APIs (DOMMatrix, Path2D, ImageData) at
+// module load time. On modern Node (>= 20) DOMMatrix is available on
+// globalThis, but Vercel's serverless runtime doesn't ship it. Minimal
+// polyfills are enough — text extraction never actually calls their
+// methods; pdfjs just checks that the constructors exist.
+function installBrowserApiPolyfills(): void {
+  const g = globalThis as unknown as Record<string, unknown>;
+  if (typeof g.DOMMatrix === "undefined") {
+    class MinimalDOMMatrix {
+      a = 1; b = 0; c = 0; d = 1; e = 0; f = 0;
+      m11 = 1; m12 = 0; m21 = 0; m22 = 1; m41 = 0; m42 = 0;
+      is2D = true; isIdentity = true;
+      constructor(init?: number[] | string) {
+        if (Array.isArray(init) && init.length >= 6) {
+          [this.a, this.b, this.c, this.d, this.e, this.f] = init as number[];
+          this.m11 = this.a; this.m12 = this.b;
+          this.m21 = this.c; this.m22 = this.d;
+          this.m41 = this.e; this.m42 = this.f;
+        }
+      }
+      multiply(_o?: unknown) { return new MinimalDOMMatrix([this.a, this.b, this.c, this.d, this.e, this.f]); }
+      translate(_x?: number, _y?: number) { return this; }
+      scale(_s?: number) { return this; }
+      rotate(_a?: number) { return this; }
+      invertSelf() { return this; }
+      transformPoint(p?: { x: number; y: number }) { return p ?? { x: 0, y: 0 }; }
+    }
+    g.DOMMatrix = MinimalDOMMatrix;
+  }
+  if (typeof g.Path2D === "undefined") {
+    class MinimalPath2D {
+      addPath() {}
+      moveTo() {}
+      lineTo() {}
+      closePath() {}
+      arc() {}
+      bezierCurveTo() {}
+      quadraticCurveTo() {}
+      rect() {}
+    }
+    g.Path2D = MinimalPath2D;
+  }
+  if (typeof g.ImageData === "undefined") {
+    class MinimalImageData {
+      data: Uint8ClampedArray;
+      width: number;
+      height: number;
+      constructor(w: number, h: number) {
+        this.width = w; this.height = h;
+        this.data = new Uint8ClampedArray(w * h * 4);
+      }
+    }
+    g.ImageData = MinimalImageData;
+  }
+}
+
 // Dynamic import so this module can be required from Next.js server routes
 // without pdfjs-dist trying to load in an environment that can't run it.
 // pdfjs-dist v6 is ESM-only and pulls in a Worker; we opt out of the
 // worker to keep the runtime simple (fine for server-side parsing).
 export async function loadPdf(bytes: Uint8Array) {
+  installBrowserApiPolyfills();
   // pdfjs v6 is ESM-only and requires either a real worker script or an
   // explicit worker Port. On the server we don't want to spawn a worker
   // thread — pass the worker module as-is via createRequire so the same
