@@ -28,6 +28,7 @@ export type MapProperty = {
   transferStatus: string | null;
   transferDate: string | null;
   transferCount: number;
+  prclKey: string | null;          // cadastral parcel key for polygon rendering
 };
 
 export type SourceKey =
@@ -49,6 +50,27 @@ export type ExternalRef = {
   agencyName: string | null;
   lat: number | null;
   lng: number | null;
+  prclKey: string | null;          // cadastral parcel key; null = ungeocoded to parcel
+};
+
+// For-sale property rendered as a coloured cadastral polygon at z≥14.
+export type ForSalePolygon = {
+  prclKey: string;
+  state: "os_exclusive" | "os_joint" | "os_sold" | "os_under_offer" | "os_other" | "market";
+  propertyId?: string;
+  listingId?: string;
+  price?: number;
+  headline?: string;
+};
+
+// External listing with lat/lng but no prcl_key — rendered as a discreet dot.
+export type UngeocodedExternal = {
+  id: string;
+  source: "property24" | "private_property";
+  lng: number;
+  lat: number;
+  price: number | null;
+  headline: string | null;
 };
 
 // One merged pin = one physical listing, potentially spanning multiple sources.
@@ -116,6 +138,26 @@ const BASEMAPS = [
 
 type BasemapId = (typeof BASEMAPS)[number]["id"];
 
+// Plan 005: colour map for for-sale cadastral polygon fills.
+// Keys match ForSalePolygon.state values.
+const STATE_COLORS: Record<string, string> = {
+  os_exclusive:   "#C8A032", // gold
+  os_joint:       "#132B84", // navy
+  os_sold:        "#1C5B3A", // forest
+  os_under_offer: "#D17E22", // amber
+  os_other:       "#6B78A0", // slate
+  market:         "#8090B5", // grey
+};
+
+// Build a Mapbox 'match' expression that assigns a fill colour per prcl_key.
+function buildMatchExpr(rows: ForSalePolygon[]): mapboxgl.Expression {
+  const pairs: (string | number)[] = [];
+  for (const r of rows) {
+    pairs.push(r.prclKey, STATE_COLORS[r.state] ?? STATE_COLORS.os_other);
+  }
+  return ["match", ["get", "prcl_key"], ...pairs, "#8090B5"] as mapboxgl.Expression;
+}
+
 function formatPrice(n: number | null): string {
   if (n == null) return "POR";
   if (n >= 1_000_000) return `R ${(n / 1_000_000).toFixed(1)}M`;
@@ -130,6 +172,8 @@ function formatFullPrice(n: number | null): string {
 export default function MapView({
   properties,
   mergedPins,
+  forSalePolygons,
+  ungeocoded,
   isAdmin,
   mapboxToken,
   stats,
@@ -137,6 +181,8 @@ export default function MapView({
 }: {
   properties: MapProperty[];
   mergedPins: MergedPin[];
+  forSalePolygons: ForSalePolygon[];
+  ungeocoded: UngeocodedExternal[];
   isAdmin: boolean;
   mapboxToken: string;
   stats: Stats;
@@ -414,6 +460,152 @@ export default function MapView({
     }
   }, [showErf]);
 
+  // Plan 005: for-sale cadastral polygon fill + ungeocoded-external dots.
+  // Installed on 'styledata' (re-fires when basemap changes) and whenever
+  // forSalePolygons or ungeocoded arrays change. Layers are torn down and
+  // re-added on each update so colour assignments stay in sync.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const forSalePrclKeys = forSalePolygons.map((r) => r.prclKey);
+
+    function installForSaleLayers(m: mapboxgl.Map) {
+      // Parcels source must already be present (added by installErfLayer).
+      // If the style hasn't loaded the parcel source yet, installErfLayer's
+      // 'styledata' handler will fire again and re-install; we piggyback.
+      if (!m.getSource("parcels")) return;
+
+      // Tear down previous for-sale layers so we can re-add with fresh data.
+      for (const id of ["for-sale-outline", "for-sale-fill"]) {
+        if (m.getLayer(id)) m.removeLayer(id);
+      }
+
+      if (forSalePolygons.length > 0) {
+        m.addLayer(
+          {
+            id: "for-sale-fill",
+            type: "fill",
+            source: "parcels",
+            "source-layer": "parcels",
+            minzoom: 14,
+            filter: ["in", ["get", "prcl_key"], ["literal", forSalePrclKeys]],
+            paint: {
+              "fill-color": buildMatchExpr(forSalePolygons),
+              "fill-opacity": 0.35,
+            },
+          },
+          "parcels-line", // insert BEFORE outline so line renders above fill
+        );
+
+        m.addLayer({
+          id: "for-sale-outline",
+          type: "line",
+          source: "parcels",
+          "source-layer": "parcels",
+          minzoom: 14,
+          filter: ["in", ["get", "prcl_key"], ["literal", forSalePrclKeys]],
+          paint: {
+            "line-color": buildMatchExpr(forSalePolygons),
+            "line-width": ["interpolate", ["linear"], ["zoom"], 14, 1.5, 18, 3],
+            "line-opacity": 1.0,
+          },
+        });
+      }
+
+      // Click + hover on the fill layer.
+      if (m.getLayer("for-sale-fill")) {
+        // Build a lookup map from prclKey → ForSalePolygon for click handler.
+        const prclLookup = new Map<string, ForSalePolygon>(
+          forSalePolygons.map((r) => [r.prclKey, r]),
+        );
+        m.on("click", "for-sale-fill", (e) => {
+          const feature = e.features?.[0];
+          if (!feature) return;
+          const pk = feature.properties?.prcl_key as string | undefined;
+          if (!pk) return;
+          const poly = prclLookup.get(pk);
+          if (!poly) return;
+          // Resolve to the merged pin key so the existing preview panel works.
+          const matchedPin = poly.propertyId
+            ? mergedPins.find((p) => p.matchedPropertyId === poly.propertyId || p.our?.id === poly.propertyId)
+            : poly.listingId
+            ? mergedPins.find((p) => p.externals.some((ex) => ex.id === poly.listingId))
+            : null;
+          if (matchedPin) setSelectedKey(matchedPin.key);
+        });
+        m.on("mouseenter", "for-sale-fill", () => {
+          m.getCanvas().style.cursor = "pointer";
+        });
+        m.on("mouseleave", "for-sale-fill", () => {
+          m.getCanvas().style.cursor = "";
+        });
+      }
+
+      // Ungeocoded externals: GeoJSON circle layer.
+      if (m.getSource("ungeocoded-externals")) {
+        (m.getSource("ungeocoded-externals") as mapboxgl.GeoJSONSource).setData({
+          type: "FeatureCollection",
+          features: ungeocoded.map((u) => ({
+            type: "Feature" as const,
+            geometry: { type: "Point" as const, coordinates: [u.lng, u.lat] },
+            properties: { id: u.id, source: u.source, price: u.price, headline: u.headline },
+          })),
+        });
+      } else {
+        m.addSource("ungeocoded-externals", {
+          type: "geojson",
+          data: {
+            type: "FeatureCollection",
+            features: ungeocoded.map((u) => ({
+              type: "Feature" as const,
+              geometry: { type: "Point" as const, coordinates: [u.lng, u.lat] },
+              properties: { id: u.id, source: u.source, price: u.price, headline: u.headline },
+            })),
+          },
+        });
+        m.addLayer({
+          id: "ungeocoded-dots",
+          type: "circle",
+          source: "ungeocoded-externals",
+          paint: {
+            "circle-radius": ["interpolate", ["linear"], ["zoom"], 10, 3, 16, 6],
+            "circle-color": "#8090B5",
+            "circle-opacity": 0.5,
+            "circle-stroke-width": 1,
+            "circle-stroke-color": "#132B84",
+            "circle-stroke-opacity": 0.6,
+          },
+        });
+
+        m.on("click", "ungeocoded-dots", (e) => {
+          const feature = e.features?.[0];
+          if (!feature) return;
+          const extId = feature.properties?.id as string | undefined;
+          if (!extId) return;
+          const matchedPin = mergedPins.find((p) =>
+            p.externals.some((ex) => ex.id === extId),
+          );
+          if (matchedPin) setSelectedKey(matchedPin.key);
+        });
+        m.on("mouseenter", "ungeocoded-dots", () => {
+          m.getCanvas().style.cursor = "pointer";
+        });
+        m.on("mouseleave", "ungeocoded-dots", () => {
+          m.getCanvas().style.cursor = "";
+        });
+      }
+    }
+
+    if (map.isStyleLoaded()) installForSaleLayers(map);
+    const onStyleData = () => installForSaleLayers(map);
+    map.on("styledata", onStyleData);
+    return () => {
+      map.off("styledata", onStyleData);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [forSalePolygons, ungeocoded]);
+
   // Split-duplicates mode: expand each merged pin into one pin per source.
   // The split rows sit at the same coord with a tiny angular offset so the
   // clicks don't overlap perfectly.
@@ -429,9 +621,20 @@ export default function MapView({
     sourcesShown: SourceKey[];  // which source stack to render
   };
 
+  // Plan 005: strip out pins for properties / externals that have a prcl_key
+  // and will render as cadastral polygons. Only properties with NO prcl_key on
+  // both their OS record and all externals still need a pin.
+  const pinnedPins = useMemo(
+    () =>
+      visiblePins.filter(
+        (p) => !p.our?.prclKey && !p.externals.some((e) => !!e.prclKey),
+      ),
+    [visiblePins],
+  );
+
   const renderPins: RenderPin[] = useMemo(() => {
     const out: RenderPin[] = [];
-    for (const pin of visiblePins) {
+    for (const pin of pinnedPins) {
       const activeSources = pin.sources.filter((s) => enabledSources.has(s));
       if (activeSources.length === 0) continue;
 
@@ -496,7 +699,7 @@ export default function MapView({
       });
     }
     return out;
-  }, [visiblePins, enabledSources, splitDupes]);
+  }, [pinnedPins, enabledSources, splitDupes]);
 
   // Sync markers to renderPins.
   useEffect(() => {
@@ -869,21 +1072,41 @@ export default function MapView({
 
         {renderPins.length > 0 && (
           <div className="map-legend">
-            {MANDATE_ORDER.filter((m) => (mandateCounts.get(m) ?? 0) > 0).map((m) => (
-              <div key={m} className={`row mandate-${m}`}>
-                <span className="sw" />
-                <span style={{ textTransform: "capitalize" }}>{m.replace("_", " ")}</span>
-              </div>
-            ))}
-            {(sourceCounts.get("dream_website") ?? 0) > 0 && (
-              <div className="row dw">
-                <span className="sw" />
-                <span>Dream website</span>
-              </div>
-            )}
-            <div className="row market">
-              <span className="sw" />
-              <span>Market only</span>
+            {/* Plan 005: cadastral polygon legend — 6 fill states + 1 dot entry */}
+            <div className="row" style={{ "--m-fill": STATE_COLORS.os_exclusive } as React.CSSProperties}>
+              <span className="sw" style={{ background: STATE_COLORS.os_exclusive, borderRadius: 3 }} />
+              <span>Exclusive</span>
+            </div>
+            <div className="row" style={{ "--m-fill": STATE_COLORS.os_joint } as React.CSSProperties}>
+              <span className="sw" style={{ background: STATE_COLORS.os_joint, borderRadius: 3 }} />
+              <span>Joint</span>
+            </div>
+            <div className="row" style={{ "--m-fill": STATE_COLORS.os_sold } as React.CSSProperties}>
+              <span className="sw" style={{ background: STATE_COLORS.os_sold, borderRadius: 3 }} />
+              <span>Sold</span>
+            </div>
+            <div className="row" style={{ "--m-fill": STATE_COLORS.os_under_offer } as React.CSSProperties}>
+              <span className="sw" style={{ background: STATE_COLORS.os_under_offer, borderRadius: 3 }} />
+              <span>Under Offer</span>
+            </div>
+            <div className="row" style={{ "--m-fill": STATE_COLORS.os_other } as React.CSSProperties}>
+              <span className="sw" style={{ background: STATE_COLORS.os_other, borderRadius: 3 }} />
+              <span>Sole / Open / None</span>
+            </div>
+            <div className="row" style={{ "--m-fill": STATE_COLORS.market } as React.CSSProperties}>
+              <span className="sw" style={{ background: STATE_COLORS.market, borderRadius: 3 }} />
+              <span>Market (P24 / PP)</span>
+            </div>
+            <div className="row">
+              <span className="sw" style={{
+                background: "#8090B5",
+                borderRadius: "50%",
+                opacity: 0.5,
+                border: "1px solid #132B84",
+                width: 10,
+                height: 10,
+              }} />
+              <span>Market — location only</span>
             </div>
           </div>
         )}

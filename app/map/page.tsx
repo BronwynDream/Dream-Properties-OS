@@ -7,6 +7,8 @@ import MapView, {
   type MergedPin,
   type ExternalRef,
   type SourceKey,
+  type ForSalePolygon,
+  type UngeocodedExternal,
 } from "./MapView";
 
 export const dynamic = "force-dynamic";
@@ -41,7 +43,7 @@ export default async function MapPage() {
   const { data: propsData } = await supabase
     .from("property")
     .select(
-      "id, primary_address, title_deed_no, lng, lat, geo_manual, extent_sqm, suburb:suburb_id(name)",
+      "id, primary_address, title_deed_no, lng, lat, geo_manual, extent_sqm, prcl_key, suburb:suburb_id(name)",
     );
   const properties = (propsData ?? []) as any[];
 
@@ -71,7 +73,7 @@ export default async function MapPage() {
   const { data: externalData } = await supabase
     .from("external_listing")
     .select(
-      "id, source, source_ref, url, headline, address_raw, suburb, price, image_url, agency_name, lat, lng, matched_property_id, dedup_group_id",
+      "id, source, source_ref, url, headline, address_raw, suburb, price, image_url, agency_name, lat, lng, prcl_key, matched_property_id, dedup_group_id",
     )
     .eq("active", true);
   const externals = (externalData ?? []) as any[];
@@ -103,6 +105,7 @@ export default async function MapPage() {
       transferStatus: latestTransfer?.status ?? null,
       transferDate: latestTransfer?.transfer_date ?? null,
       transferCount: propTransfers.length,
+      prclKey: p.prcl_key ?? null,
     };
   });
 
@@ -153,6 +156,7 @@ export default async function MapPage() {
       agencyName: e.agency_name ?? null,
       lat: e.lat != null ? Number(e.lat) : null,
       lng: e.lng != null ? Number(e.lng) : null,
+      prclKey: e.prcl_key ?? null,
     };
 
     // Case 1 — matched to one of our properties. A matched listing collapses
@@ -252,6 +256,68 @@ export default async function MapPage() {
     ...singletonPins,
   ];
 
+  // -------------------------------------------------------------------------
+  // For-sale polygon data (Plan 005): properties and externals that have a
+  // prcl_key bridge to the cadastral_parcel table. These render as coloured
+  // erf polygons at z≥14 instead of (or in addition to) pins.
+  // -------------------------------------------------------------------------
+  function deriveOsState(r: MapProperty): ForSalePolygon["state"] {
+    if (r.transferStatus === "registered") return "os_sold";
+    if (r.transferStatus === "under_offer" || r.listingStatus === "under_offer") return "os_under_offer";
+    if (r.mandateType === "exclusive") return "os_exclusive";
+    if (r.mandateType === "joint") return "os_joint";
+    return "os_other";
+  }
+
+  const forSalePolygons: ForSalePolygon[] = [];
+
+  // OS properties with a prcl_key.
+  for (const r of rows) {
+    if (!r.prclKey) continue;
+    forSalePolygons.push({
+      prclKey: r.prclKey,
+      state: deriveOsState(r),
+      propertyId: r.id,
+      price: r.askingPrice ?? undefined,
+      headline: r.listingHeadline ?? undefined,
+    });
+  }
+
+  // External listings with a prcl_key that are NOT matched to one of our OS
+  // properties (those are already captured above).
+  const osPrclKeys = new Set(rows.map((r) => r.prclKey).filter(Boolean));
+  for (const e of externals) {
+    if (!e.prcl_key) continue;
+    if (osPrclKeys.has(e.prcl_key)) continue;
+    if (e.source !== "property24" && e.source !== "private_property") continue;
+    forSalePolygons.push({
+      prclKey: e.prcl_key,
+      state: "market",
+      listingId: e.id,
+      price: e.price != null ? Number(e.price) : undefined,
+      headline: e.headline ?? undefined,
+    });
+  }
+
+  // Ungeocoded externals: have lat/lng but no prcl_key — rendered as discreet
+  // dots on the map at all zoom levels.
+  const ungeocoded: UngeocodedExternal[] = externals
+    .filter(
+      (e) =>
+        !e.prcl_key &&
+        e.lat != null &&
+        e.lng != null &&
+        (e.source === "property24" || e.source === "private_property"),
+    )
+    .map((e) => ({
+      id: e.id,
+      source: e.source as "property24" | "private_property",
+      lng: Number(e.lng),
+      lat: Number(e.lat),
+      price: e.price != null ? Number(e.price) : null,
+      headline: e.headline ?? null,
+    }));
+
   const totalCount = rows.length;
   const geoCount = rows.filter((r) => r.lng != null && r.lat != null).length;
   const missingCount = totalCount - geoCount;
@@ -276,6 +342,8 @@ export default async function MapPage() {
       <MapView
         properties={rows}
         mergedPins={mergedPins}
+        forSalePolygons={forSalePolygons}
+        ungeocoded={ungeocoded}
         isAdmin={isAdmin}
         mapboxToken={mapboxToken}
         stats={{ total: totalCount, geocoded: geoCount, missing: missingCount }}
