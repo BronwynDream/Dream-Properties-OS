@@ -881,7 +881,16 @@ export default function MapView({
       try {
         const res = await geocodeMissingProperties();
         if (!res.ok) setGeocodeMsg(res.error ?? "geocode failed");
-        else setGeocodeMsg(`Geocoded ${res.geocoded ?? 0} · ${res.failed ?? 0} failed. Reload to see pins.`);
+        else {
+          const snapTotal =
+            (res.erfSnapped ?? 0) + (res.propertiesSnapped ?? 0) + (res.listingsSnapped ?? 0);
+          const snapPart = snapTotal > 0
+            ? ` · snapped ${res.erfSnapped ?? 0} by erf + ${res.propertiesSnapped ?? 0} properties + ${res.listingsSnapped ?? 0} externals to cadastre`
+            : "";
+          setGeocodeMsg(
+            `Geocoded ${res.geocoded ?? 0} · ${res.failed ?? 0} failed${snapPart}. Reload to see pins.`,
+          );
+        }
       } catch (e) {
         setGeocodeMsg(`Geocode threw: ${(e as Error).message}`);
       }

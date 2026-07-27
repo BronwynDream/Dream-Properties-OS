@@ -5,7 +5,15 @@ import { createClient } from "@/lib/supabase/server";
 
 const MAPBOX_GEOCODE = "https://api.mapbox.com/search/geocode/v6/forward";
 
-type GeocodeResult = { ok: boolean; geocoded?: number; failed?: number; error?: string };
+type GeocodeResult = {
+  ok: boolean;
+  geocoded?: number;
+  failed?: number;
+  erfSnapped?: number;
+  propertiesSnapped?: number;
+  listingsSnapped?: number;
+  error?: string;
+};
 
 // Geocode all properties that have a primary_address but no lat/lng.
 // Called by the "Geocode all" button on /map. Admin-only.
@@ -91,8 +99,33 @@ export async function geocodeMissingProperties(): Promise<GeocodeResult> {
     }
   }
 
+  // After geocoding, run the bulk snap-to-cadastre passes so every newly-
+  // geocoded property (and every existing property/external_listing without
+  // prcl_key) gets bound to its containing cadastral_parcel. Without this,
+  // the plan-005 polygon layer renders as pins for anything missing prcl_key.
+  //
+  // Both RPCs are idempotent (they skip already-snapped rows). Combined call
+  // takes seconds even against the full Knysna + George cadastre.
+  let erfSnapped = 0;
+  let propertiesSnapped = 0;
+  let listingsSnapped = 0;
+  try {
+    const { data: erfData } = await supabase.rpc("snap_all_properties_by_erf");
+    const erfRow = Array.isArray(erfData) ? erfData[0] : erfData;
+    erfSnapped = Number(erfRow?.snapped ?? 0);
+
+    const { data: containData } = await supabase.rpc("snap_all_to_parcels");
+    const containRow = Array.isArray(containData) ? containData[0] : containData;
+    propertiesSnapped = Number(containRow?.properties_snapped ?? 0);
+    listingsSnapped = Number(containRow?.listings_snapped ?? 0);
+  } catch (e) {
+    console.error("[geocode-missing] snap RPCs failed:", (e as Error).message);
+    // Non-fatal — the geocoding succeeded even if snap didn't. Row-level
+    // snapping still runs via the per-erf trigger on future writes.
+  }
+
   revalidatePath("/map");
-  return { ok: true, geocoded, failed };
+  return { ok: true, geocoded, failed, erfSnapped, propertiesSnapped, listingsSnapped };
 }
 
 // Admin-only manual pin move — called by the "Adjust pin" control in the
