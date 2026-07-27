@@ -38,9 +38,13 @@ export type ApplyResult = {
 
 // SG21 synthesis for Full GV rows without an SG21 in the PDF.
 // Deterministic so re-parsing the same PDF produces the same keys.
-function syntheticSg(erf: string, ptn: number, town: string): string {
+// MUST include unit — sectional-title schemes list one row per unit with
+// the same (erf, portion) tuple, and if unit isn't part of the key, all
+// N units collapse onto one sg_number and the batch upsert throws
+// "ON CONFLICT DO UPDATE command cannot affect row a second time".
+function syntheticSg(erf: string, ptn: number, unit: number, town: string): string {
   const t = town.replace(/\s+/g, "_").toUpperCase();
-  return `GV:${erf}:${ptn}:${t}`;
+  return `GV:${erf}:${ptn}:${unit}:${t}`;
 }
 
 function chunk<T>(a: T[], size: number): T[][] {
@@ -84,21 +88,28 @@ export async function applyFullGv(
     if (!existingBy.has(k)) existingBy.set(k, p.sg_number);
   }
 
-  // Prepare property upserts + valuation inserts.
-  const propRows: Record<string, unknown>[] = [];
+  // Prepare property upserts + valuation inserts. Property rows go into a
+  // Map keyed by sg_number so any accidental duplicates within a single
+  // apply run naturally collapse to last-write-wins BEFORE we batch — that
+  // way a batch of 500 is guaranteed to have unique sg_numbers, which is
+  // what ON CONFLICT DO UPDATE requires. Duplicates can arise even after
+  // the syntheticSg unit-fix if:
+  //   - the GV has a truly duplicated row (rare but seen),
+  //   - existingBy.get() maps two isSimple GV rows onto the same ArcGIS
+  //     sg_number (shouldn't happen once (erf, ptn, unit, town) is unique,
+  //     but defensive belt-and-braces).
+  const propBySg = new Map<string, Record<string, unknown>>();
   const valRows: Record<string, unknown>[] = [];
-  const sgList: string[] = [];
 
   for (const r of rows) {
     const isSimple = r.portion === 0 && r.unit === 0;
     let sg = isSimple ? existingBy.get(`${r.erf_number}|${r.town}`) : undefined;
     if (!sg) {
-      sg = syntheticSg(r.erf_number, r.portion, r.town);
+      sg = syntheticSg(r.erf_number, r.portion, r.unit, r.town);
       if (sg.startsWith("GV:")) result.synthetic_sg_created++;
     }
-    sgList.push(sg);
 
-    propRows.push({
+    propBySg.set(sg, {
       sg_number: sg,
       erf_number: r.erf_number,
       town_name: r.town,
@@ -128,6 +139,8 @@ export async function applyFullGv(
     });
     if (r.is_marker) result.markers_stored++;
   }
+  const propRows = Array.from(propBySg.values());
+  const sgList = Array.from(propBySg.keys());
 
   // Upsert properties in batches. onConflict on sg_number — new rows insert,
   // existing rows update.
