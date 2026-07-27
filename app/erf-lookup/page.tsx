@@ -23,8 +23,12 @@ export const dynamic = "force-dynamic";
 
 type Search = { q?: string; suburb?: string };
 
+// muni_valuation moved to its own table in migration 0049 — the underlying
+// muni_property row no longer has valuation / tariff / area_sqm_valroll
+// columns. Read them via the nested join and let the result-rendering step
+// sum them for the headline number.
 const RESULT_COLS =
-  "sg_number, erf_number, muni_erf_code, street_no, street_name, suburb, suburb_hint, tariff, muni_valuation, zoning, ward_no, sectional_title_flag, usage_, area_sqm_valroll, extent_sqm, property_type, sect_scheme_name, sect_scheme_unit, title_deed_no, old_title_deed_no, deeds_office, purch_date, registration_date, purch_price, bond_number, bond_amount, bond_institution, refreshed_at";
+  "sg_number, erf_number, muni_erf_code, street_no, street_name, suburb, suburb_hint, zoning, ward_no, sectional_title_flag, usage_, extent_sqm, property_type, sect_scheme_name, sect_scheme_unit, title_deed_no, old_title_deed_no, deeds_office, purch_date, registration_date, purch_price, bond_number, bond_amount, bond_institution, refreshed_at, valuations:muni_valuation(tariff, valuation, area_sqm)";
 
 function looksNumericErf(q: string): boolean {
   return /^\d{1,7}$/.test(q.trim());
@@ -43,6 +47,33 @@ function parseAddress(q: string): { streetNo: string | null; tokens: string[] } 
     .filter((t) => t.length >= 2)
     .map((t) => t.replace(/[%_]/g, (c) => `\\${c}`));
   return { streetNo, tokens };
+}
+
+// Collapse the nested `valuations` array into (a) a total for the compact
+// row headline and (b) a breakdown array for the detail panel. Sentinel
+// '__none__' tariff is stripped back to null for display so users don't
+// see the internal token.
+type ValuationRow = { tariff: string; valuation: number | null; area_sqm: number | null };
+function shapeRow(raw: any): any {
+  const valuations: ValuationRow[] = Array.isArray(raw.valuations)
+    ? raw.valuations.map((v: any) => ({
+        tariff: v.tariff === "__none__" ? null : v.tariff,
+        valuation: v.valuation != null ? Number(v.valuation) : null,
+        area_sqm: v.area_sqm != null ? Number(v.area_sqm) : null,
+      }))
+    : [];
+  const total = valuations.reduce(
+    (sum, v) => (v.valuation != null ? sum + v.valuation : sum),
+    0,
+  );
+  return {
+    ...raw,
+    valuations,
+    muni_valuation_total: valuations.length > 0 ? total : null,
+    // Preferred extent = deed extent, fallback = valuation-roll area (which
+    // now comes from the sum-first valuation row).
+    area_sqm_valroll: valuations[0]?.area_sqm ?? null,
+  };
 }
 
 async function fetchDistinctSuburbs(supabase: any): Promise<string[]> {
@@ -90,7 +121,7 @@ export default async function ErfLookupPage({
         .order("suburb", { ascending: true })
         .order("street_no", { ascending: true })
         .limit(200);
-      rows = data ?? [];
+      rows = (data ?? []).map(shapeRow);
     } else {
       mode = "address";
       const { streetNo, tokens } = parseAddress(q);
@@ -111,7 +142,7 @@ export default async function ErfLookupPage({
         .order("street_name", { ascending: true })
         .order("street_no", { ascending: true })
         .limit(200);
-      rows = data ?? [];
+      rows = (data ?? []).map(shapeRow);
     }
   }
 

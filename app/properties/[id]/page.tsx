@@ -62,8 +62,13 @@ export default async function PropertyRecord({
   const sgNumbers = ervenRows.map((e) => e.sg_number).filter(Boolean) as string[];
   const erfsWithoutSg = ervenRows.filter((e) => !e.sg_number).map((e) => e.erf_number).filter(Boolean);
 
+  // Post-0049: muni_valuation moved to its own child table. Pull the per-
+  // tariff rows in the same round-trip via PostgREST nested embed and
+  // compute a total + surface the primary tariff for the hero. `tariff`
+  // and `area_sqm_valroll` fall out of this join too (first valuation row
+  // wins for display).
   const muniSelect =
-    "sg_number, erf_number, muni_erf_code, street_no, street_name, suburb_hint, suburb, tariff, muni_valuation, zoning, ward_no, sectional_title_flag, usage_, prop_description, town_name, area_sqm_valroll, extent_sqm, property_type, sect_scheme_name, sect_scheme_unit, title_deed_no, old_title_deed_no, deeds_office, purch_date, registration_date, purch_price, bond_number, bond_amount, bond_institution, refreshed_at";
+    "sg_number, erf_number, muni_erf_code, street_no, street_name, suburb_hint, suburb, zoning, ward_no, sectional_title_flag, usage_, prop_description, town_name, extent_sqm, property_type, sect_scheme_name, sect_scheme_unit, title_deed_no, old_title_deed_no, deeds_office, purch_date, registration_date, purch_price, bond_number, bond_amount, bond_institution, refreshed_at, valuations:muni_valuation(tariff, valuation, area_sqm)";
 
   const muniBySg = sgNumbers.length
     ? (await supabase.from("muni_property").select(muniSelect).in("sg_number", sgNumbers)).data ?? []
@@ -72,13 +77,32 @@ export default async function PropertyRecord({
     ? (await supabase.from("muni_property").select(muniSelect).in("erf_number", erfsWithoutSg)).data ?? []
     : [];
   // De-dupe by sg_number in case an erf_number match also came through SG.
+  // Then flatten valuations: sum for the headline muni_valuation number and
+  // expose the primary tariff / roll-area so the rest of the page keeps its
+  // existing field access shape.
   const seenSgs = new Set<string>();
   const muniRecords: any[] = [];
-  for (const row of [...muniBySg, ...muniByErf]) {
-    const key = (row as any).sg_number;
+  for (const raw of [...muniBySg, ...muniByErf]) {
+    const key = (raw as any).sg_number;
     if (!key || seenSgs.has(key)) continue;
     seenSgs.add(key);
-    muniRecords.push(row);
+    const vals = Array.isArray((raw as any).valuations) ? (raw as any).valuations : [];
+    const total = vals.reduce(
+      (sum: number, v: any) => (v?.valuation != null ? sum + Number(v.valuation) : sum),
+      0,
+    );
+    const primaryTariff = vals[0]?.tariff === "__none__" ? null : vals[0]?.tariff ?? null;
+    muniRecords.push({
+      ...(raw as any),
+      muni_valuation: vals.length > 0 ? total : null,
+      tariff: primaryTariff,
+      area_sqm_valroll: vals[0]?.area_sqm ?? null,
+      valuations_breakdown: vals.map((v: any) => ({
+        tariff: v.tariff === "__none__" ? null : v.tariff,
+        valuation: v.valuation != null ? Number(v.valuation) : null,
+        area_sqm: v.area_sqm != null ? Number(v.area_sqm) : null,
+      })),
+    });
   }
 
   // Try the post-0033 schema first (sold_by, sold_by_note). If those columns

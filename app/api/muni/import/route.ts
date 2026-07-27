@@ -142,7 +142,7 @@ async function runImport(request: Request) {
 
   const service = createServiceClient();
   const startedAt = Date.now();
-  const counts = { finance: 0, valroll: 0, deeds: 0 };
+  const counts = { finance: 0, valroll: 0, valuations: 0, deeds: 0 };
 
   try {
     // --- Pass 1: Finance System (57) — address, zoning, ward, sect flag ---
@@ -179,27 +179,94 @@ async function runImport(request: Request) {
       counts.finance += count ?? chunk.length;
     }
 
-    // --- Pass 2: Valuation Roll (58) — suburb (structured!), tariff, valuation ---
+    // --- Pass 2: Valuation Roll (58) — suburb, tariff, valuation ---
+    // Layer 58 is inherently 1:many per SG21 — a single erf can be rated
+    // under multiple tariff categories (e.g. main residential + B&B/granny
+    // flat). Identity fields (sg_number, erf, suburb) go into muni_property
+    // deduped one-per-SG; every tariff row goes into muni_valuation as its
+    // own record so the true total = SUM(muni_valuation.valuation).
     const valroll = await fetchAll(58, "SG_NUMBER,SUBURB,TARIFF,AREA,VALUATION,ERF__");
-    const valrollRows = dedupeBySg(
+
+    // muni_property identity slice — deduped per SG.
+    const valrollIdentityRows = dedupeBySg(
       valroll
         .filter((r) => safeStr(r.SG_NUMBER))
         .map((r) => ({
           sg_number: String(r.SG_NUMBER).trim(),
           erf_number: safeStr(r.ERF__) ?? erfFromSg(String(r.SG_NUMBER)),
           suburb: safeStr(r.SUBURB),
-          tariff: safeStr(r.TARIFF),
-          area_sqm_valroll: safeInt(r.AREA),
-          muni_valuation: safeNum(r.VALUATION),
           refreshed_at: new Date().toISOString(),
         })),
     );
-    for (const chunk of chunks(valrollRows, 500)) {
+    for (const chunk of chunks(valrollIdentityRows, 500)) {
       const { error, count } = await service
         .from("muni_property")
         .upsert(chunk, { onConflict: "sg_number", count: "exact" });
-      if (error) throw new Error(`valroll upsert: ${error.message}`);
+      if (error) throw new Error(`valroll identity upsert: ${error.message}`);
       counts.valroll += count ?? chunk.length;
+    }
+
+    // muni_valuation per-tariff rows — NOT deduped. Each tariff category
+    // gets its own row. Delete-then-insert per SG (bulk) so stale tariff
+    // rows from a previous run can't linger if a category was removed.
+    const perSgValuations = new Map<string, {
+      sg_number: string;
+      tariff: string;
+      valuation: number | null;
+      area_sqm: number | null;
+      refreshed_at: string;
+    }[]>();
+    for (const r of valroll) {
+      const sg = safeStr(r.SG_NUMBER);
+      if (!sg) continue;
+      const val = safeNum(r.VALUATION);
+      const tariff = safeStr(r.TARIFF) ?? "__none__";
+      const arr = perSgValuations.get(sg) ?? [];
+      arr.push({
+        sg_number: sg,
+        tariff,
+        valuation: val,
+        area_sqm: safeInt(r.AREA),
+        refreshed_at: new Date().toISOString(),
+      });
+      perSgValuations.set(sg, arr);
+    }
+    // Delete existing valuation rows for every SG we're about to write,
+    // then insert fresh. Batching by SG keeps the .in() call sizes sane.
+    const sgList = Array.from(perSgValuations.keys());
+    for (const chunk of chunks(sgList, 500)) {
+      const { error: delErr } = await service
+        .from("muni_valuation")
+        .delete()
+        .in("sg_number", chunk);
+      if (delErr) throw new Error(`muni_valuation delete: ${delErr.message}`);
+    }
+    // Insert all fresh rows. Within a single (sg, tariff) pair the source
+    // should be unique; if it isn't, the UNIQUE constraint would throw —
+    // dedupe defensively by (sg, tariff) here so we don't fail the whole
+    // import on an upstream data glitch.
+    const seenPairs = new Set<string>();
+    const valuationRows: {
+      sg_number: string;
+      tariff: string;
+      valuation: number | null;
+      area_sqm: number | null;
+      refreshed_at: string;
+    }[] = [];
+    for (const rows of perSgValuations.values()) {
+      for (const row of rows) {
+        const key = `${row.sg_number}|${row.tariff}`;
+        if (seenPairs.has(key)) continue;
+        seenPairs.add(key);
+        valuationRows.push(row);
+      }
+    }
+    for (const chunk of chunks(valuationRows, 500)) {
+      const { error, count } = await service
+        .from("muni_valuation")
+        .insert(chunk, { count: "exact" });
+      if (error) throw new Error(`muni_valuation insert: ${error.message}`);
+      counts.valuations += count ?? chunk.length;
     }
 
     // --- Pass 3: Ownership Deeds (56) — extent, title deed, sect scheme, purchase ---
