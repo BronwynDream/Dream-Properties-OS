@@ -1071,13 +1071,18 @@ export default function MapView({
       <div className="map-stage">
         <div ref={containerRef} className="map-canvas" />
 
-        {isAdmin && stats.missing > 0 && (
+        {isAdmin && (
           <div className="geocode-bar">
             <span>
-              <b>{stats.geocoded}</b> / {stats.total} pinned · {stats.missing} missing coords
+              <b>{stats.geocoded}</b> / {stats.total} pinned
+              {stats.missing > 0 ? ` · ${stats.missing} missing coords` : ""}
             </span>
             <button type="button" onClick={runGeocode} disabled={pending}>
-              {pending ? "Geocoding…" : "Geocode all"}
+              {pending
+                ? "Working…"
+                : stats.missing > 0
+                ? "Geocode + snap"
+                : "Snap to cadastre"}
             </button>
           </div>
         )}
