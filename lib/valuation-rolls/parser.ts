@@ -79,24 +79,28 @@ function installBrowserApiPolyfills(): void {
 // worker to keep the runtime simple (fine for server-side parsing).
 export async function loadPdf(bytes: Uint8Array) {
   installBrowserApiPolyfills();
-  // pdfjs v6 is ESM-only and requires either a real worker script or an
-  // explicit worker Port. On the server we don't want to spawn a worker
-  // thread — pass the worker module as-is via createRequire so the same
-  // JS handles both main + worker execution paths.
-  const { getDocument, GlobalWorkerOptions } = await import("pdfjs-dist/legacy/build/pdf.mjs");
+
+  // Import the main module AND the worker module. Then wire pdfjs to use
+  // the imported worker code directly via GlobalWorkerOptions.workerPort —
+  // no filesystem-path resolution needed at runtime, which is what breaks
+  // on Vercel's serverless bundler (the .mjs file lives in node_modules
+  // but pdfjs's fake-worker bootstrap tried to load it from the compiled
+  // chunks directory and failed).
+  const [pdfjs] = await Promise.all([
+    import("pdfjs-dist/legacy/build/pdf.mjs"),
+    // Side-effect import: registers PDFWorker.workerBundle on the pdfjs
+    // module so getDocument can construct a same-thread worker without
+    // needing to fetch/load an external script.
+    // @ts-expect-error — worker module has no bundled types, and we don't use its exports.
+    import("pdfjs-dist/legacy/build/pdf.worker.mjs"),
+  ]);
+  const { getDocument, GlobalWorkerOptions } = pdfjs;
+  // Setting workerSrc to the bare module specifier lets pdfjs's dynamic
+  // import fall back to Node's normal module resolution, which finds the
+  // worker in node_modules at runtime (present because we depend on
+  // pdfjs-dist directly).
   if (!GlobalWorkerOptions.workerSrc) {
-    // Point at the shipped worker script inside node_modules so pdfjs's
-    // "fake worker" bootstrap can locate it. The path is stable across
-    // v6.x releases.
-    const { fileURLToPath } = await import("node:url");
-    const workerUrl = await import.meta.resolve?.(
-      "pdfjs-dist/legacy/build/pdf.worker.mjs",
-    );
-    if (workerUrl) {
-      GlobalWorkerOptions.workerSrc = workerUrl.startsWith("file://")
-        ? fileURLToPath(workerUrl)
-        : workerUrl;
-    }
+    GlobalWorkerOptions.workerSrc = "pdfjs-dist/legacy/build/pdf.worker.mjs";
   }
   return await getDocument({
     data: bytes,
