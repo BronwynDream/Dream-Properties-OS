@@ -269,12 +269,17 @@ export default async function MapPage() {
     return "os_other";
   }
 
-  const forSalePolygons: ForSalePolygon[] = [];
+  // Dedupe by prclKey — a Mapbox `match` expression rejects duplicate
+  // branch labels, so we must pick exactly one polygon entry per erf.
+  // Priority: OS property > earliest market listing (first-seen wins).
+  const polygonByKey = new Map<string, ForSalePolygon>();
 
-  // OS properties with a prcl_key.
+  // OS properties with a prcl_key. Also handles the rare case of two OS
+  // rows sharing an erf (multi-erf property split etc.) — first wins.
   for (const r of rows) {
     if (!r.prclKey) continue;
-    forSalePolygons.push({
+    if (polygonByKey.has(r.prclKey)) continue;
+    polygonByKey.set(r.prclKey, {
       prclKey: r.prclKey,
       state: deriveOsState(r),
       propertyId: r.id,
@@ -283,14 +288,15 @@ export default async function MapPage() {
     });
   }
 
-  // External listings with a prcl_key that are NOT matched to one of our OS
-  // properties (those are already captured above).
-  const osPrclKeys = new Set(rows.map((r) => r.prclKey).filter(Boolean));
+  // External listings with a prcl_key. Skipped if the erf already has an
+  // OS entry (OS wins). Multiple externals on the same erf collapse to
+  // one polygon (first seen wins) — the extras still show in the pin
+  // preview / sidebar; we just don't paint the erf twice.
   for (const e of externals) {
     if (!e.prcl_key) continue;
-    if (osPrclKeys.has(e.prcl_key)) continue;
+    if (polygonByKey.has(e.prcl_key)) continue;
     if (e.source !== "property24" && e.source !== "private_property") continue;
-    forSalePolygons.push({
+    polygonByKey.set(e.prcl_key, {
       prclKey: e.prcl_key,
       state: "market",
       listingId: e.id,
@@ -298,6 +304,8 @@ export default async function MapPage() {
       headline: e.headline ?? undefined,
     });
   }
+
+  const forSalePolygons: ForSalePolygon[] = Array.from(polygonByKey.values());
 
   // Ungeocoded externals: have lat/lng but no prcl_key — rendered as discreet
   // dots on the map at all zoom levels.
