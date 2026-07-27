@@ -12,9 +12,11 @@ const TABS: Tab[] = [
   { href: "/map", label: "Map" },
   { href: "/properties", label: "Properties" },
   { href: "/contacts", label: "Contacts" },
+  { href: "/mandates", label: "Mandates" },
   { href: "/triage", label: "Triage" },
   { href: "/dupes", label: "Dupes", adminOnly: true },
   { href: "/team", label: "Team", adminOnly: true },
+  { href: "/settings", label: "Settings", adminOnly: true },
 ];
 
 export default function TopBarClient({
