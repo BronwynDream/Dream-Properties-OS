@@ -10,6 +10,7 @@ import {
   centroidForArea,
   inGardenRoute,
 } from "@/lib/external-listings/geocode";
+import { rebuildDedupAndMatch } from "@/lib/external-listings/dedup";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -189,6 +190,7 @@ async function run(request: Request) {
       // LLM extract hallucinates them). Fall back to suburb centroid if
       // geocoding fails or drifts outside the Garden Route bbox.
       let coord: { lng: number; lat: number } | null = null;
+      let usedCentroid = false;
       if (listing.addressRaw) {
         const geo = await geocodeAddress(listing.addressRaw, {
           suburb: listing.suburb,
@@ -197,7 +199,10 @@ async function run(request: Request) {
       }
       if (!coord) {
         const centroid = centroidForArea(listing.addressRaw, listing.suburb);
-        if (centroid) coord = centroid;
+        if (centroid) {
+          coord = centroid;
+          usedCentroid = true;
+        }
       }
 
       const now = new Date().toISOString();
@@ -217,6 +222,7 @@ async function run(request: Request) {
           image_url: listing.imageUrl,
           lat: coord?.lat ?? null,
           lng: coord?.lng ?? null,
+          geocode_source: usedCentroid ? "centroid" : "exact",
           raw: listing.raw,
           last_seen: now,
           active: true,
@@ -235,6 +241,25 @@ async function run(request: Request) {
       }
 
       await new Promise((r) => setTimeout(r, DETAIL_DELAY_MS));
+    }
+
+    // Cluster + match. Same tail step as Dream refresh — rebuilds
+    // dedup_group_id + matched_property_id across ALL active external
+    // listings using the current dedup rules (post-0047, centroid-fallback
+    // rows are excluded from the geo-proximity cluster). Wrapped so a
+    // failure here doesn't blow up the whole refresh — new rows are
+    // already written and the next successful run will catch up.
+    let dedupSummary: { clustered: number; matched: number; groups: number } = {
+      clustered: 0,
+      matched: 0,
+      groups: 0,
+    };
+    try {
+      dedupSummary = await rebuildDedupAndMatch(supabase);
+    } catch (e) {
+      console.error(
+        `[property24] dedup rebuild failed: ${(e as Error).message}`,
+      );
     }
 
     // Count remaining pending URLs for the response note.
@@ -262,6 +287,7 @@ async function run(request: Request) {
       failed,
       remaining,
       budgetExhausted,
+      dedup: dedupSummary,
       durationMs,
       note:
         remaining > 0
