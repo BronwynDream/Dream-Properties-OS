@@ -4,7 +4,97 @@ Running log of what's decided, built, and next. Updated at the end of each worki
 session. `PROJECT.md` remains the canonical business/design doc; this file is the
 "where are we right now" companion.
 
-_Last updated: 2026-07-25_
+_Last updated: 2026-07-27_
+
+---
+
+## /IMPROVE AUDIT + PLANS 001–006 SHIP (2026-07-26 → 2026-07-27)
+
+Two-day arc: ran `/improve` at commit `f3b6711`, six plans emerged, all
+executed via isolated-worktree subagents with reviewer diff-check. Also
+a long Property24 debugging thread and a Vercel Hobby-plan gotcha
+discovery worth remembering.
+
+### Plans shipped
+- **001 Parallel signed URLs** — Property Record fetches document URLs
+  in parallel instead of sequential await. Merged `daf44f0`.
+- **002 Prompt-injection hardening** — extract path sandboxes untrusted
+  document content; auto-commit gated on `ingest_batch.auto_commit_allowed`.
+  Merged `46f6811` + `d994154`. **Migration 0043 pending Studio apply.**
+- **003 Lead Inbox v1** — `/inbox` screen surfaces email-sourced enquiries
+  as leads (not raw batches). TopBar entry between Overview and Map.
+  Merged `a5e0dff` + `6d3bfc0`.
+- **004 Firecrawl Property24 scraper** — new `external_listing` source.
+  Weekly cron `0 5 * * 1` UTC. Admin "Refresh Property24" button. Merged
+  `dd17bd2`. `FIRECRAWL_API_KEY` set on Vercel.
+- **005 Cadastral polygon shading** — `/map` for-sale properties render
+  as shaded ERF polygons instead of pins. `market` state = gold fill.
+  Merged `f4af39e` + `49e9c45`. Migration 0045 APPLIED (task #70).
+- **006 Contact CRM** — `/contacts` party search + role timeline.
+  Multi-field OR search (name, entity, email, phone, ID), URL-synced,
+  paper-hairline aesthetic, POPIA-safe masked IDs. Merged `86baf7f` +
+  `d04a3c6`. Migration 0046 APPLIED 2026-07-27 (pg_trgm indexes live).
+
+### Property24 debugging saga (mid-arc)
+Firecrawl adapter had three compounding bugs surfaced by real Knysna data:
+1. **Wrong area code** — was pulling from area 468 (Beaufort West). Fix:
+   area 322 (verified Knysna). URL regex also matched 5-segment paths
+   and captured suburb-code as listing-id; real URLs are 6 segments.
+2. **Coord hallucination** — Firecrawl's LLM-structured extract fabricates
+   plausible-looking lat/lng (Simola listing pinned near Wilderness).
+   **Fix**: removed lat/lng from Firecrawl extract schema, use Mapbox
+   forward-geocode with Garden Route bbox validation +
+   `centroidForArea()` fallback. `/api/sources/property24/regeocode`
+   one-shot backfill endpoint fixed existing bad rows.
+3. **Silent Vercel deploy skip** — hourly cron `0 * * * *` violated
+   Hobby plan's daily-cron cap. Vercel silently rejected every push for
+   ~4 hours. Discovered via `vercel --prod` CLI: "Hobby accounts are
+   limited to daily cron jobs." Reverted to daily `0 5 * * *`, then
+   weekly `0 5 * * 1` once the URL queue was drained. Saved as memory
+   `vercel-hobby-cron-cap`.
+
+Two migrations shipped for P24: **0044** (URL queue) APPLIED (task #66),
+**0045** (external_listing prcl_key auto-snap trigger) APPLIED (task #70).
+
+### Map polygon layer install (plan 005 stability fix)
+Polygons repeatedly disappeared / basemap flickered because the layer
+install effect subscribed to `styledata`, which fires many times per
+second during interactions. Fix: switch to `style.load` (one-shot on
+genuine style change). Also deduped `forSalePolygons` by `prcl_key`
+with OS-wins priority (Mapbox rejects match-expression with duplicate
+branch labels). Saved as memory `mapbox-style-load-not-styledata`.
+
+### Batch-attach ERFs enhancement
+"Geocode all" button on `/map` now also runs `snap_all_properties_by_erf`
+and `snap_all_to_parcels` RPCs after geocoding, so newly-geocoded
+properties get their `prcl_key` bound and immediately render as
+polygons instead of pins. Button always visible for admins (was gated
+on `stats.missing > 0`, invisible after all 19 OS properties had coords).
+
+### Env changes (Vercel)
+- `FIRECRAWL_API_KEY` — added
+- `CRON_SECRET` — already present, reused
+- No new secrets for plans 001, 003, 005, 006
+
+### Migrations pending Bon Bon's DB
+Apply in order via Supabase Studio:
+- **0041** partial unique erf index (from 2026-07-25 arc)
+- **0042** erf sg_number (from 2026-07-25 arc)
+- **0043** auto_commit_allowed gate (plan 002)
+
+Already applied: **0044, 0045, 0046**.
+
+### Queued for next session
+- Apply 0041 + 0042 + 0043 (Simon, Studio)
+- Cleanup: delete Property24 rows with bad coords/price/URL scope from
+  the pre-fix runs (task #63)
+- Housekeeping bundle from audit's "considered and rejected" list —
+  `!.env.example` gitignore, stale `.property-hero-*` CSS, `deriveLabel`
+  duplication, orphaned `SpendMeter`, silent OCR errors
+- Photo classifier for embedded images in listing PDFs / EMLs (task #49)
+- `/map` focus-on-property URL param (task #50)
+- Muni `usage_` code lookup (task #51)
+- `/map` ERF + address search box (task #52)
 
 ---
 

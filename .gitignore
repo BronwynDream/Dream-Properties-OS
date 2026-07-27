@@ -23,4 +23,9 @@ build/
 .next/
 out/
 next-env.d.ts
+tsconfig.tsbuildinfo
 .vercel
+
+# Sub-agent worktrees (created by Agent tool with isolation: worktree)
+.claude/
+.claire/
