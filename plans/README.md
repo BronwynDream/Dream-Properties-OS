@@ -14,7 +14,7 @@ your row when done.
 | 003  | Lead Inbox v1 — unified view of email-sourced enquiries | P1 | M | 002 | DONE (merged 2026-07-26 as `a5e0dff` + `6d3bfc0`) |
 | 004  | Firecrawl Property24 scraper as a new `external_listing` source | P2 | M | — | DONE (merged 2026-07-26 as `dd17bd2`; `FIRECRAWL_API_KEY` set in Vercel) |
 | 005  | Replace map pins with cadastral polygon shading | P1 | M | — | DONE (merged 2026-07-27 as `f4af39e` + `49e9c45`; migration 0045 pending manual application in Supabase Studio) |
-| 006  | Contact CRM — party search + role timeline | P1 | M | — | TODO |
+| 006  | Contact CRM — party search + role timeline | P1 | M | — | DONE (merged 2026-07-27 as `86baf7f` + `d04a3c6`; migration 0046 pending manual application in Supabase Studio) |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
 
