@@ -13,7 +13,7 @@ your row when done.
 | 002  | Harden LLM extraction against document-borne prompt injection | P1 | M | — | DONE (merged 2026-07-26 as `46f6811` + `d994154`; migration 0043 pending manual application in Supabase Studio) |
 | 003  | Lead Inbox v1 — unified view of email-sourced enquiries | P1 | M | 002 | DONE (merged 2026-07-26 as `a5e0dff` + `6d3bfc0`) |
 | 004  | Firecrawl Property24 scraper as a new `external_listing` source | P2 | M | — | DONE (merged 2026-07-26 as `dd17bd2`; `FIRECRAWL_API_KEY` set in Vercel) |
-| 005  | Replace map pins with cadastral polygon shading | P1 | M | — | TODO |
+| 005  | Replace map pins with cadastral polygon shading | P1 | M | — | DONE (merged 2026-07-27 as `f4af39e` + `49e9c45`; migration 0045 pending manual application in Supabase Studio) |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
 
