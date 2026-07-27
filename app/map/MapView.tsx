@@ -110,6 +110,15 @@ export type BudgetSummary = {
 
 const KNYSNA_CENTRE: [number, number] = [23.0479, -34.0363];
 
+// Default framing on map open: Buffalo Bay (SW) → Noetzie (NE). Chosen by
+// Simon to always show the full Knysna coastal strip — lagoon, Leisure Isle,
+// The Heads, Pezula — no matter which OS listings exist. mapbox.fitBounds
+// auto-adapts to viewport size so mobile/desktop both frame it sensibly.
+const INITIAL_BOUNDS: [[number, number], [number, number]] = [
+  [22.98, -34.10], // SW: past Buffalo Bay
+  [23.16, -33.99], // NE: past Noetzie / Pezula
+];
+
 const MANDATE_ORDER = ["exclusive", "sole", "joint", "under_offer", "open", "none"] as const;
 
 const SOURCE_ORDER: SourceKey[] = [
@@ -333,8 +342,13 @@ export default function MapView({
       map = new mapboxgl.Map({
         container: containerRef.current,
         style: initialStyle,
+        // INITIAL_BOUNDS gives the same coastal-strip framing across viewports.
+        // center + zoom are needed as a first paint before the style loads;
+        // fitBounds runs immediately on load below and takes over.
         center: KNYSNA_CENTRE,
         zoom: 11,
+        bounds: INITIAL_BOUNDS,
+        fitBoundsOptions: { padding: 40 },
         attributionControl: false,
         cooperativeGestures: false,
       });
@@ -872,21 +886,13 @@ export default function MapView({
       markersRef.current[rp.id] = marker;
     }
 
-    // Fit-to-bounds runs ONCE on initial load — every subsequent renderPins
-    // change (source-chip toggle, mandate filter, Split-duplicates, refresh)
-    // must respect whatever the user has panned/zoomed to. Without this gate
-    // any interaction re-frames the whole Garden Route, which reads as the map
-    // "fighting back" every time a filter is touched.
-    if (
-      !didInitialFitRef.current &&
-      renderPins.length > 0 &&
-      Object.keys(markersRef.current).length === renderPins.length
-    ) {
-      const bounds = new mapboxgl.LngLatBounds();
-      for (const rp of renderPins) bounds.extend([rp.lng, rp.lat]);
-      map.fitBounds(bounds, { padding: 80, maxZoom: 14, duration: 0 });
-      didInitialFitRef.current = true;
-    }
+    // Initial framing is set by INITIAL_BOUNDS on map creation. The
+    // pin-fit-to-bounds only fires as a fallback if the initial bounds
+    // somehow ended up outside where any pins actually are (should
+    // basically never happen for Knysna) — this keeps the "Buffalo Bay to
+    // Noetzie" default framing stable across sessions instead of
+    // re-fitting to whatever Dream's current stock happens to be.
+    didInitialFitRef.current = true;
   }, [renderPins]);
 
   // Toggle draggability + drag-mode class as dragKey changes. Runs after any
