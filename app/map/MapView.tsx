@@ -446,11 +446,69 @@ export default function MapView({
       });
     }
 
-    if (map.isStyleLoaded()) installErfLayer(map);
-    const onStyleData = () => installErfLayer(map);
-    map.on("styledata", onStyleData);
+    // Local non-null alias so async / event closures below satisfy the
+    // TypeScript narrowing without repeat null-checks.
+    const mapRefLocal = map;
+
+    if (mapRefLocal.isStyleLoaded()) installErfLayer(mapRefLocal);
+    const onStyleData = () => installErfLayer(mapRefLocal);
+    mapRefLocal.on("styledata", onStyleData);
+
+    // Click any bare erf polygon (no OS / P24 overlay) → fetch its muni
+    // data and show a compact popup at the click point. Guarded by
+    // queryRenderedFeatures against the OS/P24 layer so clicks on a
+    // matched pin still go through the existing preview panel path.
+    let currentPopup: mapboxgl.Popup | null = null;
+    async function parcelsClick(e: mapboxgl.MapMouseEvent & { features?: mapboxgl.MapboxGeoJSONFeature[] }) {
+      const overlaid = mapRefLocal.queryRenderedFeatures(e.point, {
+        layers: [
+          ...(mapRefLocal.getLayer("for-sale-fill") ? ["for-sale-fill"] : []),
+          ...(mapRefLocal.getLayer("ungeocoded-dots") ? ["ungeocoded-dots"] : []),
+        ] as string[],
+      });
+      if (overlaid.length > 0) return;
+      const feat = e.features?.[0];
+      const prclKey = (feat?.properties as { prcl_key?: string } | undefined)?.prcl_key;
+      if (!prclKey) return;
+      currentPopup?.remove();
+      currentPopup = new mapboxgl.Popup({ closeButton: true, maxWidth: "320px" })
+        .setLngLat(e.lngLat)
+        .setHTML(`<div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#6a7692;padding:4px 8px">loading muni data…</div>`)
+        .addTo(mapRefLocal);
+      try {
+        const res = await fetch(`/api/muni/at-erf/${encodeURIComponent(prclKey)}`);
+        const j = await res.json();
+        if (!res.ok || j.error) {
+          currentPopup.setHTML(`<div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#a24700;padding:8px">${j.error ?? "no muni data"}</div>`);
+          return;
+        }
+        const fmtR = (n: number | null | undefined) => n == null ? "—" : n >= 1_000_000 ? `R ${(n/1_000_000).toFixed(2)}m` : `R ${Math.round(n).toLocaleString("en-ZA")}`;
+        const html = `
+<div style="font-family:'Inter',-apple-system,sans-serif;padding:2px 4px;min-width:240px">
+  <div style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:#C8A032;margin-bottom:4px">Muni erf ${j.erfNumber ?? "?"} · ${j.town ?? j.suburb ?? ""}</div>
+  <div style="font-family:'Fraunces',serif;font-size:15px;color:#132B84;font-weight:500;margin-bottom:6px">${j.address ?? "(no address on file)"}</div>
+  <div style="font-family:'JetBrains Mono',monospace;font-size:16px;color:#132B84;font-weight:600;margin-bottom:6px">${fmtR(j.muniValuationTotal)}${j.valuations.length > 1 ? ` <span style="font-size:9px;color:#C8A032">×${j.valuations.length}</span>` : ""}</div>
+  <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#6a7692;line-height:1.6">
+    ${j.extentSqm ? `${j.extentSqm} m² · ` : ""}${j.zoning ?? ""}${j.use ? ` · ${j.use}` : ""}<br/>
+    ${j.owner ? `Owner: ${j.owner}<br/>` : ""}
+    ${j.titleDeed ? `Deed: ${j.titleDeed}<br/>` : ""}
+    ${j.purchDate ? `Last sale ${j.purchDate}${j.purchPrice ? ` · ${fmtR(j.purchPrice)}` : ""}` : ""}
+  </div>
+  <a href="/erf-lookup?q=${j.erfNumber ?? ""}${j.town ? `&suburb=${encodeURIComponent(j.town)}` : ""}" style="display:inline-block;margin-top:8px;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:#132B84;text-decoration:none;font-weight:600">Full detail →</a>
+</div>`;
+        currentPopup.setHTML(html);
+      } catch (err) {
+        currentPopup?.setHTML(`<div style="color:#a24700;padding:8px">${(err as Error).message}</div>`);
+      }
+    }
+    mapRefLocal.on("click", "parcels-fill", parcelsClick);
+    mapRefLocal.on("mouseenter", "parcels-fill", () => { mapRefLocal.getCanvas().style.cursor = "pointer"; });
+    mapRefLocal.on("mouseleave", "parcels-fill", () => { mapRefLocal.getCanvas().style.cursor = ""; });
+
     return () => {
-      map.off("styledata", onStyleData);
+      mapRefLocal.off("styledata", onStyleData);
+      mapRefLocal.off("click", "parcels-fill", parcelsClick);
+      currentPopup?.remove();
     };
   }, [showErf]);
 
