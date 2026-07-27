@@ -256,6 +256,32 @@ export default async function MapPage() {
     ...singletonPins,
   ];
 
+  // Order externals within each pin by source trust. P24 is the source of
+  // truth for market data; PP next; Dream's own WordPress last (its scraper
+  // over-extracts titles from image filenames and drops pins on suburb
+  // centroids). For market-only pins we then re-derive `representative` from
+  // the sorted-first ref so the panel's header + body show the P24 record
+  // instead of whichever row happened to be inserted first.
+  const SOURCE_PRIORITY: Record<string, number> = {
+    property24: 0,
+    private_property: 1,
+    dream_website: 2,
+  };
+  for (const pin of mergedPins) {
+    pin.externals.sort(
+      (a, b) => (SOURCE_PRIORITY[a.source] ?? 99) - (SOURCE_PRIORITY[b.source] ?? 99),
+    );
+    if (!pin.our && pin.externals.length > 0) {
+      const primary = pin.externals[0];
+      pin.representative = {
+        address: primary.addressRaw ?? primary.headline ?? "Market listing",
+        price: primary.price,
+        suburb: primary.suburb ?? pin.representative.suburb,
+        mandateType: "market",
+      };
+    }
+  }
+
   // -------------------------------------------------------------------------
   // For-sale polygon data (Plan 005): properties and externals that have a
   // prcl_key bridge to the cadastral_parcel table. These render as coloured

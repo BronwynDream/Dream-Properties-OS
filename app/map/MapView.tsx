@@ -9,6 +9,7 @@ import { geocodeMissingProperties, savePropertyPin } from "./actions";
 import RefreshDreamButton from "./RefreshDreamButton";
 import RefreshMuniButton from "./RefreshMuniButton";
 import RefreshProperty24Button from "./RefreshProperty24Button";
+import DrainQueueButton from "./DrainQueueButton";
 import RegeocodeProperty24Button from "./RegeocodeProperty24Button";
 import MarketListingAttach from "./MarketListingAttach";
 
@@ -207,10 +208,13 @@ export default function MapView({
   const [enabledMandates, setEnabledMandates] = useState<Set<string>>(
     () => new Set(MANDATE_ORDER),
   );
-  // Sources filter — all four available. P24 + PP will be empty until those
-  // adapters land, but the chips render so the mental model is stable.
+  // Sources filter — all four available. dream_website is off by default:
+  // the WordPress scraper produces unreliable titles/coords (image-filename
+  // address extraction, centroid-collapsed pins) and we've settled on P24 as
+  // source of truth for market data. The chip stays togglable so a director
+  // can spot-check DW when a portal listing looks suspicious.
   const [enabledSources, setEnabledSources] = useState<Set<SourceKey>>(
-    () => new Set<SourceKey>(["dream_os", "dream_website", "property24", "private_property"]),
+    () => new Set<SourceKey>(["dream_os", "property24", "private_property"]),
   );
   const [splitDupes, setSplitDupes] = useState(false);
   // Erf boundaries overlay — off by default. Vector tiles are served from
@@ -1011,6 +1015,7 @@ export default function MapView({
           {isAdmin && <RefreshDreamButton />}
           {isAdmin && <RefreshMuniButton />}
           {isAdmin && <RefreshProperty24Button />}
+          {isAdmin && <DrainQueueButton />}
           {isAdmin && <RegeocodeProperty24Button />}
         </section>
 

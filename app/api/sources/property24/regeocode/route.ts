@@ -110,6 +110,7 @@ export async function POST(request: Request) {
           lat: coord.lat,
           lng: coord.lng,
           prcl_key: null,
+          geocode_source: usedCentroid ? "centroid" : "exact",
         })
         .eq("id", row.id);
       if (updErr) {

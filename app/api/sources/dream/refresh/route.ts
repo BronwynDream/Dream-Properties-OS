@@ -319,7 +319,7 @@ async function run(request: Request) {
           // survive a changed / tightened result.
           const { error: nErr } = await service
             .from("external_listing")
-            .update({ lat: null, lng: null })
+            .update({ lat: null, lng: null, geocode_source: "exact" })
             .eq("id", g.id);
           if (nErr) errors.push(`park nullify ${g.id}: ${nErr.message}`);
           parked++;
@@ -328,7 +328,11 @@ async function run(request: Request) {
 
         const { error: gErr } = await service
           .from("external_listing")
-          .update({ lat: coords.lat, lng: coords.lng })
+          .update({
+            lat: coords.lat,
+            lng: coords.lng,
+            geocode_source: usedCentroid ? "centroid" : "exact",
+          })
           .eq("id", g.id);
         if (gErr) {
           errors.push(`geocode save ${g.id}: ${gErr.message}`);

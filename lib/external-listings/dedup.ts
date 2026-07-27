@@ -46,6 +46,7 @@ type Row = {
   prcl_key: string | null;
   matched_property_id: string | null;
   dedup_group_id: string | null;
+  geocode_source: string | null;
 };
 
 type Prop = {
@@ -189,7 +190,7 @@ export async function rebuildDedupAndMatch(
   const { data: rowsData } = await supabase
     .from("external_listing")
     .select(
-      "id, source, address_raw, price, lat, lng, lightstone_property_id, prcl_key, matched_property_id, dedup_group_id",
+      "id, source, address_raw, price, lat, lng, lightstone_property_id, prcl_key, matched_property_id, dedup_group_id, geocode_source",
     )
     .eq("active", true);
   const rows = (rowsData ?? []) as Row[];
@@ -242,8 +243,17 @@ export async function rebuildDedupAndMatch(
     for (let i = 1; i < ids.length; i++) uf.union(ids[0], ids[i]);
   }
 
-  // Geo-proximity within CLUSTER_METERS AND price within CLUSTER_PRICE_RATIO
-  const geo = rows.filter((r) => r.lat != null && r.lng != null);
+  // Geo-proximity within CLUSTER_METERS AND price within CLUSTER_PRICE_RATIO.
+  // Excludes centroid-fallback rows: when Mapbox can't resolve a specific
+  // address the scraper drops the pin at a shared suburb/estate centroid, and
+  // every unresolved Leisure Isle listing then lands on the same coordinate.
+  // The 20m rule would union them all (and transitively drag in mismatched
+  // price bands via the 15% ratio chain — one R19.9M pin dragging in R60M and
+  // R895k listings that never should have clustered). Centroid rows can still
+  // join clusters on lightstone id / prcl_key / normalised address above.
+  const geo = rows.filter(
+    (r) => r.lat != null && r.lng != null && r.geocode_source !== "centroid",
+  );
   for (let i = 0; i < geo.length; i++) {
     for (let j = i + 1; j < geo.length; j++) {
       const a = geo[i];
