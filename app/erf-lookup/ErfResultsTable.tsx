@@ -2,9 +2,15 @@
 
 import { useState } from "react";
 
-// Row shape matches the SELECT in page.tsx. Kept loose (nullable everywhere)
-// because muni_property is a union of three ArcGIS layers and any given row
-// may be missing fields from a layer that didn't have coverage.
+// Row shape matches the shapeRow() output in page.tsx. muni_valuation is
+// now a SUM across the child muni_valuation rows (a single erf can be
+// rated under multiple tariff categories); the breakdown is in
+// `valuations` for the detail panel.
+export type ValuationLine = {
+  tariff: string | null;
+  valuation: number | null;
+  area_sqm: number | null;
+};
 export type ErfRow = {
   sg_number: string;
   erf_number: string | null;
@@ -13,8 +19,8 @@ export type ErfRow = {
   street_name: string | null;
   suburb: string | null;
   suburb_hint: string | null;
-  tariff: string | null;
-  muni_valuation: number | null;
+  muni_valuation_total: number | null;
+  valuations: ValuationLine[];
   zoning: string | null;
   ward_no: string | null;
   sectional_title_flag: string | null;
@@ -146,10 +152,27 @@ export default function ErfResultsTable({ rows }: { rows: ErfRow[] }) {
                   textAlign: "right",
                   fontFamily: "'JetBrains Mono', ui-monospace, monospace",
                   fontWeight: 600,
-                  color: r.muni_valuation ? "var(--estuary, #132B84)" : "var(--paper-mute, #6a7692)",
+                  color: r.muni_valuation_total ? "var(--estuary, #132B84)" : "var(--paper-mute, #6a7692)",
                 }}
+                title={
+                  r.valuations.length > 1
+                    ? `Sum of ${r.valuations.length} tariff categories`
+                    : undefined
+                }
               >
-                {fmtR(r.muni_valuation)}
+                {fmtR(r.muni_valuation_total)}
+                {r.valuations.length > 1 && (
+                  <span
+                    style={{
+                      fontSize: 9,
+                      color: "var(--gold, #C8A032)",
+                      marginLeft: 4,
+                      letterSpacing: "0.04em",
+                    }}
+                  >
+                    ×{r.valuations.length}
+                  </span>
+                )}
               </span>
               <span
                 style={{
@@ -216,14 +239,27 @@ function DetailPanel({ r }: { r: ErfRow }) {
         <Row k="SG number" v={r.sg_number} mono />
         <Row k="Muni erf code" v={r.muni_erf_code} mono />
         <Row k="Ward" v={r.ward_no} />
-        <Row k="Tariff" v={r.tariff} />
+        {r.valuations.length === 1 && (
+          <Row k="Tariff" v={r.valuations[0].tariff} />
+        )}
       </Group>
       <Group label="Valuation">
-        <Row k="Muni valuation" v={r.muni_valuation != null ? `R ${r.muni_valuation.toLocaleString("en-ZA")}` : null} />
+        <Row k="Muni valuation (total)" v={r.muni_valuation_total != null ? `R ${r.muni_valuation_total.toLocaleString("en-ZA")}` : null} />
         <Row k="Extent (deed)" v={r.extent_sqm != null ? `${r.extent_sqm.toLocaleString("en-ZA")} m²` : null} />
         <Row k="Extent (roll)" v={r.area_sqm_valroll != null ? `${r.area_sqm_valroll.toLocaleString("en-ZA")} m²` : null} />
         <Row k="Property type" v={r.property_type} />
       </Group>
+      {r.valuations.length > 1 && (
+        <Group label={`Valuation breakdown (${r.valuations.length} tariffs)`}>
+          {r.valuations.map((v, i) => (
+            <Row
+              key={i}
+              k={v.tariff ?? "(no tariff)"}
+              v={v.valuation != null ? `R ${v.valuation.toLocaleString("en-ZA")}` : null}
+            />
+          ))}
+        </Group>
+      )}
       <Group label="Zoning & use">
         <Row k="Zoning" v={r.zoning} />
         <Row k="Use" v={r.usage_} />

@@ -95,8 +95,10 @@ export async function GET(request: Request) {
   //   (b) starts-with-4-letter-prefix — catches "GLEN VIEW" (split tokens)
   // Merge, dedupe, then normalise-score in-process. This makes lookups
   // robust to the muni's naming inconsistencies without needing new indexes.
+  // Post-0049: muni_valuation is in a child table. Pull via embedded join
+  // and sum in-process before returning the Candidate.
   const cols =
-    "sg_number, erf_number, street_no, street_name, suburb, suburb_hint, muni_valuation, extent_sqm, zoning, title_deed_no";
+    "sg_number, erf_number, street_no, street_name, suburb, suburb_hint, extent_sqm, zoning, title_deed_no, valuations:muni_valuation(valuation)";
   const shortPrefix = compactRoot.slice(0, 4);
   const [byWord, byPrefix] = await Promise.all([
     supabase
@@ -153,18 +155,25 @@ export async function GET(request: Request) {
     .filter((x) => x.score >= 40)
     .sort((a, b) => b.score - a.score);
 
-  const candidates: Candidate[] = scored.slice(0, 50).map(({ r }) => ({
-    sgNumber: r.sg_number,
-    erfNumber: r.erf_number ?? "",
-    streetNo: r.street_no,
-    streetName: r.street_name ?? "",
-    suburb: r.suburb,
-    suburbHint: r.suburb_hint,
-    muniValuation: r.muni_valuation != null ? Number(r.muni_valuation) : null,
-    extentSqm: r.extent_sqm,
-    zoning: r.zoning,
-    titleDeedNo: r.title_deed_no,
-  }));
+  const candidates: Candidate[] = scored.slice(0, 50).map(({ r }) => {
+    const vals = Array.isArray((r as any).valuations) ? (r as any).valuations : [];
+    const total = vals.reduce(
+      (sum: number, v: any) => (v?.valuation != null ? sum + Number(v.valuation) : sum),
+      0,
+    );
+    return {
+      sgNumber: r.sg_number,
+      erfNumber: r.erf_number ?? "",
+      streetNo: r.street_no,
+      streetName: r.street_name ?? "",
+      suburb: r.suburb,
+      suburbHint: r.suburb_hint,
+      muniValuation: vals.length > 0 ? total : null,
+      extentSqm: r.extent_sqm,
+      zoning: r.zoning,
+      titleDeedNo: r.title_deed_no,
+    };
+  });
 
   // Rank exact-street-number matches first within the candidate pool.
   if (parsed.streetNo) {
