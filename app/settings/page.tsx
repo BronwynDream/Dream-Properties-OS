@@ -61,6 +61,37 @@ export default async function SettingsPage() {
               defaultValue={SETTINGS_DEFAULTS["mandate.expiry_window_days"]}
             />
           </SettingsSection>
+
+          <SettingsSection
+            heading="Municipal valuation rolls"
+            description={
+              <>
+                Upload Knysna Muni PDFs — Full General Valuation Roll (5-yearly baseline)
+                or Supplementary Rolls (deltas). Parsed and applied to{" "}
+                <code style={{ fontFamily: "'JetBrains Mono', ui-monospace, monospace" }}>muni_valuation</code>
+                {" "}so map / Erf Lookup / Property Record show current values.
+              </>
+            }
+          >
+            <Link
+              href="/admin/valuation-rolls"
+              style={{
+                display: "inline-block",
+                fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                fontSize: 11,
+                letterSpacing: "0.12em",
+                textTransform: "uppercase",
+                padding: "8px 16px",
+                borderRadius: 3,
+                border: "1px solid var(--estuary, #132B84)",
+                background: "var(--estuary, #132B84)",
+                color: "#fff",
+                textDecoration: "none",
+              }}
+            >
+              Open valuation-roll manager →
+            </Link>
+          </SettingsSection>
         </section>
       </main>
     </>
