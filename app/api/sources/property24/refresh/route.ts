@@ -5,6 +5,11 @@ import {
   scrapeListingIndex,
   scrapeListingDetail,
 } from "@/lib/external-listings/property24";
+import {
+  geocodeAddress,
+  centroidForArea,
+  inGardenRoute,
+} from "@/lib/external-listings/geocode";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -180,6 +185,21 @@ async function run(request: Request) {
         continue;
       }
 
+      // Geocode via Mapbox (P24 doesn't expose reliable coords; Firecrawl
+      // LLM extract hallucinates them). Fall back to suburb centroid if
+      // geocoding fails or drifts outside the Garden Route bbox.
+      let coord: { lng: number; lat: number } | null = null;
+      if (listing.addressRaw) {
+        const geo = await geocodeAddress(listing.addressRaw, {
+          suburb: listing.suburb,
+        });
+        if (geo && inGardenRoute(geo)) coord = geo;
+      }
+      if (!coord) {
+        const centroid = centroidForArea(listing.addressRaw, listing.suburb);
+        if (centroid) coord = centroid;
+      }
+
       const now = new Date().toISOString();
       const { error } = await supabase.from("external_listing").upsert(
         {
@@ -195,8 +215,8 @@ async function run(request: Request) {
           property_type: listing.propertyType,
           agency_name: listing.agencyName,
           image_url: listing.imageUrl,
-          lat: listing.lat,
-          lng: listing.lng,
+          lat: coord?.lat ?? null,
+          lng: coord?.lng ?? null,
           raw: listing.raw,
           last_seen: now,
           active: true,

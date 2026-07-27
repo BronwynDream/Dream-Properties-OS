@@ -85,30 +85,6 @@ export function isKnysnaAreaUrl(url: string): boolean {
 }
 
 /**
- * Knysna's rough geographic envelope. Anything outside this box is either
- * a hallucinated coord (0,0), a Cape Town listing that snuck in, or a
- * botched extract. Nullify rather than store — a listing without coords
- * won't render on the map but its metadata stays useful.
- */
-const KNYSNA_BBOX = {
-  latMin: -34.25,
-  latMax: -33.75,
-  lngMin: 22.5,
-  lngMax: 23.6,
-};
-
-function coordInKnysnaBbox(lat: number | null, lng: number | null): boolean {
-  if (lat == null || lng == null) return false;
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
-  return (
-    lat >= KNYSNA_BBOX.latMin &&
-    lat <= KNYSNA_BBOX.latMax &&
-    lng >= KNYSNA_BBOX.lngMin &&
-    lng <= KNYSNA_BBOX.lngMax
-  );
-}
-
-/**
  * Normalise a link discovered on Firecrawl's `links` output to an absolute
  * URL against a base page. Firecrawl usually returns absolute URLs, but
  * some sites emit relative hrefs and Firecrawl passes them through as-is.
@@ -226,8 +202,11 @@ export async function scrapeListingDetail(
         description: "The estate agency marketing the listing",
       },
       image_url: { type: "string", description: "The primary hero image URL" },
-      lat: { type: "number" },
-      lng: { type: "number" },
+      // NOTE: lat/lng deliberately NOT requested. P24 embeds coords in
+      // JS data attributes for their own map widget — not visible text.
+      // Firecrawl's LLM extract would hallucinate ~50% of the time
+      // (e.g. Simola listing landing near Wilderness, ~50km off). We
+      // geocode via Mapbox in the route handler instead.
     },
   };
 
@@ -242,20 +221,13 @@ export async function scrapeListingDetail(
 
   const extracted = data.extract ?? {};
 
-  // Coord sanity: nullify anything outside Knysna's bbox (0,0 hallucinations,
-  // Cape Town coord confusions, etc.). Keeps the row — its metadata is still
-  // useful — but stops it from rendering as an errant pin on the map.
-  let lat = extracted.lat != null ? Number(extracted.lat) : null;
-  let lng = extracted.lng != null ? Number(extracted.lng) : null;
-  if (!coordInKnysnaBbox(lat, lng)) {
-    if (lat != null || lng != null) {
-      console.warn(
-        `[property24] rejecting out-of-bbox coord for ${sourceRef}: ${lat},${lng}`,
-      );
-    }
-    lat = null;
-    lng = null;
-  }
+  // lat/lng deliberately left null here. Firecrawl's LLM extract on P24
+  // pages hallucinates coordinates half the time (they aren't in visible
+  // text — embedded in JS data attributes for P24's own map widget).
+  // The route handler geocodes address_raw + suburb via Mapbox to get
+  // real coordinates before upsert.
+  const lat: number | null = null;
+  const lng: number | null = null;
 
   // Price sanity: 0 is always a scrape failure for a real listing. Store null
   // instead of a nonsense R0 pin label.
