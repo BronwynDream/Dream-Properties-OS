@@ -11,6 +11,7 @@ const TABS: Tab[] = [
   { href: "/inbox", label: "Inbox" },
   { href: "/map", label: "Map" },
   { href: "/properties", label: "Properties" },
+  { href: "/erf-lookup", label: "Erf Lookup" },
   { href: "/contacts", label: "Contacts" },
   { href: "/mandates", label: "Mandates" },
   { href: "/triage", label: "Triage" },
