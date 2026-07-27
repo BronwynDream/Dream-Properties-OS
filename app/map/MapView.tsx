@@ -9,6 +9,7 @@ import { geocodeMissingProperties, savePropertyPin } from "./actions";
 import RefreshDreamButton from "./RefreshDreamButton";
 import RefreshMuniButton from "./RefreshMuniButton";
 import RefreshProperty24Button from "./RefreshProperty24Button";
+import RegeocodeProperty24Button from "./RegeocodeProperty24Button";
 import MarketListingAttach from "./MarketListingAttach";
 
 export type MapProperty = {
@@ -986,6 +987,7 @@ export default function MapView({
           {isAdmin && <RefreshDreamButton />}
           {isAdmin && <RefreshMuniButton />}
           {isAdmin && <RefreshProperty24Button />}
+          {isAdmin && <RegeocodeProperty24Button />}
         </section>
 
         <section>
