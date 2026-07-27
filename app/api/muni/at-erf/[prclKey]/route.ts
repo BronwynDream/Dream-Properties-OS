@@ -4,20 +4,24 @@ import { createServiceClient } from "@/lib/supabase/service";
 
 export const runtime = "nodejs";
 
-// GET /api/muni/at-erf/:prclKey
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
+// GET /api/muni/at-erf/:prclKey?erf=<erfNumber>&town=<townName>
 //
 // Called from the map when a user clicks an erf boundary polygon that has
-// no OS/P24 overlay. Returns the muni_property + summed muni_valuation
-// for that specific parcel so the click can render a lightweight popup.
+// no OS/P24 overlay. The parcels vector tile exposes tag_value (the
+// erf number as displayed on the CSG parcel — usually the same as the
+// muni's erf_number) and maj_region (uppercase town). The click handler
+// passes these as query params. We match muni_property on (erf_number,
+// town_name) which works for both the ArcGIS-sourced rows (real SG21)
+// and the Full-GV synthetic rows (`GV:erf:ptn:unit:TOWN` keyed).
 //
-// prclKey is the value stored on the vector tile feature — the cadastre's
-// tag_value column (numeric SG21 fragment). Match against muni_property
-// by string-including it in the sg_number (same regex the
-// muni_lookup_at_point PL/SQL function uses).
-//
-// Staff read only. Owner column is stripped for non-admin sessions.
+// The :prclKey path segment is kept for compatibility with the earlier
+// version — if erf/town params aren't provided, we fall back to
+// digits-only sg_number ilike matching (works only for ArcGIS-sourced
+// rows, misses GV-synthetic ones).
 
-export async function GET(_req: Request, { params }: { params: { prclKey: string } }) {
+export async function GET(req: Request, { params }: { params: { prclKey: string } }) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "unauthorised" }, { status: 401 });
@@ -33,42 +37,62 @@ export async function GET(_req: Request, { params }: { params: { prclKey: string
 
   const service = createServiceClient();
 
-  // The prclKey coming from the vector tile is the tag_value — a numeric
-  // fragment. Match by checking that the digits-only projection of
-  // muni_property.sg_number contains it. Uses the same shape as
-  // muni_lookup_at_point in migration 0049.
-  const key = String(params.prclKey).replace(/[^0-9]/g, "");
-  if (key.length === 0) {
-    return NextResponse.json({ error: "invalid prclKey" }, { status: 400 });
+  const url = new URL(req.url);
+  const erf = (url.searchParams.get("erf") ?? "").trim();
+  const town = (url.searchParams.get("town") ?? "").trim();
+
+  // Primary path — (erf_number, town_name) match. Works for both
+  // ArcGIS-sourced and GV-synthetic sg_numbers.
+  const SELECT =
+    "sg_number, erf_number, muni_erf_code, street_no, street_name, suburb, town_name, extent_sqm, zoning, ward_no, usage_, property_type, title_deed_no, deeds_office, purch_date, purch_price, owner, refreshed_at";
+  let rows: any[] = [];
+  if (erf) {
+    let q = service.from("muni_property").select(SELECT).eq("erf_number", erf).limit(20);
+    if (town) q = q.ilike("town_name", town);
+    const { data, error } = await q;
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    rows = data ?? [];
   }
 
-  const { data: props, error } = await service
-    .from("muni_property")
-    .select(
-      "sg_number, erf_number, muni_erf_code, street_no, street_name, suburb, town_name, extent_sqm, zoning, ward_no, usage_, property_type, title_deed_no, deeds_office, purch_date, purch_price, owner, refreshed_at",
-    )
-    .filter(
-      // Use REGEXP_REPLACE inside a filter isn't a first-class PostgREST
-      // operation; approximate by checking with ilike on the padded key.
-      "sg_number",
-      "ilike",
-      `%${key}%`,
-    )
-    .limit(5);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  const rows = props ?? [];
+  // Fallback path — digits-only sg_number ilike. Only useful when the
+  // caller didn't supply erf/town. Left in place for older clients.
   if (rows.length === 0) {
-    return NextResponse.json({ error: "no muni row for this parcel" }, { status: 404 });
+    const key = String(params.prclKey).replace(/[^0-9]/g, "");
+    if (key.length > 0) {
+      const { data } = await service
+        .from("muni_property")
+        .select(SELECT)
+        .ilike("sg_number", `%${key}%`)
+        .limit(5);
+      rows = data ?? [];
+    }
   }
-  // Prefer an exact numeric match on the last digits of sg_number.
-  const best = rows.find((r) => (r.sg_number ?? "").replace(/[^0-9]/g, "").includes(key)) ?? rows[0];
 
-  // Pull the per-tariff valuations for this sg_number and sum for the
-  // headline number.
+  if (rows.length === 0) {
+    return NextResponse.json(
+      { error: `no muni row for erf ${erf || "?"} in ${town || "unknown town"}` },
+      { status: 404 },
+    );
+  }
+
+  // When multiple rows match (rare — usually sectional-title units on
+  // the same erf), collapse to one card: pick the row with the most
+  // populated address as canonical, sum valuations across every match.
+  const best =
+    rows
+      .slice()
+      .sort((a, b) => {
+        const aFilled = (a.street_name ? 1 : 0) + (a.street_no ? 1 : 0) + (a.owner ? 1 : 0);
+        const bFilled = (b.street_name ? 1 : 0) + (b.street_no ? 1 : 0) + (b.owner ? 1 : 0);
+        return bFilled - aFilled;
+      })[0];
+
+  const allSgs = rows.map((r) => r.sg_number);
   const { data: vals } = await service
     .from("muni_valuation")
-    .select("tariff, valuation, area_sqm, is_marker")
-    .eq("sg_number", best.sg_number);
+    .select("tariff, valuation, area_sqm, is_marker, sg_number")
+    .in("sg_number", allSgs);
+
   const total = (vals ?? []).reduce(
     (s, v) => (v.valuation != null && !v.is_marker ? s + Number(v.valuation) : s),
     0,
@@ -99,5 +123,6 @@ export async function GET(_req: Request, { params }: { params: { prclKey: string
       isMarker: v.is_marker ?? false,
     })),
     refreshedAt: best.refreshed_at ?? null,
+    matchCount: rows.length,
   });
 }

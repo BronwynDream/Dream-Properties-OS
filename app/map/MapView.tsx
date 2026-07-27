@@ -468,15 +468,30 @@ export default function MapView({
       });
       if (overlaid.length > 0) return;
       const feat = e.features?.[0];
-      const prclKey = (feat?.properties as { prcl_key?: string } | undefined)?.prcl_key;
-      if (!prclKey) return;
+      const props = (feat?.properties ?? {}) as {
+        prcl_key?: string;
+        tag_value?: string;
+        maj_region?: string;
+      };
+      const prclKey = props.prcl_key;
+      const tagValue = props.tag_value;
+      const majRegion = props.maj_region;
+      if (!prclKey && !tagValue) return;
       currentPopup?.remove();
       currentPopup = new mapboxgl.Popup({ closeButton: true, maxWidth: "320px" })
         .setLngLat(e.lngLat)
         .setHTML(`<div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#6a7692;padding:4px 8px">loading muni data…</div>`)
         .addTo(mapRefLocal);
       try {
-        const res = await fetch(`/api/muni/at-erf/${encodeURIComponent(prclKey)}`);
+        // Primary match: erf number (tag_value) + town (maj_region) — works
+        // for both ArcGIS and Full-GV-synthetic sg_numbers. Falls back to
+        // digits-only match on the prcl_key path segment when unavailable.
+        const qs = new URLSearchParams();
+        if (tagValue) qs.set("erf", tagValue);
+        if (majRegion) qs.set("town", majRegion);
+        const seg = encodeURIComponent(prclKey ?? tagValue ?? "unknown");
+        const path = qs.toString() ? `/api/muni/at-erf/${seg}?${qs}` : `/api/muni/at-erf/${seg}`;
+        const res = await fetch(path);
         const j = await res.json();
         if (!res.ok || j.error) {
           currentPopup.setHTML(`<div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#a24700;padding:8px">${j.error ?? "no muni data"}</div>`);
