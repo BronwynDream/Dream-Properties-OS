@@ -747,6 +747,116 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
   .lead-row-meta { text-align: left; justify-content: flex-start; }
 }
 
+/* Contacts — cadastral index card feel. Same paper + hairline treatment
+   as the Lead Inbox, tighter typography since ID + phone are the anchors. */
+.contacts-list {
+  background: var(--paper);
+  border: 1px solid var(--paper-line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.contact-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 320px) minmax(0, 220px);
+  gap: 20px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--paper-line);
+  color: var(--estuary);
+  text-decoration: none;
+  transition: background 0.12s;
+  align-items: baseline;
+}
+.contact-row:last-child { border-bottom: 0; }
+.contact-row:hover { background: rgba(200, 160, 50, 0.06); }
+.contact-row-name {
+  font-family: "Inter", -apple-system, sans-serif;
+  font-size: 14px;
+  color: var(--estuary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.contact-row-meta {
+  font-family: "Inter", -apple-system, sans-serif;
+  font-size: 12px;
+  color: var(--paper-mute);
+  display: flex; gap: 12px; flex-wrap: wrap;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.contact-row-roles {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--paper-mute);
+  text-transform: uppercase;
+  text-align: right;
+}
+@media (max-width: 900px) {
+  .contact-row { grid-template-columns: 1fr; gap: 6px; }
+  .contact-row-roles { text-align: left; }
+}
+
+/* Contact detail — two column: identity left, role timeline right */
+.contact-detail {
+  display: grid;
+  grid-template-columns: minmax(0, 320px) minmax(0, 1fr);
+  gap: 32px;
+  background: var(--paper);
+  border: 1px solid var(--paper-line);
+  border-radius: 6px;
+  padding: 28px 32px;
+  margin-top: 16px;
+}
+@media (max-width: 900px) {
+  .contact-detail { grid-template-columns: 1fr; gap: 24px; }
+}
+.contact-dl {
+  margin: 8px 0 0;
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  gap: 6px 14px;
+  font-size: 13px;
+}
+.contact-dl dt {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--paper-mute);
+  font-weight: 600;
+  padding-top: 2px;
+}
+.contact-dl dd { margin: 0; color: var(--estuary); }
+.contact-dl dd.mono, .contact-dl .mono {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12.5px;
+}
+
+.role-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 8px;
+}
+.role-table th {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--paper-mute);
+  font-weight: 600;
+  text-align: left;
+  padding: 8px 10px 8px 0;
+  border-bottom: 1px solid var(--paper-line);
+}
+.role-table td {
+  padding: 10px 10px 10px 0;
+  border-bottom: 1px solid var(--paper-line);
+  font-size: 13px;
+  color: var(--estuary);
+  vertical-align: baseline;
+}
+.role-table tr:last-child td { border-bottom: 0; }
+.role-table td a { color: var(--estuary); text-decoration: underline; text-decoration-color: var(--paper-line); }
+.role-table td a:hover { text-decoration-color: var(--gold); }
+
 @media (max-width: 900px) {
   .record-plate { padding: 20px; }
   .record-identity { grid-template-columns: 1fr; gap: 20px; }
