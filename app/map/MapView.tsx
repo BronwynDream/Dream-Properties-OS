@@ -598,11 +598,26 @@ export default function MapView({
       }
     }
 
-    if (map.isStyleLoaded()) installForSaleLayers(map);
-    const onStyleData = () => installForSaleLayers(map);
-    map.on("styledata", onStyleData);
+    // Install ONCE on style load (real style change, not every tile load).
+    // Mapbox fires 'styledata' many times per second during tile fetches;
+    // re-adding layers on each fire creates a teardown-during-render race
+    // that manifests as `TypeError: undefined is not an object (evaluating
+    // 'n.layout.get')` and stops the basemap from painting. `style.load`
+    // fires only on actual basemap-style changes.
+    //
+    // When forSalePolygons / ungeocoded change (this effect's deps), we
+    // re-run install synchronously here — no styledata subscription needed.
+    if (map.isStyleLoaded()) {
+      installForSaleLayers(map);
+    } else {
+      map.once("style.load", () => installForSaleLayers(map));
+    }
+
+    // Re-install on genuine basemap swap only.
+    const onStyleLoad = () => installForSaleLayers(map);
+    map.on("style.load", onStyleLoad);
     return () => {
-      map.off("styledata", onStyleData);
+      map.off("style.load", onStyleLoad);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [forSalePolygons, ungeocoded]);
