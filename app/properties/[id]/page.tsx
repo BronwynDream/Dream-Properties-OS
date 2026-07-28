@@ -10,8 +10,10 @@ import PhotoLightbox from "./PhotoLightbox";
 import DropZone from "@/app/triage/DropZone";
 import LightstoneFetch from "./LightstoneFetch";
 import ErfLookup from "./ErfLookup";
+import DealCompliance from "./DealCompliance";
 import { PRODUCTS as LIGHTSTONE_PRODUCTS } from "@/lib/lightstone";
 import { Rand, randString } from "@/app/components/format";
+import type { PpraFormType } from "@/lib/ppraDisclosure";
 
 export const dynamic = "force-dynamic";
 
@@ -592,6 +594,86 @@ export default async function PropertyRecord({
   const activeTransfer = transfers[0] ?? null;
   const pastTransfers = transfers.slice(1);
 
+  // Deal compliance — PPRA disclosure + CoC certs. Only wired for the
+  // active transfer. Form type derives from property_type: anything that
+  // looks like vacant land uses the plot form, else house.
+  const propTypeLabel = (prop.property_type?.label ?? "").toLowerCase();
+  const dealFormType: PpraFormType =
+    /vacant|plot|land|erf$/.test(propTypeLabel) ? "plot" : "house";
+
+  let dealDisclosure: {
+    id: string;
+    form_type: PpraFormType;
+    signed_at: string | null;
+    purchaser_ack_at: string | null;
+    additional_info: string | null;
+    rows: { id: string; question_key: string; answer: "yes" | "no" | "na" | "unanswered"; explanation: string | null }[];
+  } | null = null;
+  let dealCerts: {
+    code: "electrical" | "entomologist" | "gas" | "electric_fence";
+    label: string;
+    cert: { id: string; issued_date: string | null; expiry_date: string | null; issuer: string | null; notes: string | null } | null;
+  }[] = [];
+
+  if (activeTransfer) {
+    const [{ data: discHeader }, { data: complianceTypes }, { data: certRows }] = await Promise.all([
+      supabase
+        .from("ppra_disclosure")
+        .select("id, form_type, signed_at, purchaser_ack_at, additional_info")
+        .eq("transfer_id", activeTransfer.id)
+        .eq("form_type", dealFormType)
+        .maybeSingle(),
+      supabase
+        .from("compliance_type")
+        .select("id, code, label")
+        .in("code", ["electrical", "entomologist", "gas", "electric_fence"]),
+      supabase
+        .from("compliance_cert")
+        .select("id, compliance_type_id, transfer_id, issued_date, expiry_date, issuer, notes")
+        .eq("property_id", prop.id),
+    ]);
+
+    if (discHeader) {
+      const { data: rowData } = await supabase
+        .from("ppra_disclosure_answer_row")
+        .select("id, question_key, answer, explanation")
+        .eq("disclosure_id", (discHeader as any).id);
+      dealDisclosure = {
+        id: (discHeader as any).id,
+        form_type: (discHeader as any).form_type,
+        signed_at: (discHeader as any).signed_at ?? null,
+        purchaser_ack_at: (discHeader as any).purchaser_ack_at ?? null,
+        additional_info: (discHeader as any).additional_info ?? null,
+        rows: (rowData ?? []) as any[],
+      };
+    }
+
+    const typeMap = new Map<string, { id: string; code: string; label: string }>();
+    for (const ct of (complianceTypes ?? []) as any[]) typeMap.set(ct.code, ct);
+    // Prefer a cert scoped to THIS transfer; else fall back to a property-
+    // level cert (seller had one done independent of a specific deal).
+    const forCode = (code: "electrical" | "entomologist" | "gas" | "electric_fence") => {
+      const ct = typeMap.get(code);
+      if (!ct) return null;
+      const rows = ((certRows ?? []) as any[]).filter((r) => r.compliance_type_id === ct.id);
+      const scoped = rows.find((r) => r.transfer_id === activeTransfer.id);
+      const chosen = scoped ?? rows.find((r) => !r.transfer_id) ?? rows[0] ?? null;
+      if (!chosen) return null;
+      return {
+        id: chosen.id,
+        issued_date: chosen.issued_date ?? null,
+        expiry_date: chosen.expiry_date ?? null,
+        issuer: chosen.issuer ?? null,
+        notes: chosen.notes ?? null,
+      };
+    };
+    dealCerts = (["electrical", "entomologist", "gas", "electric_fence"] as const).map((code) => ({
+      code,
+      label: typeMap.get(code)?.label ?? code,
+      cert: forCode(code),
+    }));
+  }
+
   // Reusable transfer card render — used both in the hero row (no timeline
   // marker) and in the ownership history section (with year + dot marker).
   const renderTransferCard = (t: any, opts: { showMarker: boolean }) => {
@@ -898,6 +980,20 @@ export default async function PropertyRecord({
             </div>
           )}
         </section>
+
+        {/* Deal compliance — PPRA Section 67 disclosure + Certificates
+            of Compliance for the active transfer. Sits directly under the
+            deal band so it's part of the "current deal" mental cluster,
+            not lost among historical records below. */}
+        {activeTransfer && (
+          <DealCompliance
+            propertyId={prop.id}
+            transferId={activeTransfer.id}
+            formType={dealFormType}
+            disclosure={dealDisclosure}
+            certs={dealCerts}
+          />
+        )}
 
         {/* Sample-data banner — surfaces whenever Lightstone stub results are
             attached to this record so nobody mistakes the SAMPLE placeholder
