@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, type ReactNode } from "react";
 import mapboxgl from "mapbox-gl";
+import RegisteredStamp from "./RegisteredStamp";
 
 // PropertyHero — the Property Record's identity plate.
 //
@@ -35,6 +36,12 @@ export type ScheduleRow = {
   breakBefore?: boolean;
 };
 
+export type StampProps = {
+  variant: "registered" | "mandate_held" | "in_conveyancing";
+  date: string;
+  secondary?: string;
+} | null;
+
 export default function PropertyHero({
   lat,
   lng,
@@ -51,6 +58,7 @@ export default function PropertyHero({
   mapboxToken,
   actionsSlot,
   mapHref = "/map",
+  stamp = null,
 }: {
   lat: number | null;
   lng: number | null;
@@ -67,6 +75,7 @@ export default function PropertyHero({
   mapboxToken: string;
   actionsSlot?: ReactNode;
   mapHref?: string;
+  stamp?: StampProps;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -168,6 +177,13 @@ export default function PropertyHero({
 
   return (
     <div className="record-plate">
+      {stamp && (
+        <RegisteredStamp
+          variant={stamp.variant}
+          date={stamp.date}
+          secondary={stamp.secondary}
+        />
+      )}
       {/* Identity row: Registry Stamp | Headline + Since + Actions */}
       <div className="record-identity">
         <RegistryStamp

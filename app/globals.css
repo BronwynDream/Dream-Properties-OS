@@ -391,11 +391,58 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
    ============================================================================ */
 
 .record-plate {
+  position: relative;         /* anchor for .registered-stamp overlay */
   background: var(--paper);
   border: 1px solid var(--paper-line);
   border-radius: 6px;
   padding: 26px 32px 24px;
   color: var(--estuary);
+  overflow: hidden;           /* stop the stamp escaping the plate edge */
+}
+
+/* Rubber ink stamp overlay. Sits diagonally upper-right on the record
+   plate. Aubergine is off-palette on purpose — it's the ONE colour
+   restricted to stamps, so it reads as a different medium (clerk's ink)
+   layered on the paper. Never re-use aubergine anywhere else. */
+.registered-stamp {
+  position: absolute;
+  top: 14px;
+  right: 18px;
+  width: 220px;
+  height: 92px;
+  color: #3D2645;             /* aubergine ink — stamps-only */
+  opacity: 0.72;
+  transform: rotate(-3.4deg);
+  transform-origin: center;
+  mix-blend-mode: multiply;   /* mimic ink absorbing into paper fibre */
+  pointer-events: none;
+  z-index: 3;
+}
+.registered-stamp svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+/* Slight per-variant hue lift — MANDATE HELD reads warmer / newer,
+   IN CONVEYANCING slightly cooler / more procedural. */
+.registered-stamp-mandate_held { color: #5A2E4A; }
+.registered-stamp-in_conveyancing { color: #2A2A55; }
+
+@media (max-width: 700px) {
+  /* On narrow screens the stamp competes with the identity row — shrink
+     and reposition rather than hide (visual identity should follow to
+     mobile, not disappear). */
+  .registered-stamp {
+    width: 152px;
+    height: 64px;
+    top: 8px;
+    right: 8px;
+    opacity: 0.65;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  /* Nothing animated yet; kept as a note for when we add a page-load
+     fade-in on the stamp. */
 }
 
 /* Identity row: Registry Stamp (left) alongside the Muni valuation

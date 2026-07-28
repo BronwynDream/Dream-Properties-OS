@@ -89,8 +89,9 @@ export default function LightstoneFetch({
         className="ghost-dark"
         onClick={() => setOpen(true)}
         style={{ padding: "8px 14px", fontSize: 13 }}
+        title="Opens the Lightstone product picker. The Lightstone API is not connected (declined 2026-07-22 at R5k/mo); this button records that a product is being ordered manually via the portal and attaches placeholder documents to this property."
       >
-        Fetch from Lightstone
+        Order Lightstone report
       </button>
     );
   }
