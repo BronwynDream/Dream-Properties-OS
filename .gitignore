@@ -29,3 +29,6 @@ tsconfig.tsbuildinfo
 # Sub-agent worktrees (created by Agent tool with isolation: worktree)
 .claude/
 .claire/
+
+# Bronwyn's contract templates — provenance only, model as data
+_contract_templates/

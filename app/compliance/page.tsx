@@ -5,6 +5,7 @@ import TopBar from "@/app/components/TopBar";
 import { getSetting } from "@/lib/settings";
 import { PropertyDate, FicaStatusBadge } from "@/app/components/format";
 import { deriveFicaState, ficaLabel, type DerivedFica, type RawFicaRecord } from "@/lib/fica";
+import { questionsFor, summariseAnswers, type PpraFormType } from "@/lib/ppraDisclosure";
 
 export const dynamic = "force-dynamic";
 
@@ -85,6 +86,17 @@ export default async function CompliancePage() {
     return (b.gapCount ?? 0) - (a.gapCount ?? 0);
   });
 
+  // Deal-doc gaps: PPRA disclosure + certificates of compliance on the
+  // same live-transfer set. Rendered as one strip below the FICA gaps
+  // because they share the same "conveyancer will block lodgment" tone.
+  const dealDocGaps = await loadDealDocGaps(supabase, LIVE_STATUSES);
+  dealDocGaps.sort((a, b) => {
+    const ua = STATUS_URGENCY[a.status] ?? 99;
+    const ub = STATUS_URGENCY[b.status] ?? 99;
+    if (ua !== ub) return ua - ub;
+    return (b.gapCount ?? 0) - (a.gapCount ?? 0);
+  });
+
   // Only agent/admin roles hold FFCs — conveyancer / client users don't
   // (they're external roles reserved for future scoped rooms per 0001_init).
   const { data: agents } = await supabase
@@ -150,6 +162,7 @@ export default async function CompliancePage() {
     expired.length + buckets.reduce((s, b) => s + b.rows.length, 0) + unknown.length;
   const dealsWithGaps = liveDealGaps.length;
   const totalGapCount = liveDealGaps.reduce((s, d) => s + d.gapCount, 0);
+  const dealsWithDocGaps = dealDocGaps.length;
 
   return (
     <>
@@ -184,9 +197,11 @@ export default async function CompliancePage() {
         <section className="app-body">
           <LiveDealFicaGaps rows={liveDealGaps} />
 
+          <DealDocGaps rows={dealDocGaps} />
+
           <h2
             style={{
-              marginTop: dealsWithGaps > 0 ? 40 : 0,
+              marginTop: dealsWithGaps > 0 || dealsWithDocGaps > 0 ? 40 : 0,
               fontFamily: "'JetBrains Mono', ui-monospace, monospace",
               fontSize: 11,
               letterSpacing: "0.14em",
@@ -659,4 +674,250 @@ function dealStatusColor(status: string): string {
   if (status === "in_conveyancing") return "var(--critical, #9A3B34)";
   if (status === "sale_agreed") return "var(--caution, #A9772F)";
   return "var(--ink-500, #6B6153)"; // under_offer
+}
+
+// ---------------------------------------------------------------------------
+// Deal-doc gaps: PPRA Section 67 disclosure + Certificates of Compliance
+// (electrical / entomologist / gas / electric_fence) missing or incomplete
+// on any live transfer. Same live-transfer set as the FICA scan.
+// ---------------------------------------------------------------------------
+
+type DocGap = {
+  kind: "ppra_missing" | "ppra_unanswered" | "ppra_unsigned" | "ppra_concerning_no_explanation" | "cert_missing" | "cert_expired";
+  label: string;
+  detail?: string;
+};
+
+type DealDocGapsRow = {
+  transferId: string;
+  transferName: string | null;
+  status: string;
+  propertyId: string | null;
+  propertyAddress: string | null;
+  gaps: DocGap[];
+  gapCount: number;
+};
+
+const CERT_LABELS: Record<string, string> = {
+  electrical: "Electrical CoC",
+  entomologist: "Beetle CoC",
+  gas: "Gas CoC",
+  electric_fence: "Electric fence CoC",
+};
+
+async function loadDealDocGaps(
+  supabase: ReturnType<typeof createClient>,
+  liveStatuses: readonly string[],
+): Promise<DealDocGapsRow[]> {
+  const { data: transfers } = await supabase
+    .from("transfer")
+    .select("id, name, status, property:property_id(id, primary_address, property_type:property_type_id(label))")
+    .in("status", liveStatuses as unknown as string[]);
+  const transferRows = (transfers ?? []) as any[];
+  if (transferRows.length === 0) return [];
+  const transferIds = transferRows.map((t) => t.id);
+  const propertyIds = Array.from(new Set(transferRows.map((t) => t.property?.id).filter(Boolean))) as string[];
+
+  const [{ data: discHeaders }, { data: discRows }, { data: complianceTypes }, { data: certs }] = await Promise.all([
+    supabase
+      .from("ppra_disclosure")
+      .select("id, transfer_id, form_type, signed_at")
+      .in("transfer_id", transferIds),
+    supabase
+      .from("ppra_disclosure_answer_row")
+      .select("disclosure_id, question_key, answer, explanation"),
+    supabase
+      .from("compliance_type")
+      .select("id, code, label")
+      .in("code", ["electrical", "entomologist", "gas", "electric_fence"]),
+    supabase
+      .from("compliance_cert")
+      .select("id, property_id, transfer_id, compliance_type_id, expiry_date")
+      .in("property_id", propertyIds),
+  ]);
+
+  const typeById = new Map<string, string>();
+  const typeIdByCode = new Map<string, string>();
+  for (const ct of (complianceTypes ?? []) as any[]) {
+    typeById.set(ct.id, ct.code);
+    typeIdByCode.set(ct.code, ct.id);
+  }
+
+  // index disclosure headers by transfer, rows by disclosure
+  const headerByTransfer = new Map<string, any>();
+  for (const h of (discHeaders ?? []) as any[]) headerByTransfer.set(h.transfer_id, h);
+  const rowsByDisclosure = new Map<string, any[]>();
+  for (const r of (discRows ?? []) as any[]) {
+    const arr = rowsByDisclosure.get(r.disclosure_id) ?? [];
+    arr.push(r);
+    rowsByDisclosure.set(r.disclosure_id, arr);
+  }
+
+  // certs by (property, type) — prefer transfer-scoped when present
+  const certByKey = new Map<string, { expiry: string | null }>();
+  for (const c of (certs ?? []) as any[]) {
+    const key = c.transfer_id ? `${c.property_id}::${c.transfer_id}::${c.compliance_type_id}` : `${c.property_id}::*::${c.compliance_type_id}`;
+    certByKey.set(key, { expiry: c.expiry_date ?? null });
+  }
+
+  const today = new Date().toISOString().slice(0, 10);
+  const out: DealDocGapsRow[] = [];
+
+  for (const t of transferRows) {
+    const propId = t.property?.id as string | undefined;
+    if (!propId) continue;
+    const propTypeLabel = (t.property?.property_type?.label ?? "").toString().toLowerCase();
+    const formType: PpraFormType = /vacant|plot|land|erf$/.test(propTypeLabel) ? "plot" : "house";
+    const canonical = questionsFor(formType);
+    const gaps: DocGap[] = [];
+
+    // PPRA disclosure
+    const header = headerByTransfer.get(t.id);
+    if (!header) {
+      gaps.push({ kind: "ppra_missing", label: `PPRA ${formType} disclosure — not started` });
+    } else {
+      const rows = rowsByDisclosure.get(header.id) ?? [];
+      const summary = summariseAnswers(rows.map((r) => ({ question_key: r.question_key, answer: r.answer, explanation: r.explanation })), formType);
+      if (summary.unanswered > 0) {
+        gaps.push({ kind: "ppra_unanswered", label: `PPRA disclosure — ${summary.unanswered}/${canonical.length} unanswered` });
+      }
+      if (summary.concerningMissingExplanation > 0) {
+        gaps.push({ kind: "ppra_concerning_no_explanation", label: `PPRA disclosure — ${summary.concerningMissingExplanation} concerning answer${summary.concerningMissingExplanation === 1 ? "" : "s"} missing explanation` });
+      }
+      if (!header.signed_at) {
+        gaps.push({ kind: "ppra_unsigned", label: "PPRA disclosure — awaiting seller signature" });
+      }
+    }
+
+    // Certs
+    for (const code of ["electrical", "entomologist", "gas", "electric_fence"] as const) {
+      const typeId = typeIdByCode.get(code);
+      if (!typeId) continue;
+      const scoped = certByKey.get(`${propId}::${t.id}::${typeId}`);
+      const propLevel = certByKey.get(`${propId}::*::${typeId}`);
+      const cert = scoped ?? propLevel;
+      if (!cert) {
+        gaps.push({ kind: "cert_missing", label: `${CERT_LABELS[code]} — outstanding` });
+      } else if (cert.expiry && cert.expiry < today) {
+        gaps.push({ kind: "cert_expired", label: `${CERT_LABELS[code]} — expired`, detail: cert.expiry });
+      }
+    }
+
+    if (gaps.length > 0) {
+      out.push({
+        transferId: t.id,
+        transferName: t.name ?? null,
+        status: t.status,
+        propertyId: propId,
+        propertyAddress: t.property?.primary_address ?? null,
+        gaps,
+        gapCount: gaps.length,
+      });
+    }
+  }
+  return out;
+}
+
+function DealDocGaps({ rows }: { rows: DealDocGapsRow[] }) {
+  return (
+    <div style={{ marginTop: 32 }}>
+      <div style={{ borderLeft: "3px solid var(--caution, #A9772F)", paddingLeft: 12, marginBottom: 12 }}>
+        <h2
+          style={{
+            fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+            fontSize: 11,
+            letterSpacing: "0.14em",
+            textTransform: "uppercase",
+            color: "var(--estuary, #132B84)",
+            margin: 0,
+          }}
+        >
+          PPRA disclosure &amp; certificates · Gaps on live deals · {rows.length} {rows.length === 1 ? "deal" : "deals"}
+        </h2>
+        <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--paper-mute, #6a7692)" }}>
+          Transfers in flight where the Section 67 disclosure is incomplete/unsigned or a Certificate of Compliance
+          (electrical / beetle / gas / electric fence) is missing or expired.
+        </p>
+      </div>
+      {rows.length === 0 ? (
+        <p style={{ color: "var(--paper-mute, #6a7692)", fontStyle: "italic", padding: "12px 0 12px" }}>
+          Every live deal has a complete PPRA disclosure and every required certificate on file. Nothing to chase.
+        </p>
+      ) : (
+        <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+          {rows.map((r) => (
+            <li
+              key={r.transferId}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr auto",
+                gap: 12,
+                padding: "14px 0",
+                borderBottom: "1px solid var(--hairline, #e2e8f5)",
+              }}
+            >
+              <div>
+                <p
+                  style={{
+                    margin: 0,
+                    fontFamily: "'Fraunces', 'Cormorant Garamond', serif",
+                    fontSize: 16,
+                    color: "var(--estuary, #132B84)",
+                    fontWeight: 500,
+                  }}
+                >
+                  {r.propertyId ? (
+                    <Link href={`/properties/${r.propertyId}`} style={{ color: "inherit" }}>
+                      {r.propertyAddress ?? r.transferName ?? r.transferId.slice(0, 8)}
+                    </Link>
+                  ) : (
+                    r.transferName ?? r.transferId.slice(0, 8)
+                  )}
+                </p>
+                <p
+                  style={{
+                    margin: "2px 0 8px",
+                    fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                    fontSize: 10,
+                    letterSpacing: "0.10em",
+                    textTransform: "uppercase",
+                    color: dealStatusColor(r.status),
+                  }}
+                >
+                  {r.status.replace(/_/g, " ")}
+                </p>
+                <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 4 }}>
+                  {r.gaps.map((g, i) => (
+                    <li key={i} style={{ fontSize: 12, color: "var(--ink-700, #423B31)", display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: 3, background: gapDotColor(g.kind) }} />
+                      {g.label}
+                      {g.detail && <span style={{ color: "var(--paper-mute, #6a7692)", fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 10 }}>{g.detail}</span>}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div style={{ textAlign: "right", minWidth: 100 }}>
+                <p
+                  style={{
+                    margin: 0,
+                    fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                    fontSize: 13,
+                    color: "var(--caution, #A9772F)",
+                    fontWeight: 600,
+                  }}
+                >
+                  {r.gapCount} gap{r.gapCount === 1 ? "" : "s"}
+                </p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function gapDotColor(kind: DocGap["kind"]): string {
+  if (kind === "cert_expired" || kind === "ppra_concerning_no_explanation") return "var(--critical, #9A3B34)";
+  return "var(--caution, #A9772F)";
 }
