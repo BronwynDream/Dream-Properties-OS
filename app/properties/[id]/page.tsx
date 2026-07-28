@@ -106,30 +106,41 @@ export default async function PropertyRecord({
     });
   }
 
-  // Listing + assignable agents for the AgentPicker on the hero. Pull the
-  // most recently created listing (agent-assignment happens on the latest
-  // active listing; historical listings' assignments stay put). Skipped for
-  // non-admin sessions since the picker doesn't render for them anyway.
+  // Latest listing on this property + its current mandate. Two uses:
+  //   1. AgentPicker (admin-only) — dropdown to assign the agent
+  //   2. RegisteredStamp — mandate expiry is the fallback stamp variant
+  //      when no transfer is registered or in conveyancing
+  // Always fetched (not admin-gated) because both viewers need the stamp.
+  const { data: listingRow } = await supabase
+    .from("listing")
+    .select(
+      "id, agent_user_id, agent:agent_user_id(name), mandate:mandate(type, expiry_date, evidence)",
+    )
+    .eq("property_id", params.id)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
   let listingForPicker: { id: string; agent_user_id: string | null; agent_name: string | null } | null = null;
+  if (listingRow) {
+    const agentJoin = Array.isArray((listingRow as any).agent)
+      ? (listingRow as any).agent[0]
+      : (listingRow as any).agent;
+    listingForPicker = {
+      id: (listingRow as any).id,
+      agent_user_id: (listingRow as any).agent_user_id ?? null,
+      agent_name: agentJoin?.name ?? null,
+    };
+  }
+  const currentMandate = (() => {
+    const m = Array.isArray((listingRow as any)?.mandate)
+      ? (listingRow as any).mandate[0]
+      : (listingRow as any)?.mandate;
+    return m ?? null;
+  })();
+
   let assignableAgents: { id: string; name: string; role: string }[] = [];
   if (isAdmin) {
-    const { data: listingRow } = await supabase
-      .from("listing")
-      .select("id, agent_user_id, agent:agent_user_id(name)")
-      .eq("property_id", params.id)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (listingRow) {
-      const agentJoin = Array.isArray((listingRow as any).agent)
-        ? (listingRow as any).agent[0]
-        : (listingRow as any).agent;
-      listingForPicker = {
-        id: (listingRow as any).id,
-        agent_user_id: (listingRow as any).agent_user_id ?? null,
-        agent_name: agentJoin?.name ?? null,
-      };
-    }
     const { data: agentsData } = await supabase
       .from("app_user")
       .select("id, name, role")
@@ -335,6 +346,41 @@ export default async function PropertyRecord({
   // Null when we have no registered transfer yet (deed hasn't landed / been
   // classified), in which case the hero hides the section entirely rather
   // than filling space with an excuse.
+  // Registry stamp — the aubergine ink stamp overlay on the record plate.
+  // Priority: REGISTERED > IN CONVEYANCING > MANDATE HELD > none. Matches
+  // what a deeds-office clerk would actually stamp on the file: whichever
+  // legal state is most authoritative right now.
+  const fmtStampDate = (iso: string | null | undefined): string => {
+    if (!iso) return "";
+    const d = new Date(iso + "T00:00:00");
+    if (!Number.isFinite(d.getTime())) return "";
+    const day = String(d.getUTCDate()).padStart(2, "0");
+    const month = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"][d.getUTCMonth()];
+    return `${day} ${month} ${d.getUTCFullYear()}`;
+  };
+  let stamp: { variant: "registered" | "mandate_held" | "in_conveyancing"; date: string; secondary?: string } | null = null;
+  const registeredTx = transfers.find(
+    (t: any) => (t.status ?? "").toLowerCase() === "registered" && t.registered_date,
+  );
+  if (registeredTx) {
+    stamp = {
+      variant: "registered",
+      date: fmtStampDate(registeredTx.registered_date),
+    };
+  } else if ((currentTransfer?.status ?? "").toLowerCase() === "in_conveyancing") {
+    stamp = {
+      variant: "in_conveyancing",
+      date: currentTransfer.transfer_date
+        ? fmtStampDate(currentTransfer.transfer_date)
+        : "PENDING",
+    };
+  } else if (currentMandate?.expiry_date) {
+    stamp = {
+      variant: "mandate_held",
+      date: fmtStampDate(currentMandate.expiry_date),
+    };
+  }
+
   // Since line: surname of the buyer on the most-recent REGISTERED transfer,
   // year of registration, price paid. Null when no registered transfer yet —
   // the hero hides the section rather than filling space with an excuse.
@@ -740,6 +786,7 @@ export default async function PropertyRecord({
           scheduleRows={allScheduleRows}
           photos={heroPhotos}
           mapboxToken={mapboxToken}
+          stamp={stamp}
           actionsSlot={
             <>
               {isAdmin && (
