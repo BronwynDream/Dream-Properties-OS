@@ -4,7 +4,94 @@ Running log of what's decided, built, and next. Updated at the end of each worki
 session. `PROJECT.md` remains the canonical business/design doc; this file is the
 "where are we right now" companion.
 
-_Last updated: 2026-07-27 (evening)_
+_Last updated: 2026-07-28_
+
+---
+
+## AGENT DASHBOARD + PROPERTY-RECORD POLISH (2026-07-28)
+
+Half-day arc ahead of an agent meeting Simon has this week. Two PRs
+shipped — first is the agent-facing scoping, second is a visual /
+data lift on the Property Record.
+
+### Shipped
+- **PR #13 — Agent personal dashboard + agent picker + Lightstone
+  rename** (`0c5f6e6`). Four coordinated changes:
+  - `AgentPicker` on Property Record (admin only) — dropdown near the
+    hero, `assignListingAgent` server action writes
+    `listing.agent_user_id` and revalidates /dashboard + /mandates.
+    Only agent/admin roles can be assigned; blocks inactive users.
+  - `/dashboard` splits by role: admin keeps current global 3 columns,
+    agent gets "My deals in flight" + "My live listings" + NEW
+    "Mandates expiring soon" (60-day window on my listings). Attention
+    row also surfaces mandates expiring within 14 days.
+  - `/mandates` scoped per agent via pre-fetched listing-id list +
+    `.in("listing_id", ids)`. Empty-set guard uses a sentinel eq so
+    PostgREST doesn't fall through to returning everything.
+  - Property Record: "Fetch from Lightstone" renamed to "Order
+    Lightstone report" — honest label (API declined; modal is a
+    manual product picker).
+- **PR #13 — Registry Stamp overlay** (same PR, second commit).
+  Aubergine (#3D2645) SVG rubber stamp diagonally upper-right of
+  the record plate. Three variants at first pass: REGISTERED,
+  MANDATE HELD, IN CONVEYANCING. `feDisplacementMap` on turbulence
+  roughens the outline. `mix-blend-mode: multiply` + 72% opacity
+  mimic ink absorbing into paper.
+- **PR #14 — Property Record polish** (`fe5bd01`). Cherry-pick of two
+  commits that GitHub's PR snapshot missed on PR #13. Three lifts:
+  - **P24 photos into the hero** — external_listing rows matched to
+    this property contribute `image_url` plus gallery images parsed
+    out of Firecrawl `raw.markdown`. Deduped, capped at 12, filtered
+    against logos/trackers. Priority P24 → PP → DW.
+  - **Compact hero** — schedule rows with null values now HIDDEN
+    (six lines of "—" was noise not data). Cadastre-fallback panel
+    shrunk 260→140px min-height when no polygon/photo. Compass rose
+    56→32px. Saves ~120px above the fold.
+  - **PREPARING + SOLD ELSEWHERE stamp variants** so every property
+    carries a stamp. Priority chain now: REGISTERED > SOLD ELSEWHERE
+    > IN CONVEYANCING > MANDATE HELD > PREPARING.
+  - **NewPropertyForm coords field** — optional "lat, lng" input on
+    /properties → + New property. Garden Route bbox validation
+    rejects mistyped Cape Town numbers. Passed to `createProperty`
+    via `latitude`/`longitude` (action already persisted them; the
+    form just wasn't wired).
+
+### Diagnostic exchanges (no code)
+- **Polygon rendering deep-dive**. Simon didn't understand when
+  polygons render vs dots vs nothing. Explained three layers (erf
+  outlines from cadastral_parcel, for-sale polygons from
+  OS/P24/PP listings with prcl_key, dots from ungeocoded P24/PP)
+  and the stage progression: address → geocoded → cadastre-snapped.
+  Diagnostics showed his 175 active P24 rows split as 99 polygons /
+  56 dots / 20 invisible — healthy 57% snap rate given how sloppy
+  Firecrawl address extraction is.
+- **The Alexandra case**. Property "The Alexandra" at 30 Glen View
+  Road exists on P24 + Dream's website but no OS pin, no polygon,
+  no photos on the record page. Root cause: no OS property record
+  existed. UI to create one already existed on /properties as
+  NewPropertyForm (Simon had forgotten), but missing lat/lng input
+  meant new records landed invisible on the map. The coords field
+  in PR #14 closes that loop. Path A (SQL insert for immediate
+  demo) documented in-thread.
+
+### Design lesson (added to `dream-design-language` memory)
+- Aubergine `#3D2645` is now the ONLY colour for registry ink stamps.
+  Off the four brand accents on purpose so stamps read as a
+  different medium. Documented in
+  `app/properties/[id]/RegisteredStamp.tsx` header.
+
+### Loose ends
+- **"View as agent" preview for admins** — not built. Would let
+  Simon demo any agent's dashboard without switching accounts.
+  ~30 min if we build it.
+- **The Alexandra manual creation** — Simon needs to run the SQL
+  insert + click Find ERF + click Refresh Property24 to complete
+  the demo setup.
+- **Bronwyn's mandate/OTP templates** — still awaited (blocks
+  document vault).
+- **Firecrawl upgrade** — still not made (blocks P24 backfill).
+- **Housekeeping bundle** — still deferred.
+- **Commission tracker** — Simon deferred to later.
 
 ---
 
