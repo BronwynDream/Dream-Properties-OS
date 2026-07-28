@@ -32,6 +32,7 @@ export default function NewPropertyForm({
   const [suburbId, setSuburbId] = useState("");
   const [erf, setErf] = useState("");
   const [deed, setDeed] = useState("");
+  const [coords, setCoords] = useState("");         // "lat, lng" one-field format
 
   // Lightstone search state
   const [query, setQuery] = useState("");
@@ -47,6 +48,7 @@ export default function NewPropertyForm({
     setSuburbId("");
     setErf("");
     setDeed("");
+    setCoords("");
     setErr(null);
     setQuery("");
     setCandidates(null);
@@ -54,6 +56,25 @@ export default function NewPropertyForm({
     setSource(null);
     setPickedId(null);
     setPickedSuburbName(null);
+  }
+
+  // Parse "lat, lng" — allows spaces, comma, or slash separator. Returns
+  // null (both fields null) if unparseable or blank. Reject wildly-off
+  // Knysna coords so a mistyped Cape Town / Joburg number doesn't land
+  // silently on the map.
+  function parseCoords(raw: string): { lat: number | null; lng: number | null; err: string | null } {
+    const s = raw.trim();
+    if (s === "") return { lat: null, lng: null, err: null };
+    const parts = s.split(/[\s,\/]+/).filter(Boolean);
+    if (parts.length !== 2) return { lat: null, lng: null, err: "Enter 'lat, lng' (e.g. -34.0777, 23.0619)" };
+    const lat = Number(parts[0]);
+    const lng = Number(parts[1]);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return { lat: null, lng: null, err: "Both values must be numeric" };
+    // Garden Route sanity gate — same bounds used elsewhere in the OS.
+    if (lat < -34.2 || lat > -33.65 || lng < 22.3 || lng > 23.6) {
+      return { lat: null, lng: null, err: `Coords outside Knysna (${lat.toFixed(3)}, ${lng.toFixed(3)}) — copy from the P24/DW listing or Mapbox` };
+    }
+    return { lat, lng, err: null };
   }
 
   async function runSearch(e?: React.FormEvent) {
@@ -114,6 +135,11 @@ export default function NewPropertyForm({
   function submit(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
+    const { lat, lng, err: coordsErr } = parseCoords(coords);
+    if (coordsErr) {
+      setErr(coordsErr);
+      return;
+    }
     startTransition(async () => {
       const res = await createProperty({
         primary_address: address,
@@ -122,6 +148,8 @@ export default function NewPropertyForm({
         title_deed_no: deed,
         lightstone_property_id: pickedId,
         suburb_name: pickedSuburbName,
+        latitude: lat,
+        longitude: lng,
       });
       if (!res.ok) {
         setErr(res.error);
@@ -395,7 +423,23 @@ export default function NewPropertyForm({
           />
         </label>
 
-        <div style={{ display: "flex", gap: 8 }}>
+        <label style={{ display: "block", gridColumn: "1 / -1" }}>
+          <span style={fieldLabel}>
+            Coordinates <span style={{ textTransform: "none", letterSpacing: 0, color: "#7a86a8" }}>
+              — optional. Paste &quot;lat, lng&quot; from the P24 map, a Mapbox click, or an existing listing (Knysna is roughly -34.05, 23.05).
+            </span>
+          </span>
+          <input
+            type="text"
+            value={coords}
+            onChange={(e) => setCoords(e.target.value)}
+            placeholder="-34.0777, 23.0619"
+            disabled={pending}
+            style={{ ...inputStyle, fontFamily: "'JetBrains Mono', ui-monospace, monospace" }}
+          />
+        </label>
+
+        <div style={{ display: "flex", gap: 8, gridColumn: "1 / -1", justifyContent: "flex-end" }}>
           <button
             type="submit"
             className="cta"
