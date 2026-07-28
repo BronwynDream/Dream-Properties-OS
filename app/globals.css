@@ -1,4 +1,8 @@
 :root {
+  /* ---------- Brand tokens (original Dream Knysna palette) ---------- */
+  /* Kept as-is so the existing 40+ components keep working. Newer work
+     should reach for the estate-agency-design tokens below and let the
+     brand tokens degrade to a supporting role over time. */
   --estuary: #0F2A63;
   --navy: #132B84;
   --gold: #C8A032;
@@ -7,15 +11,98 @@
   --ink: #15203A;
   --white: #ffffff;
 
-  /* Property Record — cadastral document palette.
-     The record surface reads as vellum, not UI: subtle warm wash,
-     warm-cast hairlines, red reserved for the registration stamp
-     (borrows real title-deed practice — registration is stamped
-     in red ink at the Deeds Office). */
+  /* Property Record — cadastral document palette (kept as-is). */
   --paper: #FBF9F4;
   --paper-mute: #6B7A8C;
   --paper-line: #DED5C2;
   --stamp: #A13333;
+
+  /* ---------- estate-agency-design skill tokens (2026-07-28) ------ */
+  /* Additive layer — new components reach for these. Same paper-warm
+     posture as the brand tokens above but structured as a system with
+     status + stage sub-palettes. See ~/.claude/skills/estate-agency-
+     design/SKILL.md for provenance. */
+
+  /* Grounds — warm paper */
+  --paper-0: #FBF9F4;              /* aliases the original --paper */
+  --paper-1: #F5F1E8;
+  --paper-2: #ECE6D8;
+
+  /* Ink — warm near-black → muted */
+  --ink-900: #1F1B16;
+  --ink-700: #423B31;
+  --ink-500: #6B6153;
+  --ink-400: #8C8172;
+
+  /* Hairlines */
+  --line-strong: #D8CFBE;
+  --line-soft:   #E7E0D2;
+
+  /* Accent — restrained ink-blue. Keeps the brand navy for existing
+     usages; new work uses the accent scale below. */
+  --accent-600: #3A5A6B;
+  --accent-700: #2C4653;
+  --accent-100: #DCE6EA;
+
+  /* Feedback — earthy so it sits in the paper world */
+  --positive: #4B6B4A;
+  --caution:  #A9772F;
+  --critical: #9A3B34;
+
+  /* Type scale (perfect-fifth-ish). Fonts already declared upstream. */
+  --step--1: 0.833rem;
+  --step-0:  1rem;
+  --step-1:  1.25rem;
+  --step-2:  1.563rem;
+  --step-3:  1.953rem;
+  --step-4:  2.441rem;
+  --step-5:  3.052rem;
+  --leading-tight: 1.15;
+  --leading-body:  1.6;
+  --measure: 65ch;
+
+  /* Spacing / radius / elevation */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+  --space-8: 4rem;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 14px;
+  --shadow-sm: 0 1px 2px rgba(31, 27, 22, 0.06);
+  --shadow-md: 0 4px 12px rgba(31, 27, 22, 0.08);
+  --shadow-lg: 0 12px 32px rgba(31, 27, 22, 0.10);
+
+  /* Listing status (pill: tinted bg + darker same-hue fg, AA on tint).
+     Note per skill: under-offer is a CAUTION, not a success — the deal
+     is not yet closed. Sold uses the accent-slate so it reads as
+     completed but not celebratory (celebration is registered). */
+  --status-draft-bg:        var(--paper-2);
+  --status-draft-fg:        var(--ink-500);
+  --status-active-bg:       #DCE9DB;
+  --status-active-fg:       #35502F;
+  --status-under-offer-bg:  #F0E3CC;
+  --status-under-offer-fg:  #7A5518;
+  --status-sold-bg:         #D9E0E4;
+  --status-sold-fg:         #2C4653;
+  --status-withdrawn-bg:    #EDD9D6;
+  --status-withdrawn-fg:    #7A2E28;
+
+  /* Pipeline stage (left edge of a deal card). Grey → accent → positive
+     as the deal matures through the lifecycle. */
+  --stage-mandate:      var(--ink-400);
+  --stage-active:       var(--accent-600);
+  --stage-viewings:     #5B7A8A;
+  --stage-offer:        var(--caution);
+  --stage-under-offer:  #8A6D2F;
+  --stage-conditions:   #6E7A45;
+  --stage-transfer:     #566B4E;
+  --stage-registered:   var(--positive);
+
   color-scheme: light;
 }
 
