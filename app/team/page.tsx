@@ -59,7 +59,7 @@ export default async function TeamPage() {
   const [{ data: usersData }, { data: transfersData }] = await Promise.all([
     supabase
       .from("app_user")
-      .select("id, full_name, email, role, job_title, phone, active, ppra_ffc")
+      .select("id, full_name, email, role, job_title, phone, active, ppra_ffc, ffc_expiry_date")
       .order("active", { ascending: false })
       .order("full_name"),
     supabase.from("transfer").select("lead_agent_user_id"),
@@ -82,6 +82,7 @@ export default async function TeamPage() {
       phone: u.phone ?? null,
       active: u.active !== false,
       ppra_ffc: u.ppra_ffc ?? null,
+      ffc_expiry_date: u.ffc_expiry_date ?? null,
       transfers_led: transfersLed.get(u.id) ?? 0,
     }));
 

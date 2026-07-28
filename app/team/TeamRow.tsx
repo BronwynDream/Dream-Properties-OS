@@ -14,6 +14,7 @@ export type TeamMember = {
   phone: string | null;
   active: boolean;
   ppra_ffc: string | null;
+  ffc_expiry_date: string | null;   // ISO YYYY-MM-DD
   transfers_led: number;
 };
 
@@ -40,12 +41,16 @@ export default function TeamRow({
   const [jobTitle, setJobTitle] = useState(member.job_title ?? "");
   const [phone, setPhone] = useState(member.phone ?? "");
   const [active, setActive] = useState(member.active);
+  const [ffc, setFfc] = useState(member.ppra_ffc ?? "");
+  const [ffcExpiry, setFfcExpiry] = useState(member.ffc_expiry_date ?? "");
 
   const dirty =
     role !== member.role ||
     jobTitle !== (member.job_title ?? "") ||
     phone !== (member.phone ?? "") ||
-    active !== member.active;
+    active !== member.active ||
+    ffc !== (member.ppra_ffc ?? "") ||
+    ffcExpiry !== (member.ffc_expiry_date ?? "");
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -58,6 +63,8 @@ export default function TeamRow({
         job_title: jobTitle,
         phone,
         active,
+        ppra_ffc: ffc,
+        ffc_expiry_date: ffcExpiry,
       });
       if (!res.ok) {
         setErr(res.error);
@@ -148,8 +155,24 @@ export default function TeamRow({
           {ROLE_LABEL[member.role]}
         </span>
       </td>
-      <td className="mono" style={{ fontSize: 12, minWidth: 110 }}>
-        {member.ppra_ffc ?? "—"}
+      <td style={{ minWidth: 200 }}>
+        <input
+          type="text"
+          value={ffc}
+          onChange={(e) => setFfc(e.target.value)}
+          placeholder="FFC number"
+          disabled={pending}
+          style={{ ...inputStyle, fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 12 }}
+        />
+        <input
+          type="date"
+          value={ffcExpiry}
+          onChange={(e) => setFfcExpiry(e.target.value)}
+          disabled={pending}
+          style={{ ...inputStyle, marginTop: 6, fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 12 }}
+          aria-label="FFC expiry date"
+        />
+        <FfcStatusChip expiry={ffcExpiry} />
       </td>
       <td style={{ minWidth: 60, textAlign: "right" }}>
         {member.transfers_led}
@@ -213,3 +236,49 @@ const inputStyle: React.CSSProperties = {
   fontFamily: "inherit",
   background: "#fbfcfe",
 };
+
+// Small inline validity indicator for an FFC expiry date. Not authoritative
+// (the watchlist at /compliance does the ranked bucketing) — just a quick
+// tell for the row editor. Uses the estate-agency-design skill's caution /
+// critical / positive feedback colours so it reads as compliance-flavoured
+// rather than app-flavoured.
+function FfcStatusChip({ expiry }: { expiry: string }) {
+  if (!expiry) return null;
+  const now = new Date();
+  const then = new Date(expiry + "T00:00:00Z");
+  const days = Math.round((then.getTime() - Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())) / 86_400_000);
+  let label: string, bg: string, fg: string;
+  if (!Number.isFinite(days)) return null;
+  if (days < 0) {
+    label = `Expired ${Math.abs(days)}d ago`;
+    bg = "var(--status-withdrawn-bg)";
+    fg = "var(--status-withdrawn-fg)";
+  } else if (days <= 30) {
+    label = `Expires in ${days}d`;
+    bg = "var(--status-under-offer-bg)";
+    fg = "var(--status-under-offer-fg)";
+  } else {
+    label = `Valid · ${days}d`;
+    bg = "var(--status-active-bg)";
+    fg = "var(--status-active-fg)";
+  }
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        marginTop: 6,
+        padding: "2px 8px",
+        borderRadius: 999,
+        fontSize: 10,
+        fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+        letterSpacing: "0.06em",
+        textTransform: "uppercase",
+        background: bg,
+        color: fg,
+        fontWeight: 600,
+      }}
+    >
+      {label}
+    </span>
+  );
+}
