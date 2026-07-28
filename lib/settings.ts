@@ -18,6 +18,10 @@ import { createServiceClient } from "@/lib/supabase/service";
 // value's TS type; keeps the getter typed without a separate schema layer.
 export const SETTINGS_DEFAULTS = {
   "mandate.expiry_window_days": [30, 60] as number[],
+  // FFC watchlist thresholds. Days-ahead-of-expiry buckets. Default
+  // [30, 60, 90] because PPRA renewal window opens ~90 days out and
+  // 30 days is "chase renewal now" for the director.
+  "ffc.expiry_window_days": [30, 60, 90] as number[],
 } as const;
 
 type SettingKey = keyof typeof SETTINGS_DEFAULTS;

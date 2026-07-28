@@ -45,6 +45,8 @@ export async function updateTeamMember(input: {
   job_title?: string | null;
   phone?: string | null;
   active?: boolean;
+  ppra_ffc?: string | null;         // FFC certificate number
+  ffc_expiry_date?: string | null;  // ISO date; null clears
 }) {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false as const, error: gate.error };
@@ -83,6 +85,21 @@ export async function updateTeamMember(input: {
     patch.phone = v.length > 0 ? v : null;
   }
   if (input.active !== undefined) patch.active = input.active;
+  if (input.ppra_ffc !== undefined) {
+    const v = (input.ppra_ffc ?? "").trim();
+    patch.ppra_ffc = v.length > 0 ? v : null;
+  }
+  if (input.ffc_expiry_date !== undefined) {
+    // Accept empty string → null; validate ISO YYYY-MM-DD when set.
+    const v = (input.ffc_expiry_date ?? "").trim();
+    if (v.length === 0) {
+      patch.ffc_expiry_date = null;
+    } else if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+      return { ok: false as const, error: "FFC expiry must be YYYY-MM-DD" };
+    } else {
+      patch.ffc_expiry_date = v;
+    }
+  }
 
   if (Object.keys(patch).length === 0) {
     return { ok: false as const, error: "nothing to update" };
@@ -96,6 +113,7 @@ export async function updateTeamMember(input: {
   if (error) return { ok: false as const, error: error.message };
 
   revalidatePath("/team");
+  revalidatePath("/compliance");
   return { ok: true as const };
 }
 
