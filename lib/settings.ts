@@ -22,6 +22,12 @@ export const SETTINGS_DEFAULTS = {
   // [30, 60, 90] because PPRA renewal window opens ~90 days out and
   // 30 days is "chase renewal now" for the director.
   "ffc.expiry_window_days": [30, 60, 90] as number[],
+  // FICA verification is per-transaction, but agencies commonly re-use a
+  // recent verification within a validity window rather than re-KYCing on
+  // every new deal. 730 days ≈ 2 years is the standard for low/medium
+  // risk parties. A verified FICA older than this counts as "stale" and
+  // needs refreshing before the next deal proceeds.
+  "fica.verification_valid_days": 730 as number,
 } as const;
 
 type SettingKey = keyof typeof SETTINGS_DEFAULTS;

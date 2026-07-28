@@ -3,7 +3,8 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import TopBar from "@/app/components/TopBar";
 import { getSetting } from "@/lib/settings";
-import { PropertyDate } from "@/app/components/format";
+import { PropertyDate, FicaStatusBadge } from "@/app/components/format";
+import { deriveFicaState, ficaLabel, type DerivedFica, type RawFicaRecord } from "@/lib/fica";
 
 export const dynamic = "force-dynamic";
 
@@ -53,10 +54,36 @@ export default async function CompliancePage() {
     .single();
   if (profile?.role !== "admin") redirect("/dashboard");
 
-  const thresholds = await getSetting("ffc.expiry_window_days");
+  const [thresholds, ficaValidityDays] = await Promise.all([
+    getSetting("ffc.expiry_window_days"),
+    getSetting("fica.verification_valid_days"),
+  ]);
   const sortedThresholds = Array.from(
     new Set(thresholds.filter((n) => Number.isFinite(n) && n > 0)),
   ).sort((a, b) => a - b);
+
+  // Live-deal FICA gaps. Statuses chosen deliberately:
+  //   in_conveyancing → conveyancer will demand FICA to lodge; any gap
+  //                     here blocks registration and is the highest-urgency
+  //                     bucket.
+  //   sale_agreed     → OTP accepted, running toward transfer — should
+  //                     already have FICA started for the buyer.
+  //   under_offer     → contract of sale being negotiated; FICA on the
+  //                     buyer is normally kicked off when the offer is
+  //                     signed. Anything missing here is an early smell.
+  const LIVE_STATUSES = ["in_conveyancing", "sale_agreed", "under_offer"] as const;
+  const STATUS_URGENCY: Record<string, number> = {
+    in_conveyancing: 0,
+    sale_agreed: 1,
+    under_offer: 2,
+  };
+  const liveDealGaps = await loadLiveDealFicaGaps(supabase, LIVE_STATUSES, ficaValidityDays);
+  liveDealGaps.sort((a, b) => {
+    const ua = STATUS_URGENCY[a.status] ?? 99;
+    const ub = STATUS_URGENCY[b.status] ?? 99;
+    if (ua !== ub) return ua - ub;
+    return (b.gapCount ?? 0) - (a.gapCount ?? 0);
+  });
 
   // Only agent/admin roles hold FFCs — conveyancer / client users don't
   // (they're external roles reserved for future scoped rooms per 0001_init).
@@ -121,24 +148,31 @@ export default async function CompliancePage() {
 
   const total =
     expired.length + buckets.reduce((s, b) => s + b.rows.length, 0) + unknown.length;
+  const dealsWithGaps = liveDealGaps.length;
+  const totalGapCount = liveDealGaps.reduce((s, d) => s + d.gapCount, 0);
 
   return (
     <>
       <TopBar />
       <main>
         <header className="app-head">
-          <p className="eyebrow">Dream Knysna · Compliance · PPRA</p>
+          <p className="eyebrow">Dream Knysna · Compliance</p>
           <h1>
-            {total === 0
-              ? "All FFCs current"
-              : `${total} FFC${total === 1 ? "" : "s"} needs attention`}
+            {total === 0 && dealsWithGaps === 0
+              ? "All clear · FFC + FICA"
+              : total > 0 && dealsWithGaps > 0
+                ? `${total} FFC${total === 1 ? "" : "s"} + ${totalGapCount} FICA gap${totalGapCount === 1 ? "" : "s"}`
+                : total > 0
+                  ? `${total} FFC${total === 1 ? "" : "s"} needs attention`
+                  : `${totalGapCount} FICA gap${totalGapCount === 1 ? "" : "s"} on live deals`}
           </h1>
           <p className="app-sub">
-            Windows configured at{" "}
+            FFC windows configured at{" "}
             <Link href="/settings" style={{ color: "var(--navy)", fontWeight: 600 }}>
               Settings
             </Link>
-            : {sortedThresholds.join(" / ")} days. Edit an agent&apos;s FFC on{" "}
+            : {sortedThresholds.join(" / ")} days · FICA validity {ficaValidityDays} days.
+            Edit an agent&apos;s FFC on{" "}
             <Link href="/team" style={{ color: "var(--navy)", fontWeight: 600 }}>
               Team
             </Link>
@@ -148,6 +182,21 @@ export default async function CompliancePage() {
         <hr className="tideline" />
 
         <section className="app-body">
+          <LiveDealFicaGaps rows={liveDealGaps} />
+
+          <h2
+            style={{
+              marginTop: dealsWithGaps > 0 ? 40 : 0,
+              fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+              fontSize: 11,
+              letterSpacing: "0.14em",
+              textTransform: "uppercase",
+              color: "var(--estuary, #132B84)",
+            }}
+          >
+            PPRA · Agent FFCs
+          </h2>
+
           {total === 0 ? (
             <p style={{ color: "var(--paper-mute, #6a7692)", fontStyle: "italic", padding: "24px 0" }}>
               Every active agent has a valid FFC recorded with runway greater
@@ -380,4 +429,234 @@ function AgentEntry({ row, days }: { row: AgentRow; days: number }) {
       </div>
     </li>
   );
+}
+
+// ---------------------------------------------------------------------------
+// Live-deal FICA: for every transfer currently in a live status, walk its
+// transfer_party rows and derive a per-party FICA state SCOPED TO THIS
+// TRANSFER. Anything not "verified" is a gap the director should chase.
+//
+// Scoped-to-transfer is deliberate: a party might be FICA-verified on their
+// last transfer (2023) but need re-verification for this one. The FIC Act
+// treats each business relationship as a fresh KYC obligation.
+// ---------------------------------------------------------------------------
+
+type PartyGap = {
+  partyId: string;
+  displayName: string;
+  side: "seller" | "purchaser" | string;
+  derived: DerivedFica;
+};
+
+type LiveDealGap = {
+  transferId: string;
+  transferName: string | null;
+  status: string;
+  propertyId: string | null;
+  propertyAddress: string | null;
+  gaps: PartyGap[];
+  gapCount: number;
+};
+
+async function loadLiveDealFicaGaps(
+  supabase: ReturnType<typeof createClient>,
+  liveStatuses: readonly string[],
+  validityDays: number,
+): Promise<LiveDealGap[]> {
+  const { data: transfers } = await supabase
+    .from("transfer")
+    .select("id, name, status, property:property_id(id, primary_address)")
+    .in("status", liveStatuses as unknown as string[]);
+
+  const transferRows = (transfers ?? []) as any[];
+  if (transferRows.length === 0) return [];
+  const transferIds = transferRows.map((t) => t.id);
+
+  const [{ data: tps }, { data: fs }] = await Promise.all([
+    supabase
+      .from("transfer_party")
+      .select("transfer_id, side, party:party_id(id, display_name)")
+      .in("transfer_id", transferIds),
+    supabase
+      .from("fica")
+      .select("transfer_id, party_id, role, status, verified_at, updated_at")
+      .in("transfer_id", transferIds),
+  ]);
+
+  // fica records indexed by (transfer_id, party_id) → derive per (transfer, party)
+  const ficaKey = (tid: string, pid: string) => `${tid}::${pid}`;
+  const ficaByKey = new Map<string, RawFicaRecord[]>();
+  for (const f of (fs ?? []) as any[]) {
+    const k = ficaKey(f.transfer_id, f.party_id);
+    const arr = ficaByKey.get(k) ?? [];
+    arr.push({
+      status: f.status,
+      verified_at: f.verified_at,
+      updated_at: f.updated_at,
+      transfer_id: f.transfer_id,
+      role: f.role,
+    });
+    ficaByKey.set(k, arr);
+  }
+
+  const partiesByTransfer = new Map<string, { partyId: string; displayName: string; side: string }[]>();
+  for (const tp of (tps ?? []) as any[]) {
+    const arr = partiesByTransfer.get(tp.transfer_id) ?? [];
+    if (tp.party?.id) {
+      arr.push({
+        partyId: tp.party.id,
+        displayName: tp.party.display_name ?? "—",
+        side: tp.side,
+      });
+    }
+    partiesByTransfer.set(tp.transfer_id, arr);
+  }
+
+  const out: LiveDealGap[] = [];
+  for (const t of transferRows) {
+    const parties = partiesByTransfer.get(t.id) ?? [];
+    const gaps: PartyGap[] = [];
+    for (const p of parties) {
+      const records = ficaByKey.get(ficaKey(t.id, p.partyId)) ?? [];
+      const derived = deriveFicaState(records, validityDays);
+      if (derived.state !== "verified") {
+        gaps.push({ partyId: p.partyId, displayName: p.displayName, side: p.side, derived });
+      }
+    }
+    if (gaps.length > 0) {
+      out.push({
+        transferId: t.id,
+        transferName: t.name ?? null,
+        status: t.status,
+        propertyId: t.property?.id ?? null,
+        propertyAddress: t.property?.primary_address ?? null,
+        gaps,
+        gapCount: gaps.length,
+      });
+    }
+  }
+  return out;
+}
+
+function LiveDealFicaGaps({ rows }: { rows: LiveDealGap[] }) {
+  return (
+    <div>
+      <div style={{ borderLeft: "3px solid var(--critical, #9A3B34)", paddingLeft: 12, marginBottom: 12 }}>
+        <h2
+          style={{
+            fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+            fontSize: 11,
+            letterSpacing: "0.14em",
+            textTransform: "uppercase",
+            color: "var(--estuary, #132B84)",
+            margin: 0,
+          }}
+        >
+          FIC Act · Gaps on live deals · {rows.length} {rows.length === 1 ? "deal" : "deals"}
+        </h2>
+        <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--paper-mute, #6a7692)" }}>
+          Transfers in flight where a party&apos;s FICA is missing, pending, stale, or expired.
+          Conveyancers block lodgment until this is closed — sort your day starting here.
+        </p>
+      </div>
+      {rows.length === 0 ? (
+        <p style={{ color: "var(--paper-mute, #6a7692)", fontStyle: "italic", padding: "12px 0 24px" }}>
+          Every party on every live deal is FICA-verified within the validity window. Nothing to chase.
+        </p>
+      ) : (
+        <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+          {rows.map((r) => (
+            <li
+              key={r.transferId}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr auto",
+                gap: 12,
+                padding: "14px 0",
+                borderBottom: "1px solid var(--hairline, #e2e8f5)",
+              }}
+            >
+              <div>
+                <p
+                  style={{
+                    margin: 0,
+                    fontFamily: "'Fraunces', 'Cormorant Garamond', serif",
+                    fontSize: 16,
+                    color: "var(--estuary, #132B84)",
+                    fontWeight: 500,
+                  }}
+                >
+                  {r.propertyId ? (
+                    <Link href={`/properties/${r.propertyId}`} style={{ color: "inherit" }}>
+                      {r.propertyAddress ?? r.transferName ?? r.transferId.slice(0, 8)}
+                    </Link>
+                  ) : (
+                    r.transferName ?? r.transferId.slice(0, 8)
+                  )}
+                </p>
+                <p
+                  style={{
+                    margin: "2px 0 8px",
+                    fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                    fontSize: 10,
+                    letterSpacing: "0.10em",
+                    textTransform: "uppercase",
+                    color: dealStatusColor(r.status),
+                  }}
+                >
+                  {r.status.replace(/_/g, " ")}
+                </p>
+                <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+                  {r.gaps.map((g) => (
+                    <li key={g.partyId} style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                      <Link
+                        href={`/contacts/${g.partyId}`}
+                        style={{ fontSize: 13, color: "var(--estuary, #132B84)", fontWeight: 500 }}
+                      >
+                        {g.displayName}
+                      </Link>
+                      <span
+                        style={{
+                          fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                          fontSize: 10,
+                          letterSpacing: "0.08em",
+                          textTransform: "uppercase",
+                          color: "var(--paper-mute, #6a7692)",
+                        }}
+                      >
+                        {g.side === "purchaser" ? "Buyer" : g.side === "seller" ? "Seller" : g.side}
+                      </span>
+                      <FicaStatusBadge derived={g.derived} size="sm" />
+                      <span style={{ fontSize: 11, color: "var(--paper-mute, #6a7692)" }}>
+                        {ficaLabel(g.derived)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div style={{ textAlign: "right", minWidth: 100 }}>
+                <p
+                  style={{
+                    margin: 0,
+                    fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                    fontSize: 13,
+                    color: "var(--critical, #9A3B34)",
+                    fontWeight: 600,
+                  }}
+                >
+                  {r.gapCount} gap{r.gapCount === 1 ? "" : "s"}
+                </p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function dealStatusColor(status: string): string {
+  if (status === "in_conveyancing") return "var(--critical, #9A3B34)";
+  if (status === "sale_agreed") return "var(--caution, #A9772F)";
+  return "var(--ink-500, #6B6153)"; // under_offer
 }
