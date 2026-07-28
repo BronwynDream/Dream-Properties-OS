@@ -38,11 +38,15 @@
   --line-strong: #D8CFBE;
   --line-soft:   #E7E0D2;
 
-  /* Accent — restrained ink-blue. Keeps the brand navy for existing
-     usages; new work uses the accent scale below. */
-  --accent-600: #3A5A6B;
-  --accent-700: #2C4653;
-  --accent-100: #DCE6EA;
+  /* Accent — aliased to Dream's brand navy (Option B, chosen 2026-07-28).
+     Skill's default accent was a slate blue (#3A5A6B) but running that
+     alongside navy on the same screen produced two competing blues. We
+     keep the skill's TOKEN STRUCTURE (accent-100/600/700) but bind the
+     actual hues to the brand identity so the design system stays
+     coherent with the existing 40+ components using --navy/--estuary. */
+  --accent-600: var(--navy);       /* #132B84 */
+  --accent-700: var(--estuary);    /* #0F2A63 */
+  --accent-100: var(--mist);       /* #EDF0F8 — very light navy tint */
 
   /* Feedback — earthy so it sits in the paper world */
   --positive: #4B6B4A;
@@ -87,8 +91,8 @@
   --status-active-fg:       #35502F;
   --status-under-offer-bg:  #F0E3CC;
   --status-under-offer-fg:  #7A5518;
-  --status-sold-bg:         #D9E0E4;
-  --status-sold-fg:         #2C4653;
+  --status-sold-bg:         var(--mist);
+  --status-sold-fg:         var(--estuary);
   --status-withdrawn-bg:    #EDD9D6;
   --status-withdrawn-fg:    #7A2E28;
 

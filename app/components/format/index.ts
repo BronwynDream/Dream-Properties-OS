@@ -8,7 +8,7 @@
 //   - PropertyDate: "14 Aug 2026" (or ISO in tables); label prop names
 //     which date so multiple date fields don't blur together
 //   - Ref: verbatim monospace for erf / SG21 / deed / listing ref
-export { default as Rand } from "./Rand";
+export { default as Rand, randString } from "./Rand";
 export { default as Area } from "./Area";
 export { default as PropertyDate } from "./PropertyDate";
 export { default as Ref } from "./Ref";

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, type ReactNode } from "react";
 import mapboxgl from "mapbox-gl";
 import RegisteredStamp from "./RegisteredStamp";
+import { Rand } from "@/app/components/format";
 
 // PropertyHero — the Property Record's identity plate.
 //
@@ -199,7 +200,7 @@ export default function PropertyHero({
             {muniValuation != null ? (
               <>
                 <p className="record-headline-value">
-                  R {Number(muniValuation).toLocaleString("en-ZA")}
+                  <Rand value={muniValuation} mutedPrefix={false} />
                 </p>
                 {muniValuationSubtitle && (
                   <p className="record-headline-sub">{muniValuationSubtitle}</p>

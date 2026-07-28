@@ -114,3 +114,23 @@ function spaceThousands(digits: string): string {
   const spaced = abs.replace(/\B(?=(\d{3})+(?!\d))/g, " "); // NBSP so it never line-breaks
   return negative ? `-${spaced}` : spaced;
 }
+
+/**
+ * String form of Rand for callers that need a plain string (schedule row
+ * values, SinceLine data, template literals). Prefer the <Rand /> component
+ * where possible — this drops the muted-prefix + tabular-nums styling.
+ * Produces "R 2 450 000" (space thousands, no decimals) to match the
+ * estate-agency-design skill's convention.
+ */
+export function randString(
+  n: number | null | undefined,
+  opts?: { cents?: boolean; fallback?: string },
+): string {
+  const fallback = opts?.fallback ?? "POA";
+  if (n == null || !Number.isFinite(n)) return fallback;
+  if (opts?.cents) {
+    const [whole, frac = "00"] = n.toFixed(2).split(".");
+    return `R ${spaceThousands(whole)},${frac}`;
+  }
+  return `R ${spaceThousands(Math.round(n).toString())}`;
+}

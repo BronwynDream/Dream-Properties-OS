@@ -11,14 +11,11 @@ import DropZone from "@/app/triage/DropZone";
 import LightstoneFetch from "./LightstoneFetch";
 import ErfLookup from "./ErfLookup";
 import { PRODUCTS as LIGHTSTONE_PRODUCTS } from "@/lib/lightstone";
+import { Rand, randString } from "@/app/components/format";
 
 export const dynamic = "force-dynamic";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-function money(v: any) {
-  const n = Number(v);
-  return Number.isFinite(n) ? `R ${n.toLocaleString("en-ZA")}` : "—";
-}
 
 export default async function PropertyRecord({
   params,
@@ -420,10 +417,7 @@ export default async function PropertyRecord({
       const parts = displayName.trim().split(/\s+/);
       const surname = parts.length > 1 ? parts[parts.length - 1] : displayName;
       const agr = agreements.find((a: any) => a.transfer_id === lastRegistered.id);
-      const priceStr =
-        agr?.price != null
-          ? `R ${Number(agr.price).toLocaleString("en-ZA")}`
-          : null;
+      const priceStr = agr?.price != null ? randString(Number(agr.price)) : null;
       since = {
         surname,
         year: (lastRegistered.registered_date as string).slice(0, 4),
@@ -569,7 +563,7 @@ export default async function PropertyRecord({
   }
   if (muniPrimary?.bond_institution || muniPrimary?.bond_amount != null) {
     const amt = muniPrimary?.bond_amount != null
-      ? `R ${Number(muniPrimary.bond_amount).toLocaleString("en-ZA")}`
+      ? randString(Number(muniPrimary.bond_amount))
       : null;
     const inst = muniPrimary?.bond_institution ?? "Bond";
     secondaryRows.push({
@@ -681,8 +675,8 @@ export default async function PropertyRecord({
               <p className="col-title">Agreement</p>
               {agr ? (
                 <>
-                  <div className="party-line">Price <b>{money(agr.price)}</b></div>
-                  <div className="party-line">Deposit <b>{money(agr.deposit)}</b></div>
+                  <div className="party-line">Price <b><Rand value={agr.price} fallback="—" /></b></div>
+                  <div className="party-line">Deposit <b><Rand value={agr.deposit} fallback="—" /></b></div>
                   <div className="party-line">Transfer <b>{agr.transfer_date ?? "—"}</b></div>
                 </>
               ) : (
