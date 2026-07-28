@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Rand, Area } from "@/app/components/format";
 
 // Row shape matches the shapeRow() output in page.tsx. muni_valuation is
 // now a SUM across the child muni_valuation rows (a single erf can be
@@ -41,18 +42,6 @@ export type ErfRow = {
   bond_institution: string | null;
   refreshed_at: string | null;
 };
-
-function fmtR(n: number | null | undefined): string {
-  if (n == null) return "—";
-  if (n >= 1_000_000) return `R ${(n / 1_000_000).toFixed(2)}m`;
-  if (n >= 1_000) return `R ${(n / 1_000).toFixed(0)}k`;
-  return `R ${Math.round(n).toLocaleString("en-ZA")}`;
-}
-
-function fmtM2(n: number | null | undefined): string {
-  if (n == null) return "—";
-  return `${Number(n).toLocaleString("en-ZA")} m²`;
-}
 
 function addressOf(r: ErfRow): string {
   const parts: string[] = [];
@@ -160,7 +149,7 @@ export default function ErfResultsTable({ rows }: { rows: ErfRow[] }) {
                     : undefined
                 }
               >
-                {fmtR(r.muni_valuation_total)}
+                <Rand value={r.muni_valuation_total} compact fallback="—" mutedPrefix={false} />
                 {r.valuations.length > 1 && (
                   <span
                     style={{
@@ -182,7 +171,7 @@ export default function ErfResultsTable({ rows }: { rows: ErfRow[] }) {
                   color: "var(--paper-mute, #6a7692)",
                 }}
               >
-                {fmtM2(r.extent_sqm ?? r.area_sqm_valroll)}
+                <Area value={r.extent_sqm ?? r.area_sqm_valroll} />
               </span>
               <span
                 style={{
@@ -244,9 +233,9 @@ function DetailPanel({ r }: { r: ErfRow }) {
         )}
       </Group>
       <Group label="Valuation">
-        <Row k="Muni valuation (total)" v={r.muni_valuation_total != null ? `R ${r.muni_valuation_total.toLocaleString("en-ZA")}` : null} />
-        <Row k="Extent (deed)" v={r.extent_sqm != null ? `${r.extent_sqm.toLocaleString("en-ZA")} m²` : null} />
-        <Row k="Extent (roll)" v={r.area_sqm_valroll != null ? `${r.area_sqm_valroll.toLocaleString("en-ZA")} m²` : null} />
+        <Row k="Muni valuation (total)" v={<Rand value={r.muni_valuation_total} fallback="—" mutedPrefix={false} />} />
+        <Row k="Extent (deed)" v={<Area value={r.extent_sqm} />} />
+        <Row k="Extent (roll)" v={<Area value={r.area_sqm_valroll} />} />
         <Row k="Property type" v={r.property_type} />
       </Group>
       {r.valuations.length > 1 && (
@@ -255,7 +244,7 @@ function DetailPanel({ r }: { r: ErfRow }) {
             <Row
               key={i}
               k={v.tariff ?? "(no tariff)"}
-              v={v.valuation != null ? `R ${v.valuation.toLocaleString("en-ZA")}` : null}
+              v={<Rand value={v.valuation} fallback="—" mutedPrefix={false} />}
             />
           ))}
         </Group>
@@ -274,13 +263,13 @@ function DetailPanel({ r }: { r: ErfRow }) {
       <Group label="Last transaction">
         <Row k="Registered" v={r.registration_date} />
         <Row k="Purchase date" v={r.purch_date} />
-        <Row k="Purchase price" v={r.purch_price != null ? `R ${r.purch_price.toLocaleString("en-ZA")}` : null} />
+        <Row k="Purchase price" v={<Rand value={r.purch_price} fallback="—" mutedPrefix={false} />} />
       </Group>
       {(r.bond_number || r.bond_amount || r.bond_institution) && (
         <Group label="Bond (public)">
           <Row k="Institution" v={r.bond_institution} />
           <Row k="Number" v={r.bond_number} mono />
-          <Row k="Amount" v={r.bond_amount != null ? `R ${r.bond_amount.toLocaleString("en-ZA")}` : null} />
+          <Row k="Amount" v={<Rand value={r.bond_amount} fallback="—" mutedPrefix={false} />} />
         </Group>
       )}
       <div
@@ -319,7 +308,7 @@ function Group({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function Row({ k, v, mono }: { k: string; v: string | null | undefined; mono?: boolean }) {
+function Row({ k, v, mono }: { k: string; v: React.ReactNode; mono?: boolean }) {
   return (
     <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
       <span style={{ color: "var(--paper-mute, #6a7692)", fontSize: 11 }}>{k}</span>

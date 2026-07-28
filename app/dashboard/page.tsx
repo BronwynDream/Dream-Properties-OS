@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import TopBar from "@/app/components/TopBar";
+import { Rand } from "@/app/components/format";
 
 export const dynamic = "force-dynamic";
 
@@ -21,13 +22,6 @@ function humanStatus(raw: string | null | undefined): string {
   if (raw === "registered") return "Registered";
   if (raw === "preparing") return "Preparing";
   return raw.replace(/_/g, " ");
-}
-
-function money(n: number | null | undefined): string {
-  if (n == null) return "Price on request";
-  if (n >= 1_000_000) return `R ${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `R ${(n / 1_000).toFixed(0)}k`;
-  return `R ${n}`;
 }
 
 export default async function Dashboard() {
@@ -416,7 +410,7 @@ export default async function Dashboard() {
                       .join(" · ") || null
                   }
                   right={
-                    <span className="dash-price">{money(l.asking_price)}</span>
+                    <span className="dash-price"><Rand value={l.asking_price} compact /></span>
                   }
                 />
               );
