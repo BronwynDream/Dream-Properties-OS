@@ -23,7 +23,12 @@
 // Variants for now: REGISTERED. Mandate-held / in-conveyancing variants
 // can be added by extending the primary/org/dateLabel switch.
 
-type Variant = "registered" | "mandate_held" | "in_conveyancing";
+type Variant =
+  | "registered"        // deed transfer completed
+  | "mandate_held"      // active mandate on the listing
+  | "in_conveyancing"   // deal signed, transfer in progress
+  | "preparing"         // take-on / pre-listing state
+  | "sold_externally";  // sold by another agent — dream lost the deal
 
 const COPY: Record<Variant, { primary: string; org: string; dateLabel?: string }> = {
   registered: {
@@ -38,6 +43,14 @@ const COPY: Record<Variant, { primary: string; org: string; dateLabel?: string }
   in_conveyancing: {
     primary: "IN CONVEYANCING",
     org: "DREAM KNYSNA PROPERTIES",
+  },
+  preparing: {
+    primary: "TAKE-ON",
+    org: "DREAM KNYSNA PROPERTIES",
+  },
+  sold_externally: {
+    primary: "SOLD ELSEWHERE",
+    org: "OFF THE BOOK",
   },
 };
 
