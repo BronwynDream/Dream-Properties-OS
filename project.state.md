@@ -4,7 +4,154 @@ Running log of what's decided, built, and next. Updated at the end of each worki
 session. `PROJECT.md` remains the canonical business/design doc; this file is the
 "where are we right now" companion.
 
-_Last updated: 2026-07-27_
+_Last updated: 2026-07-27 (evening)_
+
+---
+
+## VALUATION ROLLS + MUNI DATA REBUILD (2026-07-27 evening)
+
+Long single-session arc: replaced the stale ArcGIS "..._Test" Layer 58
+valuation mirror with the authoritative published Knysna Muni PDFs (Full
+General Valuation Roll + Supplementary Rolls). Triggered by a
+credibility check on Erf 1453 — external agent's report said the muni
+valued the property at R 9,145,000, our data showed R 4M (then R 6.1M
+after the multi-tariff split from earlier today). Turned out the ArcGIS
+endpoint hadn't been edited since **2023-02-07** — 3.5 years stale.
+
+### Shipped
+- **PR #5 — Ingest Knysna Muni Valuation Roll PDFs** (`e777731`).
+  7-phase build in one branch:
+  - Migration 0050: `valuation_roll_upload` table, extends
+    `muni_property` (+ owner, roll_upload_id) and `muni_valuation`
+    (+ sec_78, effective_date, comment, note, upload_kind, is_marker).
+    New `muni_property_public` view strips owner for staff-only reads.
+  - `lib/valuation-rolls/`: pdfjs-dist coordinate-aware column bucketing
+    parser. Full GV adapter (12 cols) and Supplement adapter (16 cols
+    incl. SG21 + Sec 78 + Eff date + Note). Both verified against real
+    PDFs — Full GV 22,773 rows in 7.7s, Supplement 4 431 rows in 1.7s.
+  - `lib/valuation-rolls/apply.ts`: idempotent upsert. Full GV mints
+    synthetic sg_number `GV:erf:ptn:unit:TOWN` when no ArcGIS SG21
+    exists, else re-uses it. Supplements key directly on SG21. Purges
+    arcgis rows for touched SGs.
+  - `/api/valuation-rolls/{upload,:id/parse,:id/apply}` three-step API.
+  - `/admin/valuation-rolls` — list + upload form + detail with parse
+    preview + Apply button. Linked from `/settings`.
+  - `/api/muni/import` Layer 58 pass now identity-only (kept for suburb
+    bootstrap; valuations owned by uploads).
+- **PR #6 — DOMMatrix polyfill for pdfjs on Vercel Node** (`272e1b7`).
+  pdfjs-dist v6 references DOMMatrix / Path2D / ImageData at module
+  load. Vercel serverless Node doesn't ship them; local Node 20+ does.
+  Minimal no-op polyfills in `lib/valuation-rolls/parser.ts` —
+  ~30MB cheaper than installing @napi-rs/canvas.
+- **PR #7 — Bundle pdfjs worker for Vercel serverless** (`3b96677`).
+  After DOMMatrix fix, "fake worker" bootstrap failed to find
+  `pdf.worker.mjs` in `.next/server/chunks/`. Fixed via side-effect
+  import + bare workerSrc specifier + `outputFileTracingIncludes` in
+  `next.config.mjs` to force-include both files at build time.
+- **PR #8 — Dedupe muni_property by sg_number in Full GV apply**
+  (`cdd9270`). Two stacked bugs surfaced during the first Apply on
+  Vercel: (a) `syntheticSg` didn't include `unit` → sectional-title
+  schemes collapsed onto one key, (b) GV has ~43 legitimate duplicate
+  rows across ~22.7k. Both fixed by including `unit` in the key AND
+  accumulating into `Map<sg_number, propRow>` before batching so
+  ON CONFLICT DO UPDATE always sees unique targets per batch.
+- **PR #9 — Clickable erf polygons on the map** (`fcfe2a1`). Before:
+  clicking a bare erf polygon (no OS/P24 overlay) did nothing. Added
+  click handler on `parcels-fill` with priority guard against
+  `for-sale-fill`/`ungeocoded-dots`. Fetches
+  `/api/muni/at-erf/:prclKey` and renders a compact Mapbox popup at
+  the click point.
+- **PR #10 — Match erf-click by (erf, town) not sg_number digits**
+  (`12eae04`). PR #9's API was doing digits-only substring match on
+  sg_number, which works for ArcGIS SG21 but MISSES GV-synthetic
+  keys. Parcels vector tile already exposes `tag_value` + `maj_region`;
+  now passed as `?erf=&town=` query params and matched via
+  `erf_number = tag_value AND town_name ILIKE maj_region`.
+- **PR #11 — Map default framing to Buffalo Bay → Noetzie coastal
+  strip**. Still open at session end. `INITIAL_BOUNDS` constant with
+  fitBoundsOptions passed to `new mapboxgl.Map`; pin-fit-to-bounds
+  effect is now a no-op.
+
+### Applied to Bon Bon
+- Migration 0050 run in Studio.
+- `valuation-rolls` Storage bucket + 4 RLS policies created via SQL.
+- **Full GV uploaded and applied**: 22,635 properties + 22,660
+  valuations + 81 markers. Erf 1453 KNYSNA (JWH Trust, 2 Panorama
+  Road, 722 m²) now correctly shows **R 9,145,000** in
+  `/erf-lookup`, the map popup, and any Property Record that joins it.
+- **Supplement 4 uploaded and applied**: 431 supplemental rows on top
+  of the GV baseline.
+- **Cleanup**: `delete from muni_valuation where upload_kind='arcgis'`
+  purged stale ArcGIS rows that were still summing into the map
+  popup for erven where the GV apply couldn't reuse the ArcGIS sg
+  (typically because Layer 58 suburb didn't match GV town).
+
+### Loose ends
+- **PR #11 not yet merged** — default map framing.
+- **`apply.ts` hardening**: purge arcgis muni_valuation by (erf, town)
+  not just by SG number, so a future ArcGIS Layer 58 re-enable can't
+  silently repollute. Not urgent (Layer 58 write is disabled).
+- **Bronwyn's mandate/OTP templates** still awaited — blocks the
+  document-collateral vault design (discussed but not built).
+- **P24 drain queue**: 256 URLs still pending. Blocked on Firecrawl
+  upgrade decision (Free tier at ~117 credits remaining vs 256 needed).
+
+### Debugging lessons worth remembering
+- **pdfjs-dist v6 on Vercel serverless Node** needs both the
+  browser-API polyfills AND the worker file explicitly traced (bundled
+  by dynamic path resolution otherwise fails). See
+  `lib/valuation-rolls/parser.ts` + `next.config.mjs` for the pattern.
+- **Knysna Muni ArcGIS FeatureServer** at
+  `services3.arcgis.com/Kb9idbuOS9ILjfGd/.../Property_Ownership_Deeds_Test`
+  is a TEST endpoint (name literally contains `_Test`), last edited
+  2023-02-07. Never authoritative for valuations — the published PDF
+  rolls always are.
+- **PDF column extraction via pdfjs** — use `transform[4]` (x-coord)
+  for column bucketing, not whitespace splitting. `pdftotext -layout`
+  merges adjacent columns (e.g. `HILL STREET914`) that pdfjs
+  correctly separates by coordinate.
+
+---
+
+## MANDATE WATCHLIST + APP SETTINGS (2026-07-27 afternoon)
+
+- **PR #2** (`798c4b0`) — new `/mandates` staff page: four buckets
+  (Expired unresolved, Expiring in N days per configured threshold,
+  Unknown expiry). Type filter chips (URL-synced). Row → Property
+  Record. Only active-listing mandates (draft/live/under_offer).
+- New `/settings` admin page + `app_setting` table (jsonb kv). First
+  setting: `mandate.expiry_window_days` (default `[30, 60]`).
+  Typed `getSetting`/`setSetting` helpers with defaults registry.
+- Migration 0048 applied.
+
+## ERF LOOKUP (2026-07-27 afternoon)
+
+- **PR #3** (`e13058e`) — new `/erf-lookup` staff page. Search by
+  ERF number (all-digits) or address (space-separated tokens).
+  Suburb filter dropdown. Detail card with cadastre / valuation /
+  zoning / deed / bond fields. Closes the "cold enquiry" gap where
+  muni data was only visible via Property Record hero.
+
+## MUNI VALUATION SPLIT (2026-07-27 afternoon)
+
+- **PR #4** (`e300854`) — bug fix: Knysna Muni Valuation Roll is
+  1:many per SG21 (a single erf can be rated under multiple tariff
+  categories). Old importer upserted on sg_number and dropped all
+  but one. Migration 0049 split `muni_valuation` into its own table
+  with `(sg_number, tariff)` unique constraint. Reads sum for
+  headline, expose breakdown for detail. Rewrote `muni_lookup_at_point`
+  to SUM across child rows.
+- Also this batch: disabled ArcGIS Layer 58 valuation writes (kept
+  identity slice for suburb bootstrap only).
+
+## P24 SOURCE OF TRUTH + DRAIN QUEUE (2026-07-27 morning)
+
+- **PR #1** (`ee724c3`) — DW hidden by default on map. Panel primary
+  sorts P24 > PP > DW. Migration 0047: `geocode_source` column;
+  dedup clusterer excludes centroid-fallback rows from 20m geo rule
+  (fixes unrelated Leisure Isle listings collapsing into one dedup
+  group). Wired `rebuildDedupAndMatch` into P24 refresh tail. Drain
+  queue button auto-loops P24 refresh past Hobby 60s ceiling.
 
 ---
 
