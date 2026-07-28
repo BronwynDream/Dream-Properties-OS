@@ -358,16 +358,28 @@ export default async function PropertyRecord({
     const month = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"][d.getUTCMonth()];
     return `${day} ${month} ${d.getUTCFullYear()}`;
   };
-  let stamp: { variant: "registered" | "mandate_held" | "in_conveyancing"; date: string; secondary?: string } | null = null;
+  type StampVariant = "registered" | "mandate_held" | "in_conveyancing" | "preparing" | "sold_externally";
+  let stamp: { variant: StampVariant; date: string; secondary?: string } | null = null;
+  const currentTxStatus = (currentTransfer?.status ?? "").toLowerCase();
   const registeredTx = transfers.find(
     (t: any) => (t.status ?? "").toLowerCase() === "registered" && t.registered_date,
+  );
+  const soldExternalTx = transfers.find(
+    (t: any) => (t.status ?? "").toLowerCase() === "sold_external",
   );
   if (registeredTx) {
     stamp = {
       variant: "registered",
       date: fmtStampDate(registeredTx.registered_date),
     };
-  } else if ((currentTransfer?.status ?? "").toLowerCase() === "in_conveyancing") {
+  } else if (soldExternalTx) {
+    stamp = {
+      variant: "sold_externally",
+      date: soldExternalTx.transfer_date
+        ? fmtStampDate(soldExternalTx.transfer_date)
+        : fmtStampDate(soldExternalTx.created_at?.slice(0, 10)),
+    };
+  } else if (currentTxStatus === "in_conveyancing") {
     stamp = {
       variant: "in_conveyancing",
       date: currentTransfer.transfer_date
@@ -378,6 +390,13 @@ export default async function PropertyRecord({
     stamp = {
       variant: "mandate_held",
       date: fmtStampDate(currentMandate.expiry_date),
+    };
+  } else {
+    // Fallback: every property should carry a stamp for visual identity —
+    // TAKE-ON means we know about it but nothing legal has happened yet.
+    stamp = {
+      variant: "preparing",
+      date: fmtStampDate((prop as any).created_at?.slice(0, 10)),
     };
   }
 
@@ -414,11 +433,66 @@ export default async function PropertyRecord({
   }
 
   const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
-  const heroPhotos = uniquePhotos.map((p) => ({
-    id: p.id,
-    url: p.url,
-    title: p.title,
-  }));
+
+  // External-listing photos: pull any listing rows matched to this property
+  // (P24 preferred → PP → DW), take their primary image_url, then scan the
+  // Firecrawl raw markdown for gallery images ('![](url)') to enrich beyond
+  // the single primary. Deduped by URL. Dream's own portal photos are the
+  // canonical marketing pics; using them here means the record shows the
+  // same house the buyer sees on P24, no double-storage of images.
+  const { data: extListingRows } = await supabase
+    .from("external_listing")
+    .select("id, source, image_url, raw")
+    .eq("matched_property_id", params.id)
+    .eq("active", true);
+  const extListings = ((extListingRows ?? []) as {
+    id: string;
+    source: string;
+    image_url: string | null;
+    raw: Record<string, unknown> | null;
+  }[]).sort((a, b) => {
+    // Priority so the hero photo comes from the best source.
+    const rank: Record<string, number> = { property24: 0, private_property: 1, dream_website: 2 };
+    return (rank[a.source] ?? 9) - (rank[b.source] ?? 9);
+  });
+
+  const extPhotos: { id: string; url: string; title: string }[] = [];
+  const seenUrls = new Set<string>();
+  const IMG_RE = /!\[[^\]]*\]\(([^)]+)\)/g;
+  for (const l of extListings) {
+    const push = (url: string, suffix: string) => {
+      const clean = url.trim();
+      if (!clean) return;
+      if (!/^https?:\/\//i.test(clean)) return;
+      if (seenUrls.has(clean)) return;
+      // Filter obvious non-listing images (P24 logos, agent badges, tracking pixels).
+      if (/logo|badge|sprite|pixel|tracker|favicon/i.test(clean)) return;
+      seenUrls.add(clean);
+      extPhotos.push({ id: `${l.id}-${suffix}`, url: clean, title: `${l.source} photo` });
+    };
+    if (l.image_url) push(l.image_url, "primary");
+    // Gallery from raw markdown, if the scraper stored it.
+    const markdown =
+      (l.raw as { markdown?: string; extract?: unknown } | null)?.markdown ??
+      "";
+    if (typeof markdown === "string") {
+      for (const m of markdown.matchAll(IMG_RE)) push(m[1], `md-${extPhotos.length}`);
+    }
+    // Cap at 12 total — enough for a strip without overwhelming the load.
+    if (extPhotos.length >= 12) break;
+  }
+
+  // Merge: external photos (marketing / current listing) first, then
+  // transfer-linked images (usually FICA / diagram scans — lower priority
+  // for the hero strip).
+  const heroPhotos = [
+    ...extPhotos,
+    ...uniquePhotos.map((p) => ({
+      id: p.id,
+      url: p.url ?? "",
+      title: p.title,
+    })).filter((p) => p.url && !seenUrls.has(p.url)),
+  ];
 
   // Muni fallback: property row wins where present (agent-entered / LLM-
   // extracted deeds are higher-fidelity than roll data), muni fills gaps.
