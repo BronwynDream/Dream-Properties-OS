@@ -3,6 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import TopBar from "@/app/components/TopBar";
 import SearchInput from "./SearchInput";
 import ContactRow from "./ContactRow";
+import { getSetting } from "@/lib/settings";
+import { deriveFicaState, type DerivedFica, type RawFicaRecord } from "@/lib/fica";
 
 export const dynamic = "force-dynamic";
 
@@ -43,14 +45,24 @@ export default async function ContactsPage({
     parties = data ?? [];
   }
 
-  // Fetch role summaries for the returned party ids in a single round-trip.
+  // Fetch role summaries + FICA records for the returned party ids in
+  // parallel — one round-trip each, both keyed on party_id so the maps
+  // stay simple.
   const partyIds = parties.map((p) => p.id);
   const summaries = new Map<string, { side: string; year: string | null }[]>();
+  const ficaByParty = new Map<string, DerivedFica>();
   if (partyIds.length > 0) {
-    const { data: tps } = await supabase
-      .from("transfer_party")
-      .select("party_id, side, transfer:transfer_id(transfer_date, registered_date)")
-      .in("party_id", partyIds);
+    const validityDays = await getSetting("fica.verification_valid_days");
+    const [{ data: tps }, { data: fs }] = await Promise.all([
+      supabase
+        .from("transfer_party")
+        .select("party_id, side, transfer:transfer_id(transfer_date, registered_date)")
+        .in("party_id", partyIds),
+      supabase
+        .from("fica")
+        .select("party_id, transfer_id, role, status, verified_at, updated_at")
+        .in("party_id", partyIds),
+    ]);
     for (const tp of (tps ?? []) as any[]) {
       const dateStr =
         tp.transfer?.registered_date ??
@@ -60,6 +72,22 @@ export default async function ContactsPage({
       const arr = summaries.get(tp.party_id) ?? [];
       arr.push({ side: tp.side, year });
       summaries.set(tp.party_id, arr);
+    }
+
+    const rawByParty = new Map<string, RawFicaRecord[]>();
+    for (const f of (fs ?? []) as any[]) {
+      const arr = rawByParty.get(f.party_id) ?? [];
+      arr.push({
+        status: f.status,
+        verified_at: f.verified_at,
+        updated_at: f.updated_at,
+        transfer_id: f.transfer_id,
+        role: f.role,
+      });
+      rawByParty.set(f.party_id, arr);
+    }
+    for (const pid of partyIds) {
+      ficaByParty.set(pid, deriveFicaState(rawByParty.get(pid) ?? [], validityDays));
     }
   }
 
@@ -103,6 +131,7 @@ export default async function ContactsPage({
                   email={p.email}
                   phone={p.phone}
                   roles={summaries.get(p.id) ?? []}
+                  fica={ficaByParty.get(p.id) ?? { state: "none", latestAt: null, ageDays: null, count: 0 }}
                 />
               ))}
             </div>

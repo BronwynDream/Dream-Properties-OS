@@ -3,6 +3,9 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import TopBar from "@/app/components/TopBar";
 import MaskedId from "../MaskedId";
+import { getSetting } from "@/lib/settings";
+import { deriveFicaState, ficaLabel, type RawFicaRecord } from "@/lib/fica";
+import { FicaStatusBadge, PropertyDate } from "@/app/components/format";
 
 export const dynamic = "force-dynamic";
 
@@ -33,19 +36,41 @@ export default async function ContactDetail({
     .single();
   if (!party) notFound();
 
-  // Role timeline: every transfer_party for this party, with the transfer
-  // + its property + the agreement price. Ordered newest first.
-  const { data: rolesData } = await supabase
-    .from("transfer_party")
-    .select(
-      "side, is_primary, transfer:transfer_id(id, name, status, transfer_date, registered_date, property:property_id(id, primary_address), agreement(price))",
-    )
-    .eq("party_id", params.id);
+  // Role timeline + FICA records — same round-trip so the page renders
+  // in one shot. FICA is joined to transfer so each row can name the
+  // deal it was verified for.
+  const validityDays = await getSetting("fica.verification_valid_days");
+  const [{ data: rolesData }, { data: ficaData }] = await Promise.all([
+    supabase
+      .from("transfer_party")
+      .select(
+        "side, is_primary, transfer:transfer_id(id, name, status, transfer_date, registered_date, property:property_id(id, primary_address), agreement(price))",
+      )
+      .eq("party_id", params.id),
+    supabase
+      .from("fica")
+      .select(
+        "id, transfer_id, role, status, risk, source_of_funds, verified_at, updated_at, notes, transfer:transfer_id(id, name, property:property_id(id, primary_address))",
+      )
+      .eq("party_id", params.id)
+      .order("updated_at", { ascending: false }),
+  ]);
   const roles = ((rolesData ?? []) as any[]).sort((a, b) => {
     const ay = a.transfer?.registered_date ?? a.transfer?.transfer_date ?? "";
     const by = b.transfer?.registered_date ?? b.transfer?.transfer_date ?? "";
     return by.localeCompare(ay); // newest first
   });
+  const ficaRows = (ficaData ?? []) as any[];
+  const derivedFica = deriveFicaState(
+    ficaRows.map((f) => ({
+      status: f.status,
+      verified_at: f.verified_at,
+      updated_at: f.updated_at,
+      transfer_id: f.transfer_id,
+      role: f.role,
+    })) as RawFicaRecord[],
+    validityDays,
+  );
 
   return (
     <>
@@ -73,6 +98,7 @@ export default async function ContactDetail({
         <hr className="tideline" />
 
         <section className="app-body property-record-body">
+          <FicaPanel derived={derivedFica} records={ficaRows} validityDays={validityDays} />
           <div className="contact-detail">
             {/* Left: identity + contact info */}
             <div className="contact-info">
@@ -209,4 +235,146 @@ export default async function ContactDetail({
       </main>
     </>
   );
+}
+
+// FICA panel — sits above the identity + timeline split. The badge is the
+// hero (one glance = do I trust this contact for a deal). The record table
+// below is the audit trail: which transfer, which role, when, by whom.
+//
+// Kept as an inline component so all the FICA-shape knowledge (record
+// schema, role labels, risk display) lives with the page that renders it
+// — no premature abstraction. If a second page needs the same panel, lift
+// it into app/components/fica/ then.
+function FicaPanel({
+  derived,
+  records,
+  validityDays,
+}: {
+  derived: import("@/lib/fica").DerivedFica;
+  records: any[];
+  validityDays: number;
+}) {
+  const label = ficaLabel(derived);
+  return (
+    <section
+      style={{
+        border: "1px solid var(--line-soft, #E7E0D2)",
+        background: "var(--paper-1, #F5F1E8)",
+        borderRadius: "var(--radius-md, 8px)",
+        padding: "16px 20px",
+        marginBottom: 24,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+        <div>
+          <p
+            style={{
+              margin: 0,
+              fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+              fontSize: 10,
+              letterSpacing: "0.14em",
+              textTransform: "uppercase",
+              color: "var(--ink-500, #6B6153)",
+            }}
+          >
+            FICA · POPIA
+          </p>
+          <p
+            style={{
+              margin: "4px 0 0",
+              fontFamily: "'Fraunces', serif",
+              fontSize: 18,
+              color: "var(--estuary, #132B84)",
+              fontWeight: 500,
+            }}
+          >
+            {label}
+          </p>
+          <p style={{ margin: "4px 0 0", fontSize: 11, color: "var(--paper-mute, #6a7692)" }}>
+            {records.length === 0
+              ? "No FIC Act records on file for this party."
+              : `${records.length} FIC record${records.length === 1 ? "" : "s"} · validity window ${validityDays} days`}
+          </p>
+        </div>
+        <FicaStatusBadge derived={derived} size="md" />
+      </div>
+
+      {records.length > 0 && (
+        <table
+          className="role-table"
+          style={{ marginTop: 16, width: "100%" }}
+        >
+          <thead>
+            <tr>
+              <th>Deal</th>
+              <th>Role</th>
+              <th>Status</th>
+              <th>Risk</th>
+              <th>Verified</th>
+            </tr>
+          </thead>
+          <tbody>
+            {records.map((f: any) => (
+              <tr key={f.id}>
+                <td>
+                  {f.transfer?.id ? (
+                    <Link href={`/properties/${f.transfer?.property?.id ?? ""}`}>
+                      {f.transfer?.property?.primary_address ?? f.transfer?.name ?? "—"}
+                    </Link>
+                  ) : (
+                    "—"
+                  )}
+                </td>
+                <td style={{ fontSize: 12, textTransform: "capitalize" }}>
+                  {String(f.role ?? "").replace(/_/g, " ")}
+                </td>
+                <td>
+                  <span
+                    style={{
+                      fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                      fontSize: 10,
+                      letterSpacing: "0.08em",
+                      textTransform: "uppercase",
+                      padding: "2px 8px",
+                      borderRadius: 3,
+                      background: statusBg(f.status),
+                      color: statusFg(f.status),
+                    }}
+                  >
+                    {f.status}
+                  </span>
+                </td>
+                <td style={{ fontSize: 12, textTransform: "capitalize", color: riskColor(f.risk) }}>
+                  {f.risk}
+                </td>
+                <td className="mono" style={{ fontSize: 12 }}>
+                  {f.verified_at ? (
+                    <PropertyDate value={f.verified_at.slice(0, 10)} />
+                  ) : (
+                    <span style={{ color: "var(--paper-mute, #6a7692)" }}>—</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
+  );
+}
+
+function statusBg(s: string): string {
+  if (s === "verified") return "var(--status-active-bg)";
+  if (s === "expired") return "var(--status-withdrawn-bg)";
+  return "var(--status-under-offer-bg)"; // outstanding / received
+}
+function statusFg(s: string): string {
+  if (s === "verified") return "var(--status-active-fg)";
+  if (s === "expired") return "var(--status-withdrawn-fg)";
+  return "var(--status-under-offer-fg)";
+}
+function riskColor(r: string): string {
+  if (r === "high") return "var(--critical, #9A3B34)";
+  if (r === "medium") return "var(--caution, #A9772F)";
+  return "var(--ink-500, #6B6153)";
 }

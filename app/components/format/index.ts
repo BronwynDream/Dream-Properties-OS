@@ -14,3 +14,4 @@ export { default as PropertyDate } from "./PropertyDate";
 export { default as Ref } from "./Ref";
 export { default as ListingStatusPill } from "./ListingStatusPill";
 export type { ListingStatus } from "./ListingStatusPill";
+export { default as FicaStatusBadge } from "./FicaStatusBadge";

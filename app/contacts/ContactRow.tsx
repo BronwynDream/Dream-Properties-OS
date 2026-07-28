@@ -1,5 +1,7 @@
 import Link from "next/link";
 import MaskedId from "./MaskedId";
+import { FicaStatusBadge } from "@/app/components/format";
+import type { DerivedFica } from "@/lib/fica";
 
 export default function ContactRow({
   id,
@@ -10,6 +12,7 @@ export default function ContactRow({
   email,
   phone,
   roles,
+  fica,
 }: {
   id: string;
   partyType: string;
@@ -19,6 +22,7 @@ export default function ContactRow({
   email: string | null;
   phone: string | null;
   roles: { side: string; year: string | null }[];
+  fica: DerivedFica;
 }) {
   // Timeline summary: "Seller 2024, Buyer 2026, Seller 2018". Deduplicate
   // consecutive same-side same-year entries.
@@ -48,7 +52,10 @@ export default function ContactRow({
         {email && <span title={email}>{email}</span>}
         {phone && <span>{phone}</span>}
       </div>
-      <div className="contact-row-roles">{timelineLabel}</div>
+      <div className="contact-row-roles" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <span>{timelineLabel}</span>
+        <FicaStatusBadge derived={fica} />
+      </div>
     </Link>
   );
 }
