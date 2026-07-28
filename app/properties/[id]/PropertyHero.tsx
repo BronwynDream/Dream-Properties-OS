@@ -37,7 +37,7 @@ export type ScheduleRow = {
 };
 
 export type StampProps = {
-  variant: "registered" | "mandate_held" | "in_conveyancing";
+  variant: "registered" | "mandate_held" | "in_conveyancing" | "preparing" | "sold_externally";
   date: string;
   secondary?: string;
 } | null;
@@ -288,11 +288,14 @@ export default function PropertyHero({
         <div className="schedule">
           <table>
             <tbody>
-              {scheduleRows.map((row) => (
+              {/* Hide rows with null values — a schedule of "—"s reads as
+                  noise. Empty fields = we don't know; better to omit them
+                  than fill the plate with placeholders. */}
+              {scheduleRows.filter((row) => row.value != null && row.value !== "").map((row) => (
                 <tr key={row.key} className={row.breakBefore ? "schedule-break" : ""}>
                   <td className="k">{row.label}</td>
-                  <td className={`v ${row.mono ? "mono" : ""} ${row.value ? "" : "dim"}`}>
-                    {row.value ?? "—"}
+                  <td className={`v ${row.mono ? "mono" : ""}`}>
+                    {row.value}
                   </td>
                 </tr>
               ))}
