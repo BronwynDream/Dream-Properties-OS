@@ -43,37 +43,99 @@ export default async function Dashboard() {
     .eq("id", user.id)
     .single();
   const isAdmin = profile?.role === "admin";
+  const isAgent = profile?.role === "agent";
 
-  // Three data pulls that feed the columns + Attention row.
-  const [inFlightData, liveListingsData, waitingBatchesData] =
+  // Agent-scoped path: pre-fetch listings assigned to me so subsequent
+  // queries can filter transfers + mandates by property_id in that set.
+  // Admins skip this and fall through to global queries below.
+  let myListingIds: string[] = [];
+  let myPropertyIds: string[] = [];
+  if (isAgent) {
+    const { data: myListingRows } = await supabase
+      .from("listing")
+      .select("id, property_id")
+      .eq("agent_user_id", user.id);
+    for (const r of (myListingRows ?? []) as { id: string; property_id: string }[]) {
+      myListingIds.push(r.id);
+      if (!myPropertyIds.includes(r.property_id)) myPropertyIds.push(r.property_id);
+    }
+  }
+
+  // Three data pulls that feed the columns + Attention row. Different
+  // shapes per role: admins get the global view; agents get everything
+  // scoped to their listings.
+  const [inFlightData, liveListingsData, waitingBatchesData, myMandatesData] =
     await Promise.all([
-      supabase
-        .from("transfer")
-        .select(
-          "id, name, status, transfer_date, created_at, property:property_id(id, primary_address, suburb:suburb_id(name))",
-        )
-        .eq("status", "in_conveyancing")
-        .order("transfer_date", { ascending: true, nullsFirst: false })
-        .limit(6),
-      supabase
-        .from("listing")
-        .select(
-          "id, asking_price, listed_date, property:property_id(id, primary_address, suburb:suburb_id(name)), mandate:mandate(type)",
-        )
-        .eq("status", "live")
-        .order("listed_date", { ascending: false, nullsFirst: false })
-        .limit(6),
-      supabase
-        .from("ingest_batch")
-        .select("id, label, status, tier, created_at")
-        .neq("status", "committed")
-        .order("created_at", { ascending: false })
-        .limit(6),
+      // 1. Deals in flight — for admins: all in_conveyancing; for agents:
+      //    those on their properties only. Guard the .in() with a non-empty
+      //    array so PostgREST doesn't return every row when list is empty.
+      (() => {
+        if (isAgent && myPropertyIds.length === 0) {
+          return Promise.resolve({ data: [] });
+        }
+        let q = supabase
+          .from("transfer")
+          .select(
+            "id, name, status, transfer_date, created_at, property:property_id(id, primary_address, suburb:suburb_id(name))",
+          )
+          .eq("status", "in_conveyancing");
+        if (isAgent) q = q.in("property_id", myPropertyIds);
+        return q
+          .order("transfer_date", { ascending: true, nullsFirst: false })
+          .limit(6);
+      })(),
+      // 2. Live listings — same pattern.
+      isAgent
+        ? supabase
+            .from("listing")
+            .select(
+              "id, asking_price, listed_date, property:property_id(id, primary_address, suburb:suburb_id(name)), mandate:mandate(type)",
+            )
+            .eq("status", "live")
+            .eq("agent_user_id", user.id)
+            .order("listed_date", { ascending: false, nullsFirst: false })
+            .limit(6)
+        : supabase
+            .from("listing")
+            .select(
+              "id, asking_price, listed_date, property:property_id(id, primary_address, suburb:suburb_id(name)), mandate:mandate(type)",
+            )
+            .eq("status", "live")
+            .order("listed_date", { ascending: false, nullsFirst: false })
+            .limit(6),
+      // 3. Waiting for review — admin-only column. Agents get an empty
+      //    array here and the render path swaps this column for mandates.
+      isAgent
+        ? Promise.resolve({ data: [] })
+        : supabase
+            .from("ingest_batch")
+            .select("id, label, status, tier, created_at")
+            .neq("status", "committed")
+            .order("created_at", { ascending: false })
+            .limit(6),
+      // 4. Agent-scoped: mandates expiring within 60 days on my listings.
+      //    Skipped for admins (they have /mandates for the full list).
+      !isAgent || myListingIds.length === 0
+        ? Promise.resolve({ data: [] })
+        : supabase
+            .from("mandate")
+            .select(
+              "id, type, expiry_date, listing_id, listing:listing_id(property_id, status, property:property_id(id, primary_address, suburb:suburb_id(name)))",
+            )
+            .in("listing_id", myListingIds)
+            .not("expiry_date", "is", null)
+            .lte(
+              "expiry_date",
+              new Date(Date.now() + 60 * 86400_000).toISOString().slice(0, 10),
+            )
+            .order("expiry_date", { ascending: true })
+            .limit(6),
     ]);
 
   const inFlight = (inFlightData.data ?? []) as any[];
   const liveListings = (liveListingsData.data ?? []) as any[];
   const waitingBatches = (waitingBatchesData.data ?? []) as any[];
+  const myMandates = (myMandatesData.data ?? []) as any[];
 
   // Dupe callout — admins only. Two RPCs kept off the initial Promise.all so
   // agents (majority of loads) never pay the pairwise-scan cost. Limit 20:
@@ -154,6 +216,32 @@ export default async function Dashboard() {
         payload: b.tier.toUpperCase(),
         href: `/triage/${b.id}`,
         variant: b.tier === "red" ? "urgent" : "warn",
+      });
+    }
+  }
+
+  // Agent-only: mandates expiring within 14 days. Bubbles into Attention
+  // so the mornings-first check catches lapsing exclusives before the
+  // property comes off market silently.
+  if (isAgent) {
+    for (const m of myMandates) {
+      const daysUntil = daysBetween(m.expiry_date);
+      if (daysUntil == null || daysUntil > 14) continue;
+      const listing = Array.isArray(m.listing) ? m.listing[0] : m.listing;
+      const property = Array.isArray(listing?.property) ? listing.property[0] : listing?.property;
+      attention.push({
+        key: `mandate-${m.id}`,
+        urgency: daysUntil < 0 ? 9500 + Math.abs(daysUntil) : 2500 - daysUntil,
+        primary: property?.primary_address ?? "Mandate",
+        secondary: property?.suburb?.name ?? null,
+        payload:
+          daysUntil < 0
+            ? `mandate expired ${Math.abs(daysUntil)} d ago`
+            : daysUntil === 0
+              ? "mandate expires today"
+              : `mandate expires in ${daysUntil} d`,
+        href: property?.id ? `/properties/${property.id}` : "/mandates",
+        variant: daysUntil <= 3 ? "urgent" : "warn",
       });
     }
   }
@@ -264,9 +352,13 @@ export default async function Dashboard() {
         {/* Three columns of work */}
         <div className="dash-work">
           <WorkColumn
-            title="Deals in flight"
+            title={isAgent ? "My deals in flight" : "Deals in flight"}
             count={inFlight.length}
-            emptyText="No conveyancing right now. Deals appear here once an agreement is signed."
+            emptyText={
+              isAgent
+                ? "No conveyancing on your listings right now."
+                : "No conveyancing right now. Deals appear here once an agreement is signed."
+            }
             emptyCta={null}
           >
             {inFlight.map((t) => {
@@ -302,9 +394,13 @@ export default async function Dashboard() {
           </WorkColumn>
 
           <WorkColumn
-            title="Live listings"
+            title={isAgent ? "My live listings" : "Live listings"}
             count={liveListings.length}
-            emptyText="No listings live. When a mandate goes live, its listing appears here."
+            emptyText={
+              isAgent
+                ? "No live listings assigned to you yet. Ask your director to assign one."
+                : "No listings live. When a mandate goes live, its listing appears here."
+            }
             emptyCta={{ href: "/map", label: "Open map" }}
           >
             {liveListings.map((l) => {
@@ -327,26 +423,62 @@ export default async function Dashboard() {
             })}
           </WorkColumn>
 
-          <WorkColumn
-            title="Waiting for review"
-            count={waitingBatches.length}
-            emptyText="Nothing waiting. All dropped folders are committed or extracted."
-            emptyCta={{ href: "/triage", label: "Open triage" }}
-          >
-            {waitingBatches.map((b) => (
-              <WorkRow
-                key={b.id}
-                href={`/triage/${b.id}`}
-                primary={b.label}
-                secondary={humanStatus(b.status)}
-                right={
-                  b.tier ? (
-                    <span className={`tier tier-${b.tier}`}>{b.tier}</span>
-                  ) : null
-                }
-              />
-            ))}
-          </WorkColumn>
+          {isAgent ? (
+            <WorkColumn
+              title="Mandates expiring soon"
+              count={myMandates.length}
+              emptyText="No mandates on your listings expire in the next 60 days."
+              emptyCta={{ href: "/mandates", label: "All mandates" }}
+            >
+              {myMandates.map((m) => {
+                const days = daysBetween(m.expiry_date);
+                const listing = Array.isArray(m.listing) ? m.listing[0] : m.listing;
+                const property = Array.isArray(listing?.property) ? listing.property[0] : listing?.property;
+                return (
+                  <WorkRow
+                    key={m.id}
+                    href={property?.id ? `/properties/${property.id}` : "/mandates"}
+                    primary={property?.primary_address ?? "Mandate"}
+                    secondary={
+                      [property?.suburb?.name, m.type].filter(Boolean).join(" · ") || null
+                    }
+                    right={
+                      <span className={`dash-days ${days !== null && days < 14 ? "urgent" : ""}`}>
+                        {days === null
+                          ? m.expiry_date
+                          : days > 0
+                            ? `${days} d`
+                            : days === 0
+                              ? "today"
+                              : `${Math.abs(days)} d past`}
+                      </span>
+                    }
+                  />
+                );
+              })}
+            </WorkColumn>
+          ) : (
+            <WorkColumn
+              title="Waiting for review"
+              count={waitingBatches.length}
+              emptyText="Nothing waiting. All dropped folders are committed or extracted."
+              emptyCta={{ href: "/triage", label: "Open triage" }}
+            >
+              {waitingBatches.map((b) => (
+                <WorkRow
+                  key={b.id}
+                  href={`/triage/${b.id}`}
+                  primary={b.label}
+                  secondary={humanStatus(b.status)}
+                  right={
+                    b.tier ? (
+                      <span className={`tier tier-${b.tier}`}>{b.tier}</span>
+                    ) : null
+                  }
+                />
+              ))}
+            </WorkColumn>
+          )}
         </div>
 
         {!profile && (

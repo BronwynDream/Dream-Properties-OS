@@ -87,10 +87,30 @@ export default async function MandatesPage({
     new Set(thresholds.filter((n) => Number.isFinite(n) && n > 0)),
   ).sort((a, b) => a - b);
 
+  // Agents see only mandates on their assigned listings. Admins/directors
+  // see all. Pre-fetch the listing IDs for the current user so the mandate
+  // query can `.in("listing_id", ids)` — cleaner than trying to filter on
+  // the nested listing.agent_user_id column via PostgREST.
+  const { data: profile } = await supabase
+    .from("app_user")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+  const isAgent = profile?.role === "agent";
+
+  let myListingIds: string[] | null = null;
+  if (isAgent) {
+    const { data: myListings } = await supabase
+      .from("listing")
+      .select("id")
+      .eq("agent_user_id", user.id);
+    myListingIds = ((myListings ?? []) as { id: string }[]).map((l) => l.id);
+  }
+
   // Pull every mandate on active listings, along with property + agent so
   // the whole page renders from one round-trip. Dream's mandate volume is
   // small enough (~tens) that pagination isn't needed.
-  const { data: mandatesData } = await supabase
+  let mandateQuery = supabase
     .from("mandate")
     .select(
       `
@@ -104,6 +124,16 @@ export default async function MandatesPage({
     `,
     )
     .in("listing.status", ACTIVE_STATUSES as unknown as string[]);
+  if (isAgent) {
+    // Empty-array short-circuit: PostgREST returns all rows on .in("", [])
+    // which would defeat the whole point.
+    if ((myListingIds?.length ?? 0) === 0) {
+      mandateQuery = mandateQuery.eq("listing_id", "__none__");
+    } else {
+      mandateQuery = mandateQuery.in("listing_id", myListingIds!);
+    }
+  }
+  const { data: mandatesData } = await mandateQuery;
   const raw = (mandatesData ?? []) as any[];
 
   // Supabase's implicit LEFT JOIN means listing-status filter above only

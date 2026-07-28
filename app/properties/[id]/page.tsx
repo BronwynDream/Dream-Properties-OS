@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import TopBar from "@/app/components/TopBar";
 import MergeTransfer from "./MergeTransfer";
+import AgentPicker from "./AgentPicker";
 import MarkSoldButton from "./MarkSoldButton";
 import PropertyHero, { type SinceLine, type ScheduleRow } from "./PropertyHero";
 import PhotoLightbox from "./PhotoLightbox";
@@ -103,6 +104,39 @@ export default async function PropertyRecord({
         area_sqm: v.area_sqm != null ? Number(v.area_sqm) : null,
       })),
     });
+  }
+
+  // Listing + assignable agents for the AgentPicker on the hero. Pull the
+  // most recently created listing (agent-assignment happens on the latest
+  // active listing; historical listings' assignments stay put). Skipped for
+  // non-admin sessions since the picker doesn't render for them anyway.
+  let listingForPicker: { id: string; agent_user_id: string | null; agent_name: string | null } | null = null;
+  let assignableAgents: { id: string; name: string; role: string }[] = [];
+  if (isAdmin) {
+    const { data: listingRow } = await supabase
+      .from("listing")
+      .select("id, agent_user_id, agent:agent_user_id(name)")
+      .eq("property_id", params.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (listingRow) {
+      const agentJoin = Array.isArray((listingRow as any).agent)
+        ? (listingRow as any).agent[0]
+        : (listingRow as any).agent;
+      listingForPicker = {
+        id: (listingRow as any).id,
+        agent_user_id: (listingRow as any).agent_user_id ?? null,
+        agent_name: agentJoin?.name ?? null,
+      };
+    }
+    const { data: agentsData } = await supabase
+      .from("app_user")
+      .select("id, name, role")
+      .in("role", ["agent", "admin"])
+      .eq("active", true)
+      .order("name", { ascending: true });
+    assignableAgents = (agentsData ?? []) as typeof assignableAgents;
   }
 
   // Try the post-0033 schema first (sold_by, sold_by_note). If those columns
@@ -708,6 +742,14 @@ export default async function PropertyRecord({
           mapboxToken={mapboxToken}
           actionsSlot={
             <>
+              {isAdmin && (
+                <AgentPicker
+                  listingId={listingForPicker?.id ?? null}
+                  currentAgentUserId={listingForPicker?.agent_user_id ?? null}
+                  currentAgentName={listingForPicker?.agent_name ?? null}
+                  agents={assignableAgents}
+                />
+              )}
               <LightstoneFetch
                 propertyId={prop.id}
                 products={LIGHTSTONE_PRODUCTS.map((p) => ({
