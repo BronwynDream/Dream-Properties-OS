@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import TopBar from "@/app/components/TopBar";
 import ReviewClient from "./ReviewClient";
+import RouteToEstate from "./RouteToEstate";
 import {
   FieldDiff,
   FileDiff,
@@ -26,10 +27,22 @@ export default async function BatchReview({
 
   const { data: batch } = await supabase
     .from("ingest_batch")
-    .select("id, label, status, tier, priority, property_id")
+    .select("id, label, status, tier, priority, property_id, estate_id")
     .eq("id", params.id)
     .single();
   if (!batch) notFound();
+
+  // Estate list for the route-to-vault widget. Also resolve the batch's
+  // current estate binding (if it's already been filed) so the widget
+  // renders a "filed to X" pill instead of the routing UI.
+  const { data: estateOptions } = await supabase
+    .from("estate")
+    .select("id, name")
+    .order("name", { ascending: true });
+  const estates = ((estateOptions ?? []) as { id: string; name: string }[]);
+  const currentEstate = batch.estate_id
+    ? estates.find((e) => e.id === batch.estate_id) ?? null
+    : null;
 
   // Resolve the attached property's address for the "File against …" button.
   let attachedPropertyAddress: string | null = null;
@@ -107,6 +120,16 @@ export default async function BatchReview({
   return (
     <>
       <TopBar />
+      <main>
+        <div style={{ maxWidth: 1100, margin: "0 auto", padding: "16px 24px 0" }}>
+          <RouteToEstate
+            batchId={batch.id}
+            batchLabel={batch.label ?? "(untitled batch)"}
+            currentEstate={currentEstate}
+            estates={estates}
+          />
+        </div>
+      </main>
       <ReviewClient
         batch={batch}
         files={files ?? []}
