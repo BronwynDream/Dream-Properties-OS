@@ -11,6 +11,7 @@ import DropZone from "@/app/triage/DropZone";
 import LightstoneFetch from "./LightstoneFetch";
 import ErfLookup from "./ErfLookup";
 import DealCompliance from "./DealCompliance";
+import FixturesAndMovables, { type InventoryRow, type MovablesAgreement } from "./FixturesAndMovables";
 import { PRODUCTS as LIGHTSTONE_PRODUCTS } from "@/lib/lightstone";
 import { Rand, randString } from "@/app/components/format";
 import type { PpraFormType } from "@/lib/ppraDisclosure";
@@ -614,9 +615,11 @@ export default async function PropertyRecord({
     label: string;
     cert: { id: string; issued_date: string | null; expiry_date: string | null; issuer: string | null; notes: string | null } | null;
   }[] = [];
+  let dealInventory: InventoryRow[] = [];
+  let dealMovablesAgreement: MovablesAgreement = null;
 
   if (activeTransfer) {
-    const [{ data: discHeader }, { data: complianceTypes }, { data: certRows }] = await Promise.all([
+    const [{ data: discHeader }, { data: complianceTypes }, { data: certRows }, { data: invRows }, { data: movablesAgr }] = await Promise.all([
       supabase
         .from("ppra_disclosure")
         .select("id, form_type, signed_at, purchaser_ack_at, additional_info")
@@ -631,7 +634,28 @@ export default async function PropertyRecord({
         .from("compliance_cert")
         .select("id, compliance_type_id, transfer_id, issued_date, expiry_date, issuer, notes")
         .eq("property_id", prop.id),
+      supabase
+        .from("transfer_inventory")
+        .select("id, category, kind, description, is_included, notes, sort_order")
+        .eq("transfer_id", activeTransfer.id)
+        .order("sort_order", { ascending: true }),
+      supabase
+        .from("agreement")
+        .select("id, price, transfer_date, signature_date, notes")
+        .eq("transfer_id", activeTransfer.id)
+        .eq("agreement_type", "movables")
+        .maybeSingle(),
     ]);
+    dealInventory = ((invRows ?? []) as any[]) as InventoryRow[];
+    dealMovablesAgreement = movablesAgr
+      ? {
+          id: (movablesAgr as any).id,
+          price: (movablesAgr as any).price ?? null,
+          transfer_date: (movablesAgr as any).transfer_date ?? null,
+          signature_date: (movablesAgr as any).signature_date ?? null,
+          notes: (movablesAgr as any).notes ?? null,
+        }
+      : null;
 
     if (discHeader) {
       const { data: rowData } = await supabase
@@ -986,13 +1010,21 @@ export default async function PropertyRecord({
             deal band so it's part of the "current deal" mental cluster,
             not lost among historical records below. */}
         {activeTransfer && (
-          <DealCompliance
-            propertyId={prop.id}
-            transferId={activeTransfer.id}
-            formType={dealFormType}
-            disclosure={dealDisclosure}
-            certs={dealCerts}
-          />
+          <>
+            <DealCompliance
+              propertyId={prop.id}
+              transferId={activeTransfer.id}
+              formType={dealFormType}
+              disclosure={dealDisclosure}
+              certs={dealCerts}
+            />
+            <FixturesAndMovables
+              propertyId={prop.id}
+              transferId={activeTransfer.id}
+              rows={dealInventory}
+              movables={dealMovablesAgreement}
+            />
+          </>
         )}
 
         {/* Sample-data banner — surfaces whenever Lightstone stub results are

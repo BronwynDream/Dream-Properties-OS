@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { questionsFor, type PpraFormType } from "@/lib/ppraDisclosure";
+import { seedsFor, type InventoryCategory, type InventoryKind } from "@/lib/inventory";
 
 async function requireAdmin() {
   const supabase = createClient();
@@ -334,5 +335,162 @@ export async function upsertComplianceCert(input: {
   if (error) return { ok: false, error: error.message };
   revalidatePath(`/properties/${input.propertyId}`);
   revalidatePath("/compliance");
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// Transfer inventory — Fixtures (clause 14) + Movables (Annexure A).
+//
+// ensureInventory seeds the canonical default rows the first time an
+// agent opens the panel for a given (transfer, category). Idempotent:
+// if any row already exists for that (transfer, category), it does
+// nothing — subsequent seed additions belong to the app's default list
+// evolution, not to running the button twice.
+// ---------------------------------------------------------------------------
+
+export async function ensureInventory(input: {
+  transferId: string;
+  category: InventoryCategory;
+  propertyId: string;
+}): Promise<{ ok: true; seeded: number } | { ok: false; error: string }> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  const { supabase } = gate;
+  if (!input.transferId) return { ok: false, error: "transferId required" };
+
+  const { count } = await supabase
+    .from("transfer_inventory")
+    .select("id", { count: "exact", head: true })
+    .eq("transfer_id", input.transferId)
+    .eq("category", input.category);
+  if ((count ?? 0) > 0) return { ok: true, seeded: 0 };
+
+  const seeds = seedsFor(input.category).map((s, idx) => ({
+    transfer_id: input.transferId,
+    category: input.category,
+    kind: s.kind,
+    description: s.description,
+    is_included: s.is_included,
+    sort_order: idx,
+  }));
+  const { error } = await supabase.from("transfer_inventory").insert(seeds);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath(`/properties/${input.propertyId}`);
+  return { ok: true, seeded: seeds.length };
+}
+
+export async function upsertInventoryRow(input: {
+  id?: string | null;             // null = insert; string = update
+  transferId: string;
+  category: InventoryCategory;
+  kind?: InventoryKind | null;
+  description: string;
+  is_included: boolean;
+  notes?: string | null;
+  sort_order?: number | null;
+  propertyId: string;
+}): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  const { supabase } = gate;
+
+  const desc = (input.description ?? "").trim();
+  if (!desc) return { ok: false, error: "description required" };
+
+  const patch = {
+    transfer_id: input.transferId,
+    category: input.category,
+    kind: input.kind ?? "other",
+    description: desc,
+    is_included: input.is_included,
+    notes: (input.notes ?? "").trim() || null,
+    sort_order: input.sort_order ?? 0,
+  };
+
+  if (input.id) {
+    const { error } = await supabase.from("transfer_inventory").update(patch).eq("id", input.id);
+    if (error) return { ok: false, error: error.message };
+    revalidatePath(`/properties/${input.propertyId}`);
+    return { ok: true, id: input.id };
+  }
+  const { data, error } = await supabase.from("transfer_inventory").insert(patch).select("id").single();
+  if (error || !data) return { ok: false, error: error?.message ?? "insert failed" };
+  revalidatePath(`/properties/${input.propertyId}`);
+  return { ok: true, id: data.id };
+}
+
+export async function deleteInventoryRow(input: {
+  id: string;
+  propertyId: string;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  const { supabase } = gate;
+  if (!input.id) return { ok: false, error: "id required" };
+  const { error } = await supabase.from("transfer_inventory").delete().eq("id", input.id);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath(`/properties/${input.propertyId}`);
+  return { ok: true };
+}
+
+// Movables agreement header — piggybacks on the existing `agreement`
+// table with agreement_type='movables'. One header per transfer; creates
+// on first write, updates thereafter.
+export async function upsertMovablesAgreement(input: {
+  transferId: string;
+  price?: string | number | null;    // rand, whole units
+  effective_date?: string | null;    // ISO date
+  signature_date?: string | null;    // ISO date
+  notes?: string | null;
+  propertyId: string;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  const { supabase } = gate;
+  if (!input.transferId) return { ok: false, error: "transferId required" };
+
+  const trimDate = (v: string | null | undefined): string | null => {
+    const s = (v ?? "").trim();
+    if (!s) return null;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) throw new Error(`date must be YYYY-MM-DD, got ${s}`);
+    return s;
+  };
+
+  let effective: string | null, signature: string | null;
+  try {
+    effective = trimDate(input.effective_date);
+    signature = trimDate(input.signature_date);
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+
+  let priceNum: number | null = null;
+  if (input.price !== undefined && input.price !== null && `${input.price}`.trim() !== "") {
+    const n = Number(String(input.price).replace(/\s/g, ""));
+    if (!Number.isFinite(n) || n < 0) return { ok: false, error: "price must be a non-negative number" };
+    priceNum = n;
+  }
+
+  const patch = {
+    transfer_id: input.transferId,
+    agreement_type: "movables" as const,
+    price: priceNum,
+    transfer_date: effective,   // effective date = agreement.transfer_date semantically
+    signature_date: signature,
+    notes: (input.notes ?? "").trim() || null,
+  };
+
+  const { data: existing } = await supabase
+    .from("agreement")
+    .select("id")
+    .eq("transfer_id", input.transferId)
+    .eq("agreement_type", "movables")
+    .maybeSingle();
+
+  const { error } = existing?.id
+    ? await supabase.from("agreement").update(patch).eq("id", existing.id)
+    : await supabase.from("agreement").insert(patch);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath(`/properties/${input.propertyId}`);
   return { ok: true };
 }
