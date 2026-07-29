@@ -9,6 +9,8 @@ import BulkCommit from "./BulkCommit";
 import DuplicateBanner from "./DuplicateBanner";
 export const dynamic = "force-dynamic";
 
+type Search = { show?: string };
+
 type QueueRow = {
   id: string;
   label: string;
@@ -27,19 +29,29 @@ type QueueRow = {
   party_id: string | null;
 };
 
-export default async function TriagePage() {
+export default async function TriagePage({ searchParams }: { searchParams: Search }) {
   const supabase = createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
+  // Default: hide terminal-state batches (committed = filed to a
+  // property/estate; discarded = dead). Bronwyn only wants to see
+  // what still needs work. ?show=all opens the whole queue for
+  // audit / re-open purposes.
+  const showAll = searchParams?.show === "all";
+
   const { data, error } = await supabase
     .from("v_triage_queue")
     .select("*")
     .order("created_at", { ascending: false });
 
-  const queue = (data ?? []) as QueueRow[];
+  const rawQueue = (data ?? []) as QueueRow[];
+  const queue = showAll
+    ? rawQueue
+    : rawQueue.filter((b) => b.status !== "committed" && b.status !== "discarded");
+  const hiddenCount = rawQueue.length - queue.length;
   // If 0007/0008 haven't been run yet, the view won't exist.
   const notReady = !!error && /relation|does not exist|schema cache/i.test(error.message);
 
@@ -55,6 +67,25 @@ export default async function TriagePage() {
           <p className="eyebrow">Dream Knysna · Migration triage</p>
           <h1>Bring your folders in</h1>
         </div>
+        {(hiddenCount > 0 || showAll) && (
+          <Link
+            href={showAll ? "/triage" : "/triage?show=all"}
+            style={{
+              fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+              fontSize: 11,
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+              padding: "6px 12px",
+              border: "1px solid var(--estuary, #132B84)",
+              borderRadius: 3,
+              color: "var(--estuary, #132B84)",
+              textDecoration: "none",
+              fontWeight: 600,
+            }}
+          >
+            {showAll ? "Hide committed" : `Show committed (${hiddenCount})`}
+          </Link>
+        )}
       </header>
       <hr className="tideline" />
 
