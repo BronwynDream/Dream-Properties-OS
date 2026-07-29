@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import TopBar from "@/app/components/TopBar";
 import { Rand } from "@/app/components/format";
 import StageMover from "./StageMover";
+import DuplicateTransfersBanner from "./DuplicateTransfersBanner";
 import {
   PIPELINE_STAGES,
   STAGE_HELP,
@@ -211,6 +212,15 @@ export default async function PipelinePage() {
         <hr className="tideline" />
 
         <section className="app-body" style={{ overflowX: "auto" }}>
+          <DuplicateTransfersBanner
+            cards={scopedCards.map((c) => ({
+              id: c.id,
+              propertyId: c.propertyId,
+              propertyAddress: c.propertyAddress,
+              status: c.status,
+              daysInStage: c.daysInStage,
+            }))}
+          />
           <div
             style={{
               display: "grid",

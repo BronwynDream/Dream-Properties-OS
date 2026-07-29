@@ -22,6 +22,24 @@
 const KNYSNA_PRICE_FLOOR = 100_000;      // property below this in Knysna = extraction error
 const KNYSNA_PRICE_CEILING = 500_000_000; // above this = extraction error (highest recorded ~R200M)
 
+// Words that appear in the context of a NON-price Rand value. Any
+// match whose ±80 char surrounding text contains one of these gets
+// rejected. Learned from listing 117325992 (8 River Club Road, Simola)
+// where "R 204 017" was the P24 bond calculator's "Total Once-off
+// Costs" line — above our sanity floor but not the asking price.
+const NEGATIVE_CONTEXT = [
+  "monthly repayment", "monthly income", "min gross", "min income",
+  "once-off costs", "once off costs", "transfer duty", "transfer costs",
+  "bond costs", "bond registration", "bond calculator",
+  "loan term", "loan amount",
+  "rates and taxes", "rates & taxes",
+  "levies", "levy",
+  "deposit",
+  "view breakdown",
+  "per month", "p/m",
+  "estimated", "approximate",
+];
+
 const SPACE_THOUSANDS = /R\s*(\d{1,3}(?:[\s ]\d{3})+)/g;
 const COMMA_THOUSANDS = /R\s*(\d{1,3}(?:,\d{3})+)/g;
 const SHORTHAND       = /R\s*(\d+(?:\.\d+)?)\s*([mMkK])\b/g;
@@ -46,39 +64,57 @@ export type PriceParseResult = {
  */
 export function parsePriceFromMarkdown(markdown: string): PriceParseResult {
   if (!markdown) return { price: null, source: null, candidates: [] };
+  const lowerMd = markdown.toLowerCase();
+
+  // Return true if the ±80 char window around `index` contains any
+  // negative-context word. Used to filter out bond calc / rates / levies
+  // values that happen to sit above the price floor.
+  const isContaminated = (index: number): boolean => {
+    const start = Math.max(0, index - 80);
+    const end = Math.min(lowerMd.length, index + 80);
+    const window = lowerMd.slice(start, end);
+    for (const w of NEGATIVE_CONTEXT) {
+      if (window.includes(w)) return true;
+    }
+    return false;
+  };
 
   const candidates: { value: number; source: "space" | "comma" | "shorthand" }[] = [];
+  const rejected: number[] = []; // for debugging via PriceParseResult
 
   for (const m of markdown.matchAll(SPACE_THOUSANDS)) {
     const v = parseNumericString(m[1]);
-    if (v != null && v >= KNYSNA_PRICE_FLOOR && v <= KNYSNA_PRICE_CEILING) {
-      candidates.push({ value: v, source: "space" });
-    }
+    if (v == null || v < KNYSNA_PRICE_FLOOR || v > KNYSNA_PRICE_CEILING) continue;
+    if (isContaminated(m.index ?? 0)) { rejected.push(v); continue; }
+    candidates.push({ value: v, source: "space" });
   }
   for (const m of markdown.matchAll(COMMA_THOUSANDS)) {
     const v = parseNumericString(m[1]);
-    if (v != null && v >= KNYSNA_PRICE_FLOOR && v <= KNYSNA_PRICE_CEILING) {
-      candidates.push({ value: v, source: "comma" });
-    }
+    if (v == null || v < KNYSNA_PRICE_FLOOR || v > KNYSNA_PRICE_CEILING) continue;
+    if (isContaminated(m.index ?? 0)) { rejected.push(v); continue; }
+    candidates.push({ value: v, source: "comma" });
   }
   for (const m of markdown.matchAll(SHORTHAND)) {
     const base = Number(m[1]);
     if (!Number.isFinite(base)) continue;
     const mult = m[2].toLowerCase() === "m" ? 1_000_000 : 1_000;
     const v = Math.round(base * mult);
-    if (v >= KNYSNA_PRICE_FLOOR && v <= KNYSNA_PRICE_CEILING) {
-      candidates.push({ value: v, source: "shorthand" });
-    }
+    if (v < KNYSNA_PRICE_FLOOR || v > KNYSNA_PRICE_CEILING) continue;
+    if (isContaminated(m.index ?? 0)) { rejected.push(v); continue; }
+    candidates.push({ value: v, source: "shorthand" });
   }
 
   if (candidates.length === 0) {
-    return { price: null, source: null, candidates: [] };
+    // Nothing plausible survived the context filter — the price section
+    // probably didn't render (Firecrawl scraped bond calc + specs but
+    // missed the hero). Store null so we don't lie about a price.
+    return { price: null, source: null, candidates: rejected };
   }
 
-  // Rule: pick the maximum. On a real listing the asking price is the
-  // largest Rand figure on the page (bond samples / levies / rates are
-  // always smaller). Ties break by preference: space > comma > shorthand
-  // (space format is P24's canonical rendering).
+  // Rule: pick the maximum from the surviving candidates. On a real
+  // listing the asking price is the largest uncontaminated Rand figure.
+  // Ties break by preference: space > comma > shorthand (space format
+  // is P24's canonical rendering).
   const best = candidates.reduce((a, b) => (b.value > a.value ? b : a));
   return {
     price: best.value,
