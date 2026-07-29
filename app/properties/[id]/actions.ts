@@ -5,6 +5,70 @@ import { createClient } from "@/lib/supabase/server";
 import { questionsFor, type PpraFormType } from "@/lib/ppraDisclosure";
 import { seedsFor, type InventoryCategory, type InventoryKind } from "@/lib/inventory";
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
+// Search external listings by address_raw / headline / source_ref for the
+// "attach P24/DW listing to this property" widget. Prefers unmatched rows
+// (matched_property_id is null) — those are what an operator actually
+// needs to pick from. Matched rows suppressed to avoid noise.
+export type ExternalListingHit = {
+  id: string;
+  source: string;
+  headline: string | null;
+  addressRaw: string | null;
+  price: number | null;
+  imageUrl: string | null;
+  agencyName: string | null;
+};
+
+export async function searchExternalListings(q: string): Promise<ExternalListingHit[]> {
+  const supabase = createClient();
+  const query = (q ?? "").trim();
+  if (query.length < 2) return [];
+  const like = `%${query.replace(/[%_]/g, "\\$&")}%`;
+  const { data } = await supabase
+    .from("external_listing")
+    .select("id, source, headline, address_raw, price, image_url, agency_name, matched_property_id")
+    .or(`address_raw.ilike.${like},headline.ilike.${like},source_ref.ilike.${like}`)
+    .is("matched_property_id", null)
+    .eq("active", true)
+    .limit(25);
+  return ((data ?? []) as any[]).map((r) => ({
+    id: r.id,
+    source: r.source,
+    headline: r.headline ?? null,
+    addressRaw: r.address_raw ?? null,
+    price: r.price != null ? Number(r.price) : null,
+    imageUrl: r.image_url ?? null,
+    agencyName: r.agency_name ?? null,
+  }));
+}
+
+// Attach an external listing (P24 / DW / PP) to this property. Sets
+// external_listing.matched_property_id — same mechanic as the map's
+// MarketListingAttach flow but triggered from the property side. The
+// primary use case: a property record with no photos, and the operator
+// knows exactly which P24 listing is the same property.
+export async function attachExternalListing(
+  externalListingId: string,
+  propertyId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  const { supabase } = gate;
+  if (!externalListingId || !propertyId) {
+    return { ok: false, error: "externalListingId + propertyId required" };
+  }
+  const { error } = await supabase
+    .from("external_listing")
+    .update({ matched_property_id: propertyId })
+    .eq("id", externalListingId);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath(`/properties/${propertyId}`);
+  revalidatePath("/map");
+  return { ok: true };
+}
+
 async function requireAdmin() {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();

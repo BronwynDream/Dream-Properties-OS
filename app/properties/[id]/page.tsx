@@ -14,6 +14,7 @@ import DealCompliance from "./DealCompliance";
 import FixturesAndMovables, { type InventoryRow, type MovablesAgreement } from "./FixturesAndMovables";
 import Viewings, { type ViewingItem, type AttendeeItem } from "./Viewings";
 import Offers, { type OfferRow } from "./Offers";
+import AttachListing from "./AttachListing";
 import { PRODUCTS as LIGHTSTONE_PRODUCTS } from "@/lib/lightstone";
 import { Rand, randString } from "@/app/components/format";
 import type { PpraFormType } from "@/lib/ppraDisclosure";
@@ -1090,6 +1091,16 @@ export default async function PropertyRecord({
                 <ErfLookup
                   propertyId={prop.id}
                   propertyAddress={prop.primary_address ?? ""}
+                />
+              )}
+              {/* When the property has no external listing attached (so no
+                  photos in the hero), let the operator search + attach one.
+                  Widget is admin-only; anyone can view a linked listing but
+                  linking is a write. */}
+              {isAdmin && heroPhotos.length === 0 && (
+                <AttachListing
+                  propertyId={prop.id}
+                  seedQuery={prop.primary_address ?? ""}
                 />
               )}
             </>
