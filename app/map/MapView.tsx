@@ -4,7 +4,7 @@ import "mapbox-gl/dist/mapbox-gl.css";
 import mapboxgl from "mapbox-gl";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { geocodeMissingProperties, savePropertyPin } from "./actions";
 import RefreshDreamButton from "./RefreshDreamButton";
 import RefreshMuniButton from "./RefreshMuniButton";
@@ -200,6 +200,7 @@ export default function MapView({
   budget?: BudgetSummary | null;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<Record<string, mapboxgl.Marker>>({});
@@ -209,6 +210,7 @@ export default function MapView({
   const dragKeyRef = useRef<string | null>(null);
   const pinPropertyIdRef = useRef<Record<string, string>>({}); // mergedKey → property.id
   const didInitialFitRef = useRef(false);
+  const didUrlTargetRef = useRef(false); // one-shot: honour ?property=/lng/lat exactly once per mount
   const handlePinDropRef = useRef<(propertyId: string, lng: number, lat: number) => void>(
     () => {},
   );
@@ -324,6 +326,50 @@ export default function MapView({
 
   const selectedPin =
     mergedPins.find((p) => p.key === selectedKey) ?? null;
+
+  // Honour ?property=<id> [&lng=X&lat=Y] on first-render: fly to the
+  // property's coord and open its panel if it matches a rendered pin.
+  // Runs once per mount — a pin re-render (mandate filter change etc.)
+  // shouldn't yank the view back. Fires after mergedPins are settled
+  // and after the map has completed its initial fitBounds so the flyTo
+  // isn't overridden by the coastal-strip framing.
+  useEffect(() => {
+    if (didUrlTargetRef.current) return;
+    const map = mapRef.current;
+    if (!map) return;
+    const propId = searchParams?.get("property");
+    const lngStr = searchParams?.get("lng");
+    const latStr = searchParams?.get("lat");
+    if (!propId && !lngStr) return;
+
+    // Resolve target coord — from URL params if present, else look the
+    // property up in the props array. A property with no coord can't be
+    // flown-to but we still open its panel where possible.
+    let lng: number | null = lngStr ? Number(lngStr) : null;
+    let lat: number | null = latStr ? Number(latStr) : null;
+    if ((lng == null || !Number.isFinite(lng)) && propId) {
+      const p = properties.find((pp) => pp.id === propId);
+      if (p) { lng = p.lng; lat = p.lat; }
+    }
+
+    const fly = () => {
+      if (lng != null && lat != null && Number.isFinite(lng) && Number.isFinite(lat)) {
+        map.flyTo({ center: [lng, lat], zoom: 17, essential: true });
+      }
+      // Match a mergedPin either by explicit property id or by nearest coord.
+      let matched = propId ? mergedPins.find((p) => p.matchedPropertyId === propId || p.our?.id === propId) : null;
+      if (matched) setSelectedKey(matched.key);
+      didUrlTargetRef.current = true;
+    };
+
+    // Wait until the map has done its initial fitBounds before flying.
+    if (didInitialFitRef.current) {
+      fly();
+    } else {
+      const t = setTimeout(fly, 400);
+      return () => clearTimeout(t);
+    }
+  }, [searchParams, mergedPins, properties]);
 
   // Map init.
   useEffect(() => {

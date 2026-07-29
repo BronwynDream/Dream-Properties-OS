@@ -1055,6 +1055,11 @@ export default async function PropertyRecord({
           photos={heroPhotos}
           mapboxToken={mapboxToken}
           stamp={stamp}
+          mapHref={`/map?property=${prop.id}${
+            (prop as any).lng != null && (prop as any).lat != null
+              ? `&lng=${(prop as any).lng}&lat=${(prop as any).lat}`
+              : ""
+          }`}
           actionsSlot={
             <>
               {isAdmin && (
