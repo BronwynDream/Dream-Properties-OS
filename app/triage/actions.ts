@@ -594,6 +594,130 @@ export async function mergeBatches(
   return { ok: true, moved: { files: movedFiles, extractions: movedExtractions, matches: movedMatches } };
 }
 
+// Route a whole batch into an estate document vault. Skips the extraction
+// + match_candidate paths entirely — the batch is being filed as reference
+// material, not committed to a property/transfer. Written to handle
+// Bronwyn's 2026-07-28 intake of Pezula Private Estate documents
+// (architectural design manual, HOA rules, plant list, disturbance-area
+// plans per plot) that had no obvious property home.
+//
+// Per file with a classified doc_type:
+//   1. Skip if a document with the same normalised title + byte size is
+//      already on the estate (dedupes re-forwarded batches).
+//   2. Insert a `document` row bound to the estate (document.estate_id)
+//      + a `document_link` (entity_type='estate') so the vault lists it.
+//   3. Mark the ingest_file committed and stamp the committed_document_id.
+// Then flip ingest_batch to committed + set estate_id.
+export async function routeBatchToEstate(
+  batchId: string,
+  estateId: string,
+): Promise<{ ok: boolean; error?: string; filed?: number; deduped?: number; skipped?: number }> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "unauthorized" };
+  const { data: me } = await supabase.from("app_user").select("role, active").eq("id", user.id).single();
+  if (me?.role !== "admin" || me.active === false) return { ok: false, error: "admin only" };
+
+  if (!batchId || !estateId) return { ok: false, error: "batchId and estateId required" };
+
+  const { data: batch } = await supabase
+    .from("ingest_batch")
+    .select("id, status")
+    .eq("id", batchId)
+    .single();
+  if (!batch) return { ok: false, error: "batch not found" };
+  if (batch.status === "committed") return { ok: false, error: "batch already committed" };
+
+  const { data: estate } = await supabase
+    .from("estate")
+    .select("id, name")
+    .eq("id", estateId)
+    .single();
+  if (!estate) return { ok: false, error: "estate not found" };
+
+  const { data: files } = await supabase
+    .from("ingest_file")
+    .select("id, original_filename, storage_bucket, storage_path, mime_type, byte_size, is_pii, detected_doc_type_id, status")
+    .eq("batch_id", batchId);
+
+  // Dedupe against docs already on the estate. Same key as commitBatch:
+  // normalised filename + byte size.
+  const { data: existingDocs } = await supabase
+    .from("document")
+    .select("id, title, byte_size")
+    .eq("estate_id", estateId);
+  const existingByKey = new Map<string, string>();
+  for (const d of (existingDocs ?? []) as { id: string; title: string; byte_size: number | null }[]) {
+    if (!d.title) continue;
+    existingByKey.set(`${normaliseFilename(d.title)}::${d.byte_size ?? ""}`, d.id);
+  }
+
+  let filed = 0, deduped = 0, skipped = 0;
+
+  for (const f of (files ?? []) as any[]) {
+    // Skip unclassified files + .eml wrappers — same rule commitBatch uses.
+    if (!f.detected_doc_type_id) { skipped++; continue; }
+    if (f.status === "committed" || f.status === "skipped") { skipped++; continue; }
+    if ((f.original_filename ?? "").toLowerCase().endsWith(".eml")) { skipped++; continue; }
+
+    const key = `${normaliseFilename(f.original_filename)}::${f.byte_size ?? ""}`;
+    const existingId = existingByKey.get(key);
+    let docId: string | null = null;
+
+    if (existingId) {
+      docId = existingId;
+      deduped++;
+    } else {
+      const { data: doc, error: docErr } = await supabase
+        .from("document")
+        .insert({
+          doc_type_id: f.detected_doc_type_id,
+          title: f.original_filename,
+          storage_bucket: f.storage_bucket,
+          storage_path: f.storage_path,
+          mime_type: f.mime_type,
+          byte_size: f.byte_size,
+          is_pii: f.is_pii,
+          estate_id: estateId,
+          status: "final",
+          uploaded_by: user.id,
+        })
+        .select("id")
+        .single();
+      if (docErr || !doc) { skipped++; continue; }
+      docId = doc.id;
+      existingByKey.set(key, doc.id);
+      // Link table too — the vault reads document.estate_id directly, but
+      // document_link keeps the "which entity owns this doc" story
+      // consistent with property/transfer bindings.
+      await supabase.from("document_link").insert({
+        document_id: doc.id,
+        entity_type: "estate",
+        entity_id: estateId,
+      });
+      filed++;
+    }
+
+    if (docId) {
+      await supabase
+        .from("ingest_file")
+        .update({ committed_document_id: docId, status: "committed" })
+        .eq("id", f.id);
+    }
+  }
+
+  await supabase
+    .from("ingest_batch")
+    .update({ status: "committed", estate_id: estateId })
+    .eq("id", batchId);
+
+  revalidatePath("/triage");
+  revalidatePath(`/triage/${batchId}`);
+  revalidatePath("/estates");
+  revalidatePath(`/estates/${estateId}`);
+  return { ok: true, filed, deduped, skipped };
+}
+
 // Manual correction of a single file's detected document type.
 export async function setFileType(fileId: string, batchId: string, docTypeId: string) {
   const supabase = createClient();
