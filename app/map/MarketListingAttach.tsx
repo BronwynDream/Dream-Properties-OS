@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { searchProperties, type PropertyHit } from "@/app/triage/actions";
-import { linkExternalListingsToProperty } from "./actions";
+import { linkExternalListingsToProperty, createPropertyFromExternalListings } from "./actions";
 
 // Small search-driven attach flow shown on the map's market-listing panel
 // when the pin isn't yet linked to an OS property. Mirrors PropertyAttach
@@ -58,6 +58,22 @@ export default function MarketListingAttach({
         router.refresh();
       } else {
         setMsg(`Link failed: ${res.error}`);
+      }
+    });
+  }
+
+  // Create a fresh OS property from the external listing(s) and navigate
+  // straight into the new record. Used when no existing property is the
+  // right match — e.g. Bronwyn's Dream-website listing exists but nothing
+  // in OS represents it yet.
+  function createFresh() {
+    setMsg(null);
+    startLinking(async () => {
+      const res = await createPropertyFromExternalListings(externalIds);
+      if (res.ok && res.propertyId) {
+        router.push(`/properties/${res.propertyId}`);
+      } else {
+        setMsg(`Create failed: ${res.error ?? "unknown"}`);
       }
     });
   }
@@ -127,7 +143,17 @@ export default function MarketListingAttach({
           ))}
         </ul>
       )}
-      <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
+      <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <button
+          type="button"
+          className="cta"
+          onClick={createFresh}
+          disabled={linking}
+          title="Create a fresh OS property record from this market listing and navigate to it"
+          style={{ padding: "8px 12px", fontSize: 12 }}
+        >
+          {linking ? "Creating…" : "+ Create new OS property"}
+        </button>
         <button
           type="button"
           className="ghost-dark"
