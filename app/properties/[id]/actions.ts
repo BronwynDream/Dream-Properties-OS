@@ -494,3 +494,156 @@ export async function upsertMovablesAgreement(input: {
   revalidatePath(`/properties/${input.propertyId}`);
   return { ok: true };
 }
+
+// ---------------------------------------------------------------------------
+// Offers — capture, edit, status transitions.
+//
+// The offer table stores one row per OTP submitted on a transfer. In
+// SA practice a single deal can attract multiple offers, sometimes
+// simultaneously — the comparison view leans on that. Accepting one
+// offer doesn't automatically reject the others; a director may want
+// to keep a backup live in case suspensive conditions fail.
+// ---------------------------------------------------------------------------
+
+const OFFER_STATUSES = ["draft", "submitted", "countered", "accepted", "rejected", "withdrawn", "lapsed"] as const;
+type OfferStatus = typeof OFFER_STATUSES[number];
+
+type OfferPatch = {
+  purchaserPartyId?: string | null;
+  amount?: string | number | null;
+  deposit?: string | number | null;
+  offerDate?: string | null;
+  status?: OfferStatus;
+  conditionsSummary?: string | null;
+  notes?: string | null;
+  bondRequired?: boolean | null;
+  bondAmount?: string | number | null;
+  bondDays?: number | null;
+  saleOfPropertyRequired?: boolean | null;
+  saleOfPropertyDetails?: string | null;
+  depositDueDate?: string | null;
+  occupationDate?: string | null;
+  occupationalRentAmount?: string | number | null;
+  offerExpiresAt?: string | null;
+  extraConditions?: string | null;
+};
+
+function buildOfferPatch(input: OfferPatch): { patch: Record<string, unknown> } | { error: string } {
+  const patch: Record<string, unknown> = {};
+
+  const trimDate = (v: string | null | undefined): string | null | undefined => {
+    if (v === undefined) return undefined;
+    const s = (v ?? "").trim();
+    if (!s) return null;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) throw new Error(`date must be YYYY-MM-DD, got ${s}`);
+    return s;
+  };
+
+  const numOrNull = (v: string | number | null | undefined, name: string): number | null | undefined => {
+    if (v === undefined) return undefined;
+    if (v === null || `${v}`.trim() === "") return null;
+    const n = Number(String(v).replace(/\s/g, ""));
+    if (!Number.isFinite(n) || n < 0) throw new Error(`${name} must be a non-negative number`);
+    return n;
+  };
+
+  try {
+    if (input.purchaserPartyId !== undefined) patch.purchaser_party_id = input.purchaserPartyId || null;
+    if (input.status !== undefined) {
+      if (!OFFER_STATUSES.includes(input.status)) return { error: `unknown status: ${input.status}` };
+      patch.status = input.status;
+    }
+    if (input.conditionsSummary !== undefined) patch.conditions_summary = (input.conditionsSummary ?? "").trim() || null;
+    if (input.notes !== undefined) patch.notes = (input.notes ?? "").trim() || null;
+    if (input.extraConditions !== undefined) patch.extra_conditions = (input.extraConditions ?? "").trim() || null;
+    if (input.saleOfPropertyDetails !== undefined) patch.sale_of_property_details = (input.saleOfPropertyDetails ?? "").trim() || null;
+
+    const amt = numOrNull(input.amount, "amount"); if (amt !== undefined) patch.amount = amt;
+    const dep = numOrNull(input.deposit, "deposit"); if (dep !== undefined) patch.deposit = dep;
+    const bAmt = numOrNull(input.bondAmount, "bond amount"); if (bAmt !== undefined) patch.bond_amount = bAmt;
+    const rent = numOrNull(input.occupationalRentAmount, "rent"); if (rent !== undefined) patch.occupational_rent_amount = rent;
+
+    if (input.bondRequired !== undefined) patch.bond_required = input.bondRequired;
+    if (input.bondDays !== undefined) {
+      if (input.bondDays === null) patch.bond_days = null;
+      else if (!Number.isInteger(input.bondDays) || input.bondDays < 0) return { error: "bond days must be a non-negative integer" };
+      else patch.bond_days = input.bondDays;
+    }
+    if (input.saleOfPropertyRequired !== undefined) patch.sale_of_property_required = input.saleOfPropertyRequired;
+
+    const od = trimDate(input.offerDate); if (od !== undefined) patch.offer_date = od;
+    const dd = trimDate(input.depositDueDate); if (dd !== undefined) patch.deposit_due_date = dd;
+    const occ = trimDate(input.occupationDate); if (occ !== undefined) patch.occupation_date = occ;
+
+    if (input.offerExpiresAt !== undefined) {
+      const s = (input.offerExpiresAt ?? "").trim();
+      if (!s) patch.offer_expires_at = null;
+      else {
+        const dt = new Date(s);
+        if (isNaN(dt.getTime())) return { error: "offer expiry must be ISO datetime" };
+        patch.offer_expires_at = dt.toISOString();
+      }
+    }
+  } catch (e) {
+    return { error: (e as Error).message };
+  }
+  return { patch };
+}
+
+export async function createOffer(input: OfferPatch & {
+  transferId: string;
+  propertyId: string;
+}): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  const { supabase } = gate;
+  if (!input.transferId) return { ok: false, error: "transferId required" };
+  const built = buildOfferPatch(input);
+  if ("error" in built) return { ok: false, error: built.error };
+  const row: Record<string, unknown> = { ...built.patch, transfer_id: input.transferId };
+  if (!("status" in row)) row.status = "submitted";
+  const { data, error } = await supabase.from("offer").insert(row).select("id").single();
+  if (error || !data) return { ok: false, error: error?.message ?? "insert failed" };
+  revalidatePath(`/properties/${input.propertyId}`);
+  revalidatePath("/pipeline");
+  return { ok: true, id: data.id };
+}
+
+export async function updateOffer(input: OfferPatch & {
+  id: string;
+  propertyId: string;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  const { supabase } = gate;
+  const built = buildOfferPatch(input);
+  if ("error" in built) return { ok: false, error: built.error };
+  if (Object.keys(built.patch).length === 0) return { ok: false, error: "nothing to update" };
+  const { error } = await supabase.from("offer").update(built.patch).eq("id", input.id);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath(`/properties/${input.propertyId}`);
+  revalidatePath("/pipeline");
+  return { ok: true };
+}
+
+export async function setOfferStatus(input: {
+  id: string;
+  status: OfferStatus;
+  propertyId: string;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  return updateOffer({ id: input.id, propertyId: input.propertyId, status: input.status });
+}
+
+export async function deleteOffer(input: {
+  id: string;
+  propertyId: string;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false, error: gate.error };
+  const { supabase } = gate;
+  const { error } = await supabase.from("offer").delete().eq("id", input.id);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath(`/properties/${input.propertyId}`);
+  revalidatePath("/pipeline");
+  return { ok: true };
+}

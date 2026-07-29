@@ -13,6 +13,7 @@ import ErfLookup from "./ErfLookup";
 import DealCompliance from "./DealCompliance";
 import FixturesAndMovables, { type InventoryRow, type MovablesAgreement } from "./FixturesAndMovables";
 import Viewings, { type ViewingItem, type AttendeeItem } from "./Viewings";
+import Offers, { type OfferRow } from "./Offers";
 import { PRODUCTS as LIGHTSTONE_PRODUCTS } from "@/lib/lightstone";
 import { Rand, randString } from "@/app/components/format";
 import type { PpraFormType } from "@/lib/ppraDisclosure";
@@ -620,6 +621,8 @@ export default async function PropertyRecord({
   let dealInventory: InventoryRow[] = [];
   let dealMovablesAgreement: MovablesAgreement = null;
   let propertyViewings: ViewingItem[] = [];
+  let dealOffers: OfferRow[] = [];
+  let dealBuyerCandidates: { id: string; display_name: string }[] = [];
 
   if (activeTransfer) {
     const [{ data: discHeader }, { data: complianceTypes }, { data: certRows }, { data: invRows }, { data: movablesAgr }] = await Promise.all([
@@ -699,6 +702,46 @@ export default async function PropertyRecord({
       label: typeMap.get(code)?.label ?? code,
       cert: forCode(code),
     }));
+
+    // Offers for this transfer — full field set for capture + comparison.
+    // Purchaser name is joined so the list can show it without a second
+    // round-trip per row.
+    const { data: offerRows } = await supabase
+      .from("offer")
+      .select(
+        "id, purchaser_party_id, amount, deposit, offer_date, status, conditions_summary, notes, bond_required, bond_amount, bond_days, sale_of_property_required, sale_of_property_details, deposit_due_date, occupation_date, occupational_rent_amount, offer_expires_at, extra_conditions, purchaser:purchaser_party_id(id, display_name)",
+      )
+      .eq("transfer_id", activeTransfer.id)
+      .order("offer_date", { ascending: false, nullsFirst: false });
+    dealOffers = ((offerRows ?? []) as any[]).map((r) => {
+      const pj = Array.isArray(r.purchaser) ? r.purchaser[0] : r.purchaser;
+      return {
+        id: r.id,
+        purchaserPartyId: pj?.id ?? r.purchaser_party_id ?? null,
+        purchaserName: pj?.display_name ?? null,
+        amount: r.amount != null ? Number(r.amount) : null,
+        deposit: r.deposit != null ? Number(r.deposit) : null,
+        offerDate: r.offer_date ?? null,
+        status: r.status,
+        conditionsSummary: r.conditions_summary ?? null,
+        notes: r.notes ?? null,
+        bondRequired: r.bond_required === true ? true : r.bond_required === false ? false : null,
+        bondAmount: r.bond_amount != null ? Number(r.bond_amount) : null,
+        bondDays: r.bond_days ?? null,
+        saleOfPropertyRequired: !!r.sale_of_property_required,
+        saleOfPropertyDetails: r.sale_of_property_details ?? null,
+        depositDueDate: r.deposit_due_date ?? null,
+        occupationDate: r.occupation_date ?? null,
+        occupationalRentAmount: r.occupational_rent_amount != null ? Number(r.occupational_rent_amount) : null,
+        offerExpiresAt: r.offer_expires_at ?? null,
+        extraConditions: r.extra_conditions ?? null,
+      } as OfferRow;
+    });
+    // Buyer-candidate parties: parties already on this transfer's buyer
+    // side. Seller-only parties aren't offered as offer purchasers.
+    dealBuyerCandidates = tparties
+      .filter((tp) => tp.transfer_id === activeTransfer.id && tp.side === "purchaser" && tp.party?.id)
+      .map((tp) => ({ id: tp.party.id, display_name: tp.party.display_name ?? "—" }));
   }
 
   // Viewings for this property (independent of active transfer — a show
@@ -1090,6 +1133,19 @@ export default async function PropertyRecord({
           agentUserId={listingForPicker?.agent_user_id ?? null}
           viewings={propertyViewings}
         />
+
+        {/* Offers — capture form, list of offers, and a side-by-side
+            comparison view when there are 2+ live offers. Only rendered
+            when there's an active transfer (offers attach to a specific
+            deal). */}
+        {activeTransfer && (
+          <Offers
+            propertyId={prop.id}
+            transferId={activeTransfer.id}
+            offers={dealOffers}
+            buyerCandidates={dealBuyerCandidates}
+          />
+        )}
 
         {/* Sample-data banner — surfaces whenever Lightstone stub results are
             attached to this record so nobody mistakes the SAMPLE placeholder
