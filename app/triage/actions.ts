@@ -494,6 +494,106 @@ export async function commitBatchById(batchId: string) {
   return commitBatch(batchId, rows);
 }
 
+// Merge N source batches into a target batch. Moves ingest_file rows,
+// extraction rows, and match_candidate rows onto the target, then
+// deletes the sources. Guard: source batches must not be committed
+// (their files already belong to a real property; merging them would
+// double-attach) and must not carry a distinct property_id from the
+// target — a match_candidate resolution would silently override.
+//
+// Written to fix the 2026-07-29 discovery on /triage that the same
+// folder had been ingested 2-4 times as separate batches (drag-drop
+// twice, email intake twice, etc.) leaving Bronwyn to reconcile them
+// by eye.
+export async function mergeBatches(
+  targetId: string,
+  sourceIds: string[],
+): Promise<{ ok: boolean; error?: string; moved?: { files: number; extractions: number; matches: number } }> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "unauthorized" };
+  const { data: me } = await supabase.from("app_user").select("role, active").eq("id", user.id).single();
+  if (me?.role !== "admin" || me.active === false) return { ok: false, error: "admin only" };
+
+  if (!targetId) return { ok: false, error: "targetId required" };
+  const uniqSources = Array.from(new Set(sourceIds)).filter((id) => id && id !== targetId);
+  if (uniqSources.length === 0) return { ok: false, error: "no source batches" };
+
+  // Fetch target + all sources in one round-trip to validate.
+  const { data: batchRows, error: bErr } = await supabase
+    .from("ingest_batch")
+    .select("id, status, property_id, transfer_id")
+    .in("id", [targetId, ...uniqSources]);
+  if (bErr) return { ok: false, error: bErr.message };
+  const target = (batchRows ?? []).find((b) => b.id === targetId);
+  if (!target) return { ok: false, error: "target batch not found" };
+  const sources = (batchRows ?? []).filter((b) => b.id !== targetId);
+
+  // Refuse committed sources (would double-attach their files to a real
+  // property/transfer) and any source whose property/transfer link
+  // conflicts with the target's.
+  for (const s of sources) {
+    if (s.status === "committed") {
+      return { ok: false, error: `source ${s.id.slice(0, 8)} is committed — cannot merge` };
+    }
+    if (s.property_id && target.property_id && s.property_id !== target.property_id) {
+      return { ok: false, error: `source ${s.id.slice(0, 8)} is linked to a different property` };
+    }
+    if (s.transfer_id && target.transfer_id && s.transfer_id !== target.transfer_id) {
+      return { ok: false, error: `source ${s.id.slice(0, 8)} is linked to a different transfer` };
+    }
+  }
+
+  // Move rows. Order matters: files first (largest set), then extractions,
+  // then match_candidates. All operations are idempotent updates so a
+  // partial failure won't corrupt state (source rows just haven't moved yet).
+  let movedFiles = 0, movedExtractions = 0, movedMatches = 0;
+
+  const { count: fileCount } = await supabase
+    .from("ingest_file").select("id", { count: "exact", head: true }).in("batch_id", uniqSources);
+  const { error: fErr } = await supabase
+    .from("ingest_file").update({ batch_id: targetId }).in("batch_id", uniqSources);
+  if (fErr) return { ok: false, error: `move files: ${fErr.message}` };
+  movedFiles = fileCount ?? 0;
+
+  const { count: exCount } = await supabase
+    .from("extraction").select("id", { count: "exact", head: true }).in("batch_id", uniqSources);
+  const { error: eErr } = await supabase
+    .from("extraction").update({ batch_id: targetId }).in("batch_id", uniqSources);
+  if (eErr) return { ok: false, error: `move extractions: ${eErr.message}` };
+  movedExtractions = exCount ?? 0;
+
+  const { count: mcCount } = await supabase
+    .from("match_candidate").select("id", { count: "exact", head: true }).in("batch_id", uniqSources);
+  const { error: mErr } = await supabase
+    .from("match_candidate").update({ batch_id: targetId }).in("batch_id", uniqSources);
+  if (mErr) return { ok: false, error: `move matches: ${mErr.message}` };
+  movedMatches = mcCount ?? 0;
+
+  // Coalesce property_id / transfer_id if only one side had it. Prefer target's
+  // existing value; take source's when target is empty.
+  const patch: Record<string, unknown> = {};
+  if (!target.property_id) {
+    const donor = sources.find((s) => s.property_id);
+    if (donor?.property_id) patch.property_id = donor.property_id;
+  }
+  if (!target.transfer_id) {
+    const donor = sources.find((s) => s.transfer_id);
+    if (donor?.transfer_id) patch.transfer_id = donor.transfer_id;
+  }
+  if (Object.keys(patch).length > 0) {
+    await supabase.from("ingest_batch").update(patch).eq("id", targetId);
+  }
+
+  // Delete the emptied sources.
+  const { error: dErr } = await supabase.from("ingest_batch").delete().in("id", uniqSources);
+  if (dErr) return { ok: false, error: `delete sources: ${dErr.message}` };
+
+  revalidatePath("/triage");
+  revalidatePath(`/triage/${targetId}`);
+  return { ok: true, moved: { files: movedFiles, extractions: movedExtractions, matches: movedMatches } };
+}
+
 // Manual correction of a single file's detected document type.
 export async function setFileType(fileId: string, batchId: string, docTypeId: string) {
   const supabase = createClient();
