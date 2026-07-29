@@ -89,23 +89,32 @@ export async function POST(request: Request) {
       : null;
     const md_ = parsePriceFromMarkdown(md);
     const reconciled = reconcilePrice(llmVal, md_.price);
-    if (reconciled.price == null) {
-      noExtract++;
-      continue;
-    }
-    if (reconciled.price === row.price) {
+
+    // Compare current DB value to what the reparse resolves. Both nulls
+    // = nothing to do. Any transition (null↔number or number→different
+    // number) is a real change — including number → null, which is the
+    // whole point of the context filter: clear garbage prices rather
+    // than let them silently sit.
+    const currentPrice = row.price != null ? Number(row.price) : null;
+    const nextPrice = reconciled.price;
+    if (currentPrice === nextPrice) {
       unchanged++;
       continue;
     }
+    if (currentPrice == null && nextPrice == null) {
+      noExtract++;
+      continue;
+    }
+
     changes.push({
       id: row.id as string,
       source_ref: row.source_ref as string,
-      before: row.price != null ? Number(row.price) : null,
-      after: reconciled.price,
+      before: currentPrice,
+      after: nextPrice,
       source: reconciled.source,
     });
     if (!dry) {
-      const { error: upErr } = await supabase.from("external_listing").update({ price: reconciled.price }).eq("id", row.id);
+      const { error: upErr } = await supabase.from("external_listing").update({ price: nextPrice }).eq("id", row.id);
       if (!upErr) updated++;
     }
   }
