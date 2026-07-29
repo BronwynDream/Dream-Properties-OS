@@ -7,6 +7,8 @@
 // with backoff. Errors logged and returned as null so the caller can
 // carry on with the remaining URLs.
 
+import { parsePriceFromMarkdown, reconcilePrice } from "./priceParse";
+
 const FIRECRAWL_URL = "https://api.firecrawl.dev/v1/scrape";
 
 export type Property24Listing = {
@@ -229,14 +231,21 @@ export async function scrapeListingDetail(
   const lat: number | null = null;
   const lng: number | null = null;
 
-  // Price sanity: 0 is always a scrape failure for a real listing. Store null
-  // instead of a nonsense R0 pin label.
-  let price: number | null = null;
-  if (extracted.price != null) {
-    const n = Math.round(Number(extracted.price));
-    if (Number.isFinite(n) && n > 0) price = n;
-    else console.warn(`[property24] rejecting non-positive price for ${sourceRef}: ${extracted.price}`);
+  // Price: markdown-regex is authoritative; the LLM's `price` field is a
+  // fallback because it has silently returned nonsense (erf numbers,
+  // rates, single-digit values) on real listings. See priceParse.ts for
+  // the rule set. Any disagreement between the two is logged so we can
+  // spot systematic drift.
+  const llmPrice = extracted.price != null && Number.isFinite(Number(extracted.price))
+    ? Math.round(Number(extracted.price))
+    : null;
+  const markdown = typeof data.markdown === "string" ? data.markdown : "";
+  const mdParsed = parsePriceFromMarkdown(markdown);
+  const reconciled = reconcilePrice(llmPrice, mdParsed.price);
+  if (reconciled.warn) {
+    console.warn(`[property24] ${sourceRef}: ${reconciled.warn} (candidates: ${mdParsed.candidates.join(", ")})`);
   }
+  const price: number | null = reconciled.price;
 
   return {
     sourceRef,
