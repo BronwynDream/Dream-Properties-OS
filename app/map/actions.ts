@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 
+import { geocodeAddress, centroidForArea, inGardenRoute } from "@/lib/external-listings/geocode";
+
 const MAPBOX_GEOCODE = "https://api.mapbox.com/search/geocode/v6/forward";
 
 type GeocodeResult = {
@@ -289,4 +291,67 @@ export async function createPropertyFromExternalListings(
   revalidatePath("/properties");
   revalidatePath(`/properties/${newProp.id}`);
   return { ok: true, propertyId: newProp.id };
+}
+
+// Re-geocode a single external_listing. Used when an operator spots a
+// pin visibly in the wrong place (e.g. "8 Grey St, Knysna Central"
+// ending up at Pezula because Mapbox picked the wrong Grey Street).
+// Same rules as the batched regeocode endpoint: bias to Knysna, verify
+// result is in the Garden Route bbox, fall back to a suburb centroid if
+// address geocode fails.
+export async function regeocodeExternalListing(
+  externalListingId: string,
+): Promise<{ ok: boolean; error?: string; lng?: number; lat?: number; source?: "address" | "centroid" | "unchanged" }> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "unauthorized" };
+  const { data: me } = await supabase.from("app_user").select("role, active").eq("id", user.id).single();
+  if (me?.role !== "admin" || me.active === false) return { ok: false, error: "admin only" };
+  if (!externalListingId) return { ok: false, error: "externalListingId required" };
+
+  const { data: row } = await supabase
+    .from("external_listing")
+    .select("id, address_raw, suburb, lat, lng")
+    .eq("id", externalListingId)
+    .single();
+  if (!row) return { ok: false, error: "listing not found" };
+
+  const address = ((row as any).address_raw ?? "").trim();
+  const suburb = (row as any).suburb ?? null;
+
+  let coord: { lng: number; lat: number } | null = null;
+  let source: "address" | "centroid" = "address";
+
+  if (address.length > 2) {
+    const geo = await geocodeAddress(address, { suburb });
+    if (geo && inGardenRoute(geo)) coord = geo;
+  }
+  if (!coord) {
+    const centroid = centroidForArea(address, suburb);
+    if (centroid) {
+      coord = centroid;
+      source = "centroid";
+    }
+  }
+  if (!coord) return { ok: false, error: "geocode failed — no address, no suburb centroid" };
+
+  const prevLat = (row as any).lat != null ? Number((row as any).lat) : null;
+  const prevLng = (row as any).lng != null ? Number((row as any).lng) : null;
+  const unchanged =
+    prevLat != null && prevLng != null &&
+    Math.abs(prevLat - coord.lat) < 0.00001 &&
+    Math.abs(prevLng - coord.lng) < 0.00001;
+
+  if (unchanged) {
+    return { ok: true, lng: coord.lng, lat: coord.lat, source: "unchanged" };
+  }
+
+  const { error: updErr } = await supabase
+    .from("external_listing")
+    .update({ lat: coord.lat, lng: coord.lng })
+    .eq("id", externalListingId);
+  if (updErr) return { ok: false, error: updErr.message };
+
+  revalidatePath("/map");
+  return { ok: true, lng: coord.lng, lat: coord.lat, source };
 }

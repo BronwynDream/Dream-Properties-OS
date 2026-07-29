@@ -12,6 +12,7 @@ import RefreshProperty24Button from "./RefreshProperty24Button";
 import DrainQueueButton from "./DrainQueueButton";
 import RegeocodeProperty24Button from "./RegeocodeProperty24Button";
 import MarketListingAttach from "./MarketListingAttach";
+import RegeocodeListingButton from "./RegeocodeListingButton";
 
 export type MapProperty = {
   id: string;
@@ -1840,6 +1841,15 @@ function PreviewPanel({
           isAdmin && (
             <MarketListingAttach externalIds={pin.externals.map((e) => e.id)} />
           )
+        )}
+
+        {/* Admin: re-geocode the pin when it's visibly in the wrong place.
+            Works on any market pin (matched or not) since a wrong coord is
+            a wrong coord regardless of whether it's been attached to an
+            OS property. Runs on the first external in the group; dedup
+            groups share a physical address so one is enough. */}
+        {isAdmin && pin.externals.length > 0 && (
+          <RegeocodeListingButton externalId={pin.externals[0].id} />
         )}
       </div>
     </>
