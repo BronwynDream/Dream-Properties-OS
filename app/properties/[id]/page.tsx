@@ -697,7 +697,15 @@ export default async function PropertyRecord({
         notes: chosen.notes ?? null,
       };
     };
-    dealCerts = (["electrical", "entomologist", "gas", "electric_fence"] as const).map((code) => ({
+    // Plot properties don't need electrical / entomologist / gas CoCs
+    // (there's no house — no wiring, no wood structures, no gas). The
+    // Plot Sale template omits clause 15 entirely for this reason. An
+    // electric fence around the boundary is the only cert that can
+    // still apply, so keep that one visible.
+    const certCodes = dealFormType === "plot"
+      ? (["electric_fence"] as const)
+      : (["electrical", "entomologist", "gas", "electric_fence"] as const);
+    dealCerts = certCodes.map((code) => ({
       code,
       label: typeMap.get(code)?.label ?? code,
       cert: forCode(code),
@@ -1117,12 +1125,18 @@ export default async function PropertyRecord({
               disclosure={dealDisclosure}
               certs={dealCerts}
             />
-            <FixturesAndMovables
-              propertyId={prop.id}
-              transferId={activeTransfer.id}
-              rows={dealInventory}
-              movables={dealMovablesAgreement}
-            />
+            {/* Plot properties skip Fixtures + Movables entirely — vacant
+                land has neither fixtures (clause 14 of the Master Sale is
+                absent from the Plot Sale template) nor movables (no house,
+                no Annexure A). */}
+            {dealFormType !== "plot" && (
+              <FixturesAndMovables
+                propertyId={prop.id}
+                transferId={activeTransfer.id}
+                rows={dealInventory}
+                movables={dealMovablesAgreement}
+              />
+            )}
           </>
         )}
 
