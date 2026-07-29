@@ -6,6 +6,7 @@ import DropZone from "./DropZone";
 import QueueActions from "./QueueActions";
 import BulkExtract from "./BulkExtract";
 import BulkCommit from "./BulkCommit";
+import DuplicateBanner from "./DuplicateBanner";
 export const dynamic = "force-dynamic";
 
 type QueueRow = {
@@ -59,6 +60,21 @@ export default async function TriagePage() {
 
       <section className="app-body" style={{ maxWidth: 1000 }}>
         <DropZone />
+
+        {!notReady && queue.length > 0 && (
+          <DuplicateBanner
+            batches={queue.map((b) => ({
+              id: b.id,
+              label: b.label,
+              status: b.status,
+              file_count: b.file_count,
+              proposed_count: b.proposed_count,
+              confirmed_count: b.confirmed_count,
+              created_at: b.created_at,
+              property_id: b.property_id,
+            }))}
+          />
+        )}
 
         {!notReady && queue.length > 0 && (
           <div
@@ -122,6 +138,7 @@ export default async function TriagePage() {
                 <th>Proposed</th>
                 <th>Confirmed</th>
                 <th>Matches</th>
+                <th>Linked</th>
               </tr>
             </thead>
             <tbody>
@@ -169,6 +186,33 @@ export default async function TriagePage() {
                   <td>{b.proposed_count}</td>
                   <td>{b.confirmed_count}</td>
                   <td>{b.open_matches || "—"}</td>
+                  <td>
+                    {b.property_id ? (
+                      <Link
+                        href={`/properties/${b.property_id}`}
+                        style={{
+                          fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                          fontSize: 10,
+                          letterSpacing: "0.06em",
+                          color: "var(--positive, #4B6B4A)",
+                          fontWeight: 600,
+                        }}
+                      >
+                        ✓ property
+                      </Link>
+                    ) : (
+                      <span
+                        style={{
+                          fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                          fontSize: 10,
+                          color: "var(--paper-mute, #6a7692)",
+                          letterSpacing: "0.06em",
+                        }}
+                      >
+                        —
+                      </span>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
