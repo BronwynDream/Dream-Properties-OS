@@ -12,9 +12,11 @@ import LightstoneFetch from "./LightstoneFetch";
 import ErfLookup from "./ErfLookup";
 import DealCompliance from "./DealCompliance";
 import FixturesAndMovables, { type InventoryRow, type MovablesAgreement } from "./FixturesAndMovables";
+import Viewings, { type ViewingItem, type AttendeeItem } from "./Viewings";
 import { PRODUCTS as LIGHTSTONE_PRODUCTS } from "@/lib/lightstone";
 import { Rand, randString } from "@/app/components/format";
 import type { PpraFormType } from "@/lib/ppraDisclosure";
+import type { ViewingKind } from "@/lib/viewings";
 
 export const dynamic = "force-dynamic";
 
@@ -617,6 +619,7 @@ export default async function PropertyRecord({
   }[] = [];
   let dealInventory: InventoryRow[] = [];
   let dealMovablesAgreement: MovablesAgreement = null;
+  let propertyViewings: ViewingItem[] = [];
 
   if (activeTransfer) {
     const [{ data: discHeader }, { data: complianceTypes }, { data: certRows }, { data: invRows }, { data: movablesAgr }] = await Promise.all([
@@ -697,6 +700,54 @@ export default async function PropertyRecord({
       cert: forCode(code),
     }));
   }
+
+  // Viewings for this property (independent of active transfer — a show
+  // house can pre-date any live deal). Attendees join separately then
+  // group in-memory to keep the query simple. Cap at 25 to avoid pulling
+  // a decade of historical show houses onto the page.
+  const { data: viewingRows } = await supabase
+    .from("viewing")
+    .select("id, kind, status, scheduled_at, duration_minutes, agent:agent_user_id(id, full_name)")
+    .eq("property_id", prop.id)
+    .order("scheduled_at", { ascending: false })
+    .limit(25);
+  const vRawIds = ((viewingRows ?? []) as any[]).map((v) => v.id);
+  const { data: attRows } = vRawIds.length > 0
+    ? await supabase
+        .from("viewing_attendee")
+        .select("id, viewing_id, party_id, name, email, phone, followed_up, is_interested, notes, party:party_id(id, display_name)")
+        .in("viewing_id", vRawIds)
+    : { data: [] as any[] };
+  const attendeesByViewing = new Map<string, AttendeeItem[]>();
+  for (const a of (attRows ?? []) as any[]) {
+    const partyJoin = Array.isArray(a.party) ? a.party[0] : a.party;
+    const item: AttendeeItem = {
+      id: a.id,
+      partyId: partyJoin?.id ?? null,
+      partyName: partyJoin?.display_name ?? null,
+      name: a.name ?? null,
+      email: a.email ?? null,
+      phone: a.phone ?? null,
+      followedUp: !!a.followed_up,
+      isInterested: a.is_interested === true ? true : a.is_interested === false ? false : null,
+      notes: a.notes ?? null,
+    };
+    const arr = attendeesByViewing.get(a.viewing_id) ?? [];
+    arr.push(item);
+    attendeesByViewing.set(a.viewing_id, arr);
+  }
+  propertyViewings = ((viewingRows ?? []) as any[]).map((v) => {
+    const agentJoin = Array.isArray(v.agent) ? v.agent[0] : v.agent;
+    return {
+      id: v.id,
+      kind: v.kind as ViewingKind,
+      status: v.status,
+      scheduledAt: v.scheduled_at,
+      durationMinutes: v.duration_minutes ?? 60,
+      agentName: agentJoin?.full_name ?? null,
+      attendees: attendeesByViewing.get(v.id) ?? [],
+    };
+  });
 
   // Reusable transfer card render — used both in the hero row (no timeline
   // marker) and in the ownership history section (with year + dot marker).
@@ -1026,6 +1077,19 @@ export default async function PropertyRecord({
             />
           </>
         )}
+
+        {/* Viewings — scheduled show houses / private viewings / valuation
+            visits with attendee capture. Sits after Deal Compliance because
+            a viewing may pre-date an active transfer, and because it's a
+            different kind of activity (scheduling / prospecting) than
+            documents / compliance. */}
+        <Viewings
+          propertyId={prop.id}
+          listingId={listingForPicker?.id ?? null}
+          transferId={activeTransfer?.id ?? null}
+          agentUserId={listingForPicker?.agent_user_id ?? null}
+          viewings={propertyViewings}
+        />
 
         {/* Sample-data banner — surfaces whenever Lightstone stub results are
             attached to this record so nobody mistakes the SAMPLE placeholder
