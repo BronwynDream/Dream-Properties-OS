@@ -508,7 +508,7 @@ export async function commitBatchById(batchId: string) {
 export async function mergeBatches(
   targetId: string,
   sourceIds: string[],
-): Promise<{ ok: boolean; error?: string; moved?: { files: number; extractions: number; matches: number } }> {
+): Promise<{ ok: boolean; error?: string; moved?: { files: number; extractions: number; matches: number }; skippedCommitted?: number }> {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: "unauthorized" };
@@ -527,71 +527,95 @@ export async function mergeBatches(
   if (bErr) return { ok: false, error: bErr.message };
   const target = (batchRows ?? []).find((b) => b.id === targetId);
   if (!target) return { ok: false, error: "target batch not found" };
+  if (target.status === "committed") return { ok: false, error: "target batch is committed — pick a different survivor" };
   const sources = (batchRows ?? []).filter((b) => b.id !== targetId);
 
-  // Refuse committed sources (would double-attach their files to a real
-  // property/transfer) and any source whose property/transfer link
-  // conflicts with the target's.
+  // Skip (rather than reject) committed sources. Their files already
+  // live on the estate/property they were filed to; moving them would
+  // double-attach. The remaining uncommitted sources still deserve to
+  // be merged into the target. Simon's cleanup workflow hits this
+  // constantly because he files one batch to an estate then wants to
+  // dedupe the rest — the stale render still lists the filed batch as
+  // a cluster member.
+  const skippedCommitted: string[] = [];
+  const mergeable: string[] = [];
   for (const s of sources) {
     if (s.status === "committed") {
-      return { ok: false, error: `source ${s.id.slice(0, 8)} is committed — cannot merge` };
+      skippedCommitted.push(s.id);
+      continue;
     }
     if (s.property_id && target.property_id && s.property_id !== target.property_id) {
-      return { ok: false, error: `source ${s.id.slice(0, 8)} is linked to a different property` };
+      return { ok: false, error: `source ${s.id.slice(0, 8)} is linked to a different property — refuse rather than silently pick a side` };
     }
     if (s.transfer_id && target.transfer_id && s.transfer_id !== target.transfer_id) {
-      return { ok: false, error: `source ${s.id.slice(0, 8)} is linked to a different transfer` };
+      return { ok: false, error: `source ${s.id.slice(0, 8)} is linked to a different transfer — refuse rather than silently pick a side` };
     }
+    mergeable.push(s.id);
+  }
+
+  if (mergeable.length === 0) {
+    return {
+      ok: false,
+      error: `every source is already committed (${skippedCommitted.length}) — nothing to merge. Refresh the page; the queue's stale.`,
+    };
   }
 
   // Move rows. Order matters: files first (largest set), then extractions,
-  // then match_candidates. All operations are idempotent updates so a
-  // partial failure won't corrupt state (source rows just haven't moved yet).
+  // then match_candidates. Operations use the `mergeable` set only —
+  // committed sources are left alone.
   let movedFiles = 0, movedExtractions = 0, movedMatches = 0;
 
   const { count: fileCount } = await supabase
-    .from("ingest_file").select("id", { count: "exact", head: true }).in("batch_id", uniqSources);
+    .from("ingest_file").select("id", { count: "exact", head: true }).in("batch_id", mergeable);
   const { error: fErr } = await supabase
-    .from("ingest_file").update({ batch_id: targetId }).in("batch_id", uniqSources);
+    .from("ingest_file").update({ batch_id: targetId }).in("batch_id", mergeable);
   if (fErr) return { ok: false, error: `move files: ${fErr.message}` };
   movedFiles = fileCount ?? 0;
 
   const { count: exCount } = await supabase
-    .from("extraction").select("id", { count: "exact", head: true }).in("batch_id", uniqSources);
+    .from("extraction").select("id", { count: "exact", head: true }).in("batch_id", mergeable);
   const { error: eErr } = await supabase
-    .from("extraction").update({ batch_id: targetId }).in("batch_id", uniqSources);
+    .from("extraction").update({ batch_id: targetId }).in("batch_id", mergeable);
   if (eErr) return { ok: false, error: `move extractions: ${eErr.message}` };
   movedExtractions = exCount ?? 0;
 
   const { count: mcCount } = await supabase
-    .from("match_candidate").select("id", { count: "exact", head: true }).in("batch_id", uniqSources);
+    .from("match_candidate").select("id", { count: "exact", head: true }).in("batch_id", mergeable);
   const { error: mErr } = await supabase
-    .from("match_candidate").update({ batch_id: targetId }).in("batch_id", uniqSources);
+    .from("match_candidate").update({ batch_id: targetId }).in("batch_id", mergeable);
   if (mErr) return { ok: false, error: `move matches: ${mErr.message}` };
   movedMatches = mcCount ?? 0;
 
   // Coalesce property_id / transfer_id if only one side had it. Prefer target's
-  // existing value; take source's when target is empty.
+  // existing value; take source's when target is empty. Only consider
+  // uncommitted (mergeable) sources — committed ones already point at
+  // their own real entity and we don't want to inherit that.
+  const mergeableSources = sources.filter((s) => mergeable.includes(s.id));
   const patch: Record<string, unknown> = {};
   if (!target.property_id) {
-    const donor = sources.find((s) => s.property_id);
+    const donor = mergeableSources.find((s) => s.property_id);
     if (donor?.property_id) patch.property_id = donor.property_id;
   }
   if (!target.transfer_id) {
-    const donor = sources.find((s) => s.transfer_id);
+    const donor = mergeableSources.find((s) => s.transfer_id);
     if (donor?.transfer_id) patch.transfer_id = donor.transfer_id;
   }
   if (Object.keys(patch).length > 0) {
     await supabase.from("ingest_batch").update(patch).eq("id", targetId);
   }
 
-  // Delete the emptied sources.
-  const { error: dErr } = await supabase.from("ingest_batch").delete().in("id", uniqSources);
+  // Delete only the emptied (mergeable) sources — leave committed ones
+  // in place; they still belong to their filed entity.
+  const { error: dErr } = await supabase.from("ingest_batch").delete().in("id", mergeable);
   if (dErr) return { ok: false, error: `delete sources: ${dErr.message}` };
 
   revalidatePath("/triage");
   revalidatePath(`/triage/${targetId}`);
-  return { ok: true, moved: { files: movedFiles, extractions: movedExtractions, matches: movedMatches } };
+  return {
+    ok: true,
+    moved: { files: movedFiles, extractions: movedExtractions, matches: movedMatches },
+    skippedCommitted: skippedCommitted.length,
+  };
 }
 
 // Route a whole batch into an estate document vault. Skips the extraction

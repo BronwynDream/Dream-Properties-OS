@@ -61,9 +61,12 @@ export default function DuplicateBanner({ batches }: { batches: BatchLite[] }) {
         setErrByKey((prev) => ({ ...prev, [cluster.key]: res.error ?? "merge failed" }));
         return;
       }
+      const skipped = (res as { skippedCommitted?: number }).skippedCommitted ?? 0;
       setMsgByKey((prev) => ({
         ...prev,
-        [cluster.key]: `Merged ${res.moved?.files ?? 0} files, ${res.moved?.extractions ?? 0} extractions into ${target.label}`,
+        [cluster.key]: `Merged ${res.moved?.files ?? 0} files, ${res.moved?.extractions ?? 0} extractions into ${target.label}${
+          skipped > 0 ? ` (${skipped} already-committed source${skipped === 1 ? "" : "s"} left alone)` : ""
+        }`,
       }));
       router.refresh();
     } finally {
