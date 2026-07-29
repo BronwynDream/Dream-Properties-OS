@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { mergeBatches } from "./actions";
 
@@ -34,14 +34,17 @@ type Cluster = {
 
 export default function DuplicateBanner({ batches }: { batches: BatchLite[] }) {
   const router = useRouter();
-  const [pending, startTransition] = useTransition();
-  const [err, setErr] = useState<string | null>(null);
-  const [msg, setMsg] = useState<string | null>(null);
+  // Per-cluster busy + error + success so clicking Merge on one cluster
+  // doesn't disable or overwrite the state of the others. Keyed by
+  // cluster.key (normalised label).
+  const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [errByKey, setErrByKey] = useState<Record<string, string>>({});
+  const [msgByKey, setMsgByKey] = useState<Record<string, string>>({});
 
   const clusters = detectClusters(batches);
   if (clusters.length === 0) return null;
 
-  function mergeCluster(cluster: Cluster) {
+  async function mergeCluster(cluster: Cluster) {
     // Pick the target: prefer a batch that's already linked to a property
     // (survives the merge without a re-decide), else the earliest one.
     const target =
@@ -49,17 +52,23 @@ export default function DuplicateBanner({ batches }: { batches: BatchLite[] }) {
       cluster.batches.slice().sort((a, b) => a.created_at.localeCompare(b.created_at))[0];
     const sources = cluster.batches.filter((b) => b.id !== target.id).map((b) => b.id);
     if (!confirm(`Merge ${sources.length + 1} batches labelled "${cluster.label}" into one? Sources will disappear; their files + extractions move to the target.`)) return;
-    setErr(null);
-    setMsg(null);
-    startTransition(async () => {
+    setErrByKey((prev) => { const next = { ...prev }; delete next[cluster.key]; return next; });
+    setMsgByKey((prev) => { const next = { ...prev }; delete next[cluster.key]; return next; });
+    setBusyKey(cluster.key);
+    try {
       const res = await mergeBatches(target.id, sources);
       if (!res.ok) {
-        setErr(res.error ?? "merge failed");
+        setErrByKey((prev) => ({ ...prev, [cluster.key]: res.error ?? "merge failed" }));
         return;
       }
-      setMsg(`Merged ${res.moved?.files ?? 0} files, ${res.moved?.extractions ?? 0} extractions into ${target.label}`);
+      setMsgByKey((prev) => ({
+        ...prev,
+        [cluster.key]: `Merged ${res.moved?.files ?? 0} files, ${res.moved?.extractions ?? 0} extractions into ${target.label}`,
+      }));
       router.refresh();
-    });
+    } finally {
+      setBusyKey(null);
+    }
   }
 
   return (
@@ -94,39 +103,53 @@ export default function DuplicateBanner({ batches }: { batches: BatchLite[] }) {
       </div>
 
       <ul style={{ listStyle: "none", margin: "10px 0 0", padding: 0, display: "flex", flexDirection: "column", gap: 8 }}>
-        {clusters.map((c) => (
-          <li
-            key={c.key}
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr auto",
-              gap: 10,
-              alignItems: "center",
-              padding: "8px 10px",
-              background: "rgba(255,255,255,0.55)",
-              border: "1px solid #E4D3A0",
-              borderRadius: 4,
-            }}
-          >
-            <div>
-              <p style={{ margin: 0, fontSize: 13, color: "#3a2f10", fontWeight: 500 }}>
-                {c.label}
-                <span style={{ marginLeft: 8, fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 10, color: "#7a6234" }}>
-                  ×{c.batches.length}
-                </span>
-              </p>
-              <p style={{ margin: "2px 0 0", fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 10, color: "#7a6234", letterSpacing: "0.02em" }}>
-                {c.batches.map((b) => `${b.file_count}f/${b.confirmed_count}c${b.property_id ? "✓" : ""}`).join(" · ")}
-              </p>
-            </div>
-            <button type="button" onClick={() => mergeCluster(c)} disabled={pending} style={btn}>
-              {pending ? "Merging…" : `Merge ${c.batches.length}`}
-            </button>
-          </li>
-        ))}
+        {clusters.map((c) => {
+          const busy = busyKey === c.key;
+          const anyBusy = busyKey !== null && busyKey !== c.key;
+          const clusterErr = errByKey[c.key];
+          const clusterMsg = msgByKey[c.key];
+          return (
+            <li
+              key={c.key}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr auto",
+                gap: 10,
+                alignItems: "center",
+                padding: "8px 10px",
+                background: "rgba(255,255,255,0.55)",
+                border: "1px solid #E4D3A0",
+                borderRadius: 4,
+              }}
+            >
+              <div>
+                <p style={{ margin: 0, fontSize: 13, color: "#3a2f10", fontWeight: 500 }}>
+                  {c.label}
+                  <span style={{ marginLeft: 8, fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 10, color: "#7a6234" }}>
+                    ×{c.batches.length}
+                  </span>
+                </p>
+                <p style={{ margin: "2px 0 0", fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 10, color: "#7a6234", letterSpacing: "0.02em" }}>
+                  {c.batches.map((b) => `${b.file_count}f/${b.confirmed_count}c${b.property_id ? "✓" : ""}`).join(" · ")}
+                </p>
+                {clusterErr && (
+                  <p style={{ margin: "4px 0 0", fontSize: 11, color: "var(--critical, #9A3B34)" }}>
+                    {clusterErr}
+                  </p>
+                )}
+                {clusterMsg && (
+                  <p style={{ margin: "4px 0 0", fontSize: 11, color: "var(--positive, #4B6B4A)" }}>
+                    {clusterMsg}
+                  </p>
+                )}
+              </div>
+              <button type="button" onClick={() => mergeCluster(c)} disabled={busy || anyBusy} style={btn}>
+                {busy ? "Merging…" : `Merge ${c.batches.length}`}
+              </button>
+            </li>
+          );
+        })}
       </ul>
-      {err && <p style={{ margin: "8px 0 0", fontSize: 12, color: "var(--critical, #9A3B34)" }}>{err}</p>}
-      {msg && <p style={{ margin: "8px 0 0", fontSize: 12, color: "var(--positive, #4B6B4A)" }}>{msg}</p>}
     </section>
   );
 }

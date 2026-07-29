@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { mergeTransfers } from "@/app/properties/actions";
@@ -37,16 +37,16 @@ const STAGE_RANK: Record<string, number> = Object.fromEntries(
 
 export default function DuplicateTransfersBanner({ cards }: { cards: PipelineCardLite[] }) {
   const router = useRouter();
-  const [pending, startTransition] = useTransition();
-  const [err, setErr] = useState<string | null>(null);
-  const [msg, setMsg] = useState<string | null>(null);
+  // Per-cluster busy + err + msg so one merge in flight doesn't disable
+  // or overwrite the state of the others.
+  const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [errByKey, setErrByKey] = useState<Record<string, string>>({});
+  const [msgByKey, setMsgByKey] = useState<Record<string, string>>({});
 
   const clusters = detectClusters(cards);
   if (clusters.length === 0) return null;
 
-  function mergeCluster(cluster: Cluster) {
-    // Winner = most-advanced stage; ties broken by longest days-in-stage
-    // (the sticky one is likely the "real" deal others were spawned around).
+  async function mergeCluster(cluster: Cluster) {
     const sorted = [...cluster.transfers].sort((a, b) => {
       const ra = STAGE_RANK[a.status] ?? -1;
       const rb = STAGE_RANK[b.status] ?? -1;
@@ -56,9 +56,10 @@ export default function DuplicateTransfersBanner({ cards }: { cards: PipelineCar
     const winner = sorted[0];
     const losers = sorted.slice(1);
     if (!confirm(`Merge ${losers.length + 1} transfers on ${cluster.address ?? "this property"} into one? The most-advanced (${STAGE_LABEL[winner.status]}) survives; the others are collapsed into it.`)) return;
-    setErr(null);
-    setMsg(null);
-    startTransition(async () => {
+    setErrByKey((prev) => { const next = { ...prev }; delete next[cluster.propertyId]; return next; });
+    setMsgByKey((prev) => { const next = { ...prev }; delete next[cluster.propertyId]; return next; });
+    setBusyKey(cluster.propertyId);
+    try {
       let ok = 0;
       let failed: string | null = null;
       for (const loser of losers) {
@@ -70,12 +71,14 @@ export default function DuplicateTransfersBanner({ cards }: { cards: PipelineCar
         ok++;
       }
       if (failed) {
-        setErr(`Merged ${ok}/${losers.length}, then failed: ${failed}`);
+        setErrByKey((prev) => ({ ...prev, [cluster.propertyId]: `Merged ${ok}/${losers.length}, then failed: ${failed}` }));
       } else {
-        setMsg(`Merged ${ok + 1} transfers into ${cluster.address ?? winner.id.slice(0, 8)}`);
+        setMsgByKey((prev) => ({ ...prev, [cluster.propertyId]: `Merged ${ok + 1} transfers into ${cluster.address ?? winner.id.slice(0, 8)}` }));
       }
       router.refresh();
-    });
+    } finally {
+      setBusyKey(null);
+    }
   }
 
   return (
@@ -110,41 +113,55 @@ export default function DuplicateTransfersBanner({ cards }: { cards: PipelineCar
       </div>
 
       <ul style={{ listStyle: "none", margin: "10px 0 0", padding: 0, display: "flex", flexDirection: "column", gap: 8 }}>
-        {clusters.map((c) => (
-          <li
-            key={c.propertyId}
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr auto",
-              gap: 10,
-              alignItems: "center",
-              padding: "8px 10px",
-              background: "rgba(255,255,255,0.55)",
-              border: "1px solid #E4D3A0",
-              borderRadius: 4,
-            }}
-          >
-            <div>
-              <p style={{ margin: 0, fontSize: 13, color: "#3a2f10", fontWeight: 500 }}>
-                <Link href={`/properties/${c.propertyId}`} style={{ color: "inherit" }}>
-                  {c.address ?? c.propertyId.slice(0, 8)}
-                </Link>
-                <span style={{ marginLeft: 8, fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 10, color: "#7a6234" }}>
-                  ×{c.transfers.length}
-                </span>
-              </p>
-              <p style={{ margin: "2px 0 0", fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 10, color: "#7a6234", letterSpacing: "0.02em" }}>
-                {c.transfers.map((t) => `${STAGE_LABEL[t.status]} (${t.daysInStage}d)`).join(" · ")}
-              </p>
-            </div>
-            <button type="button" onClick={() => mergeCluster(c)} disabled={pending} style={btn}>
-              {pending ? "Merging…" : `Merge ${c.transfers.length}`}
-            </button>
-          </li>
-        ))}
+        {clusters.map((c) => {
+          const busy = busyKey === c.propertyId;
+          const anyBusy = busyKey !== null && busyKey !== c.propertyId;
+          const clusterErr = errByKey[c.propertyId];
+          const clusterMsg = msgByKey[c.propertyId];
+          return (
+            <li
+              key={c.propertyId}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr auto",
+                gap: 10,
+                alignItems: "center",
+                padding: "8px 10px",
+                background: "rgba(255,255,255,0.55)",
+                border: "1px solid #E4D3A0",
+                borderRadius: 4,
+              }}
+            >
+              <div>
+                <p style={{ margin: 0, fontSize: 13, color: "#3a2f10", fontWeight: 500 }}>
+                  <Link href={`/properties/${c.propertyId}`} style={{ color: "inherit" }}>
+                    {c.address ?? c.propertyId.slice(0, 8)}
+                  </Link>
+                  <span style={{ marginLeft: 8, fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 10, color: "#7a6234" }}>
+                    ×{c.transfers.length}
+                  </span>
+                </p>
+                <p style={{ margin: "2px 0 0", fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 10, color: "#7a6234", letterSpacing: "0.02em" }}>
+                  {c.transfers.map((t) => `${STAGE_LABEL[t.status]} (${t.daysInStage}d)`).join(" · ")}
+                </p>
+                {clusterErr && (
+                  <p style={{ margin: "4px 0 0", fontSize: 11, color: "var(--critical, #9A3B34)" }}>
+                    {clusterErr}
+                  </p>
+                )}
+                {clusterMsg && (
+                  <p style={{ margin: "4px 0 0", fontSize: 11, color: "var(--positive, #4B6B4A)" }}>
+                    {clusterMsg}
+                  </p>
+                )}
+              </div>
+              <button type="button" onClick={() => mergeCluster(c)} disabled={busy || anyBusy} style={btn}>
+                {busy ? "Merging…" : `Merge ${c.transfers.length}`}
+              </button>
+            </li>
+          );
+        })}
       </ul>
-      {err && <p style={{ margin: "8px 0 0", fontSize: 12, color: "var(--critical, #9A3B34)" }}>{err}</p>}
-      {msg && <p style={{ margin: "8px 0 0", fontSize: 12, color: "var(--positive, #4B6B4A)" }}>{msg}</p>}
     </section>
   );
 }
