@@ -210,3 +210,83 @@ export async function linkExternalListingsToProperty(
   revalidatePath(`/properties/${propertyId}`);
   return { ok: true, linked: count ?? externalIds.length };
 }
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
+// Create a fresh OS property row from an external listing (or a set of
+// external listings from the same dedup group) and link them all to it.
+// Used from the map's market-listing panel when the pin has no OS home
+// yet AND no existing property is a plausible match — instead of
+// forcing the operator to hop to a separate "new property" flow, they
+// pick "Create new OS property" and land straight on the fresh record.
+//
+// Copies address_raw + coords + suburb (best-effort lookup by name)
+// from the first external listing. Extent + title deed left blank —
+// those come later from Muni / Lightstone.
+export async function createPropertyFromExternalListings(
+  externalIds: string[],
+): Promise<{ ok: boolean; error?: string; propertyId?: string }> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "unauthorized" };
+  const { data: me } = await supabase
+    .from("app_user")
+    .select("role, active")
+    .eq("id", user.id)
+    .single();
+  if (me?.role !== "admin" || me.active === false) {
+    return { ok: false, error: "admin only" };
+  }
+  if (!Array.isArray(externalIds) || externalIds.length === 0) {
+    return { ok: false, error: "no externalIds" };
+  }
+
+  const { data: externals } = await supabase
+    .from("external_listing")
+    .select("id, address_raw, headline, suburb, lat, lng")
+    .in("id", externalIds);
+  const rows = (externals ?? []) as any[];
+  if (rows.length === 0) return { ok: false, error: "external listing(s) not found" };
+
+  // Address candidate: prefer address_raw from any row; else headline.
+  const seed = rows.find((r) => r.address_raw) ?? rows[0];
+  const primaryAddress: string =
+    (seed.address_raw ?? seed.headline ?? "").trim() || "Untitled market listing";
+  const seedLat = rows.find((r) => r.lat != null && r.lng != null);
+  const suburbName: string | null = (rows.find((r) => r.suburb)?.suburb ?? null);
+
+  // Suburb id lookup by name — case-insensitive; null if we don't know it.
+  let suburbId: string | null = null;
+  if (suburbName) {
+    const { data: s } = await supabase
+      .from("suburb")
+      .select("id")
+      .ilike("name", suburbName)
+      .maybeSingle();
+    suburbId = (s as any)?.id ?? null;
+  }
+
+  const { data: newProp, error: insErr } = await supabase
+    .from("property")
+    .insert({
+      primary_address: primaryAddress,
+      suburb_id: suburbId,
+      lat: seedLat?.lat ?? null,
+      lng: seedLat?.lng ?? null,
+    })
+    .select("id")
+    .single();
+  if (insErr || !newProp) return { ok: false, error: insErr?.message ?? "insert failed" };
+
+  // Link every external listing in the set to the new property.
+  const { error: linkErr } = await supabase
+    .from("external_listing")
+    .update({ matched_property_id: newProp.id })
+    .in("id", externalIds);
+  if (linkErr) return { ok: false, error: `linked failed: ${linkErr.message}` };
+
+  revalidatePath("/map");
+  revalidatePath("/properties");
+  revalidatePath(`/properties/${newProp.id}`);
+  return { ok: true, propertyId: newProp.id };
+}
