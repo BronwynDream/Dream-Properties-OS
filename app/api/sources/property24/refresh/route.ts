@@ -213,23 +213,39 @@ async function run(request: Request) {
       }
 
       // Coord resolution — try in order:
-      //   1. Muni ERF-lookup (address → local mirror → cadastral centroid).
-      //      Cadastrally correct by construction; kills the wrong-Grey-
-      //      Street class of bug Bronwyn hit 2026-07-29.
-      //   2. Mapbox geocode (unreliable in small SA towns; the LLM's own
+      //   1. P24's own JSON-LD RealEstateListing coords (Place.latitude /
+      //      Place.longitude, parsed from the rawHtml <script type="application/ld+json">
+      //      block). This is P24's canonical source-of-truth — the same
+      //      coords render their map widget — so it's cadastrally correct
+      //      by construction. Verified 2026-07-30 to cover ~all listings.
+      //   2. Muni ERF-lookup (address → local mirror → cadastral centroid).
+      //      Fallback for the rare listing whose JSON-LD parses badly or
+      //      falls outside the Garden Route bbox.
+      //   3. Mapbox geocode (unreliable in small SA towns; the LLM's own
       //      lat/lng was even worse — we stopped asking it).
-      //   3. Suburb centroid fallback (Belvidere, Pezula, Leisure Isle,
+      //   4. Suburb centroid fallback (Belvidere, Pezula, Leisure Isle,
       //      etc.) so the pin lands roughly where the listing sits even
       //      when we can't pin an exact address.
       let coord: { lng: number; lat: number } | null = null;
       let usedCentroid = false;
       let usedErfLookup = false;
+      let usedJsonLd = false;
+
+      if (
+        listing.lat != null &&
+        listing.lng != null &&
+        inGardenRoute({ lng: listing.lng, lat: listing.lat })
+      ) {
+        coord = { lng: listing.lng, lat: listing.lat };
+        usedJsonLd = true;
+      }
+
       const addressForLookup = listing.addressRaw
         ? listing.suburb
           ? `${listing.addressRaw}, ${listing.suburb}`
           : listing.addressRaw
         : null;
-      if (addressForLookup) {
+      if (!coord && addressForLookup) {
         const erfHit = await findErfCentroidByAddress(addressForLookup);
         if (erfHit && inGardenRoute({ lng: erfHit.lng, lat: erfHit.lat })) {
           coord = { lng: erfHit.lng, lat: erfHit.lat };
@@ -249,7 +265,9 @@ async function run(request: Request) {
           usedCentroid = true;
         }
       }
-      if (usedErfLookup) {
+      if (usedJsonLd) {
+        console.log(`[property24] ${listing.sourceRef}: pinned via JSON-LD (P24 canonical)`);
+      } else if (usedErfLookup) {
         console.log(`[property24] ${listing.sourceRef}: pinned via Muni ERF-lookup`);
       }
 
