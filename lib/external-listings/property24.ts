@@ -56,34 +56,50 @@ async function firecrawlScrape(
   return (await res.json())?.data ?? {};
 }
 
+// Property24 URL prefixes we consider "for sale" detail pages. P24 splits
+// its inventory across separate URL branches by property type — a single
+// "/for-sale/" index only lists houses. Plots, apartments, and commercial
+// each have their own root. Bronwyn spotted this 2026-07-30 when six+
+// Pezula plots were missing from the OS map.
+export const P24_FOR_SALE_PREFIXES = [
+  "for-sale",                     // Houses (dominant)
+  "vacant-land-plot-for-sale",    // Plots — the Pezula gap
+  "apartments-flats-for-sale",    // Sectional title / apartments
+  "commercial-property-for-sale", // Commercial (hotels etc.)
+];
+
+const PREFIX_ALT = P24_FOR_SALE_PREFIXES.join("|");
+
 /**
  * Parse a Property24 detail-page URL to extract the numeric listing id.
  *
  * Real P24 detail URL structure (verified 2026-07-26):
- *   /for-sale/<suburb-slug>/<town>/<province>/<suburb-code>/<listing-id>
- * Example:
+ *   /<prefix>/<suburb-slug>/<town>/<province>/<suburb-code>/<listing-id>
+ * where <prefix> is one of P24_FOR_SALE_PREFIXES.
+ * Examples:
  *   /for-sale/brenton-on-sea/knysna/western-cape/7467/117436137
- *   ↑              ↑              ↑         ↑          ↑
- *   /for-sale      suburb-slug    town      province   suburb-code  listing-id
+ *   /vacant-land-plot-for-sale/pezula/knysna/western-cape/12138/117200000
  *
  * Suburb landing pages are 5 segments (no listing-id trailing); we skip
  * those. Query string is ignored.
  */
 export function parseListingIdFromUrl(url: string): string | null {
   const clean = url.split("?")[0].split("#")[0];
-  const m = clean.match(/\/for-sale\/[^/]+\/[^/]+\/[^/]+\/\d+\/(\d+)(?:\/|$)/);
+  const re = new RegExp(`\\/(?:${PREFIX_ALT})\\/[^/]+\\/[^/]+\\/[^/]+\\/\\d+\\/(\\d+)(?:\\/|$)`);
+  const m = clean.match(re);
   return m?.[1] ?? null;
 }
 
 /**
  * A URL belongs to the Knysna area when its town segment (3rd path segment
- * after /for-sale) is "knysna". Sedgefield / Plettenberg Bay have their own
- * area codes (324 / 325) — those are separate scraper targets, not scoped
- * to Knysna's index.
+ * after any of the sale prefixes) is "knysna". Sedgefield / Plettenberg Bay
+ * have their own area codes (324 / 325) — those are separate scraper
+ * targets, not scoped to Knysna's index.
  */
 export function isKnysnaAreaUrl(url: string): boolean {
   const clean = url.split("?")[0].split("#")[0];
-  return /\/for-sale\/[^/]+\/knysna\/western-cape\/\d+\/\d+(?:\/|$)/.test(clean);
+  const re = new RegExp(`\\/(?:${PREFIX_ALT})\\/[^/]+\\/knysna\\/western-cape\\/\\d+\\/\\d+(?:\\/|$)`);
+  return re.test(clean);
 }
 
 /**

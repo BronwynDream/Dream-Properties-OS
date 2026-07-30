@@ -15,11 +15,23 @@ import { rebuildDedupAndMatch } from "@/lib/external-listings/dedup";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-// Property24's canonical area URL for Knysna. The area code is 322 (verified
-// 2026-07-26 by browsing the canonical redirect). Do NOT change to 468 —
-// that redirects to Beaufort West and quietly returns wrong-town listings.
-const KNYSNA_INDEX_URL =
-  "https://www.property24.com/for-sale/knysna/western-cape/322";
+// Property24's canonical area URLs for Knysna. The area code is 322
+// (verified 2026-07-26 by browsing the canonical redirect). Do NOT change
+// to 468 — that redirects to Beaufort West and quietly returns wrong-town
+// listings.
+//
+// P24 splits its inventory by property type across separate URL branches.
+// The plain /for-sale/ index only lists HOUSES; vacant-land-plots,
+// apartments, and commercial each have their own root URL. We crawl all
+// four so nothing goes missing (Bronwyn spotted this 2026-07-30 — the
+// Pezula plots she knew about were on the vacant-land index which we
+// never touched).
+const KNYSNA_INDEX_URLS = [
+  "https://www.property24.com/for-sale/knysna/western-cape/322",
+  "https://www.property24.com/vacant-land-plots-for-sale/knysna/western-cape/322",
+  "https://www.property24.com/apartments-flats-for-sale/knysna/western-cape/322",
+  "https://www.property24.com/commercial-property-for-sale/knysna/western-cape/322",
+];
 const DETAIL_DELAY_MS = 1000; // 1/sec; adjust after Firecrawl plan is chosen
 
 // Cap detail scrapes per invocation. Firecrawl extract mode is ~10-20s per
@@ -121,9 +133,22 @@ async function run(request: Request) {
       .is("processed_at", null);
 
     if ((pendingCount ?? 0) === 0) {
-      console.log("[property24] queue empty — running full index discovery");
-      const detailUrls = await scrapeListingIndex(apiKey, KNYSNA_INDEX_URL);
-      console.log(`[property24] discovered ${detailUrls.length} URLs`);
+      console.log("[property24] queue empty — running full index discovery across all property types");
+      // Merge discovered URLs across the 4 index branches (houses / plots /
+      // apartments / commercial). Each branch is independent so a failure
+      // in one doesn't nuke the whole discovery run.
+      const allDiscovered = new Set<string>();
+      for (const indexUrl of KNYSNA_INDEX_URLS) {
+        try {
+          const urls = await scrapeListingIndex(apiKey, indexUrl);
+          console.log(`[property24] ${indexUrl.split("/")[3]}: ${urls.length} URLs`);
+          for (const u of urls) allDiscovered.add(u);
+        } catch (e) {
+          console.error(`[property24] index ${indexUrl} failed:`, (e as Error).message);
+        }
+      }
+      const detailUrls = Array.from(allDiscovered);
+      console.log(`[property24] discovered ${detailUrls.length} URLs total (deduped)`);
       if (detailUrls.length > 0) {
         const rows = detailUrls.map((url) => ({ url }));
         const { error: enqueueErr } = await supabase
