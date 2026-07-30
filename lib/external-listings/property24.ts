@@ -231,7 +231,12 @@ export async function scrapeListingDetail(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let data: any;
   try {
-    data = await firecrawlScrape(apiKey, url, ["markdown"], schema);
+    // Request rawHtml alongside markdown — we parse the schema.org
+    // RealEstateListing JSON-LD block for coords (verified 2026-07-30
+    // via the inspect-p24-html diagnostic; P24 ships a full Place.geo
+    // with latitude/longitude in every listing detail page). rawHtml
+    // preserves <script> tags; the default 'html' format strips them.
+    data = await firecrawlScrape(apiKey, url, ["markdown", "rawHtml"], schema);
   } catch (e) {
     console.error(`[property24] detail scrape ${sourceRef} failed:`, (e as Error).message);
     return null;
@@ -239,13 +244,20 @@ export async function scrapeListingDetail(
 
   const extracted = data.extract ?? {};
 
-  // lat/lng deliberately left null here. Firecrawl's LLM extract on P24
-  // pages hallucinates coordinates half the time (they aren't in visible
-  // text — embedded in JS data attributes for P24's own map widget).
-  // The route handler geocodes address_raw + suburb via Mapbox to get
-  // real coordinates before upsert.
-  const lat: number | null = null;
-  const lng: number | null = null;
+  // Coords from schema.org RealEstateListing JSON-LD. This is P24's
+  // canonical source-of-truth — the same coords render their own map
+  // widget — so it's cadastrally accurate by construction. Replaces the
+  // fragile Mapbox-geocode + Muni-ERF-lookup chain (both of which
+  // covered maybe 30-50% of listings; JSON-LD covers ~all of them).
+  const rawHtml: string =
+    typeof data.rawHtml === "string"
+      ? data.rawHtml
+      : typeof data.html === "string"
+        ? data.html
+        : "";
+  const jsonLdCoords = parseJsonLdCoords(rawHtml);
+  const lat: number | null = jsonLdCoords?.lat ?? null;
+  const lng: number | null = jsonLdCoords?.lng ?? null;
 
   // Price: markdown-regex is authoritative; the LLM's `price` field is a
   // fallback because it has silently returned nonsense (erf numbers,
@@ -279,4 +291,79 @@ export async function scrapeListingDetail(
     lng,
     raw: data,
   };
+}
+
+// Pull coordinates out of Property24's schema.org RealEstateListing
+// JSON-LD block. Every P24 detail page ships a
+//   <script type="application/ld+json"> { "@graph": [ ... ] } </script>
+// containing a Place with { "@type": "Place", "latitude": -34.06,
+// "longitude": 23.08 } — verified via the inspect-p24-html diagnostic
+// on the Rexford 4-bed listing.
+//
+// The Place lives nested inside the RealEstateListing under
+// "@graph"[n]."address"... but P24 also puts latitude/longitude at the
+// listing level directly. We recursively walk the parsed JSON looking
+// for the first pair of latitude+longitude keys — that's more resilient
+// than schema-matching against a specific nesting path (which P24 has
+// changed in the past for other fields).
+//
+// Sanity-guards the result to the Garden Route lat/lng range so we
+// don't accidentally use a coincidental "latitude" property from an
+// unrelated JSON block (defensive; unlikely to fire).
+export function parseJsonLdCoords(rawHtml: string): { lat: number; lng: number } | null {
+  if (!rawHtml) return null;
+  const re = /<script\b[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(rawHtml)) !== null) {
+    const body = (m[1] ?? "").trim();
+    if (!body) continue;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let parsed: any;
+    try {
+      parsed = JSON.parse(body);
+    } catch {
+      continue;
+    }
+    const hit = findLatLng(parsed);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+// Recursive walk for the first { latitude, longitude } pair on any
+// object in the tree. Case-sensitive on the property names — schema.org
+// spec is lowercase and P24 follows it.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function findLatLng(node: any): { lat: number; lng: number } | null {
+  if (node == null) return null;
+  if (Array.isArray(node)) {
+    for (const el of node) {
+      const hit = findLatLng(el);
+      if (hit) return hit;
+    }
+    return null;
+  }
+  if (typeof node !== "object") return null;
+  if (
+    (typeof node.latitude === "number" || typeof node.latitude === "string") &&
+    (typeof node.longitude === "number" || typeof node.longitude === "string")
+  ) {
+    const lat = Number(node.latitude);
+    const lng = Number(node.longitude);
+    if (Number.isFinite(lat) && Number.isFinite(lng) && isGardenRouteLatLng(lat, lng)) {
+      return { lat, lng };
+    }
+  }
+  for (const key of Object.keys(node)) {
+    const hit = findLatLng(node[key]);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+// Same Garden Route bbox used in geocode.ts inGardenRoute — kept local
+// here so parseJsonLdCoords stays a pure function without an import
+// cycle if this file is reused server-side later.
+function isGardenRouteLatLng(lat: number, lng: number): boolean {
+  return lat >= -34.3 && lat <= -33.5 && lng >= 22.5 && lng <= 24.0;
 }
