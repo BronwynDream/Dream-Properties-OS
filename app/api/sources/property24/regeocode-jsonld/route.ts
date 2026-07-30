@@ -107,6 +107,23 @@ export async function POST(request: Request) {
     moved_km: number;
   }[] = [];
 
+  // Per-row failure reasons so we can diagnose why hitJsonLd < scanned.
+  // First dry-run reported 2/5 hits (3 noHit with no clue why); this
+  // splits the noHit bucket into scrape-failed vs no-coord-in-jsonld vs
+  // coord-outside-bbox. Sample the failing URLs so the admin can eyeball
+  // whether those listings really are missing JSON-LD or something else.
+  const noHitReasons: Record<string, { count: number; sampleUrls: string[] }> = {
+    scrape_failed: { count: 0, sampleUrls: [] },
+    no_jsonld_coord: { count: 0, sampleUrls: [] },
+    coord_outside_garden_route: { count: 0, sampleUrls: [] },
+  };
+  function recordNoHit(reason: keyof typeof noHitReasons, listingUrl: string) {
+    noHitReasons[reason].count++;
+    if (noHitReasons[reason].sampleUrls.length < 3) {
+      noHitReasons[reason].sampleUrls.push(listingUrl);
+    }
+  }
+
   let scanned = 0;
   let hitJsonLd = 0;
   let unchanged = 0;
@@ -124,16 +141,21 @@ export async function POST(request: Request) {
     }
 
     const listing = await scrapeListingDetail(apiKey, r.url);
-    if (!listing || listing.lat == null || listing.lng == null) {
+    if (!listing) {
       noHit++;
+      recordNoHit("scrape_failed", r.url);
+      await new Promise((res) => setTimeout(res, SCRAPE_DELAY_MS));
+      continue;
+    }
+    if (listing.lat == null || listing.lng == null) {
+      noHit++;
+      recordNoHit("no_jsonld_coord", r.url);
       await new Promise((res) => setTimeout(res, SCRAPE_DELAY_MS));
       continue;
     }
     if (!inGardenRoute({ lng: listing.lng, lat: listing.lat })) {
-      // JSON-LD coord fell outside the Garden Route bbox. Very rare;
-      // probably a P24 data error. Skip — safer than pinning to
-      // Antarctica.
       noHit++;
+      recordNoHit("coord_outside_garden_route", r.url);
       await new Promise((res) => setTimeout(res, SCRAPE_DELAY_MS));
       continue;
     }
@@ -183,6 +205,7 @@ export async function POST(request: Request) {
     hitJsonLd,
     unchanged,
     noHit,
+    noHitReasons,
     updated: dry ? 0 : updated,
     dry,
     changeCount: changes.length,
