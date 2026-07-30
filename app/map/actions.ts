@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 
 import { geocodeAddress, centroidForArea, inGardenRoute } from "@/lib/external-listings/geocode";
+import { findErfCentroidByAddress } from "@/lib/external-listings/erfLookup";
 
 const MAPBOX_GEOCODE = "https://api.mapbox.com/search/geocode/v6/forward";
 
@@ -331,7 +332,7 @@ export async function setExternalListingCoords(
 // address geocode fails.
 export async function regeocodeExternalListing(
   externalListingId: string,
-): Promise<{ ok: boolean; error?: string; lng?: number; lat?: number; source?: "address" | "centroid" | "unchanged" }> {
+): Promise<{ ok: boolean; error?: string; lng?: number; lat?: number; source?: "address" | "centroid" | "erf" | "unchanged" }> {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: "unauthorized" };
@@ -350,12 +351,23 @@ export async function regeocodeExternalListing(
   const suburb = (row as any).suburb ?? null;
 
   let coord: { lng: number; lat: number } | null = null;
-  let source: "address" | "centroid" = "address";
+  let source: "address" | "centroid" | "erf" = "address";
 
+  // 1. Try Muni ERF-lookup first (cadastrally correct by construction).
   if (address.length > 2) {
+    const combined = suburb ? `${address}, ${suburb}` : address;
+    const erfHit = await findErfCentroidByAddress(combined);
+    if (erfHit && inGardenRoute({ lng: erfHit.lng, lat: erfHit.lat })) {
+      coord = { lng: erfHit.lng, lat: erfHit.lat };
+      source = "erf";
+    }
+  }
+  // 2. Mapbox geocode.
+  if (!coord && address.length > 2) {
     const geo = await geocodeAddress(address, { suburb });
     if (geo && inGardenRoute(geo)) coord = geo;
   }
+  // 3. Suburb centroid fallback.
   if (!coord) {
     const centroid = centroidForArea(address, suburb);
     if (centroid) {
