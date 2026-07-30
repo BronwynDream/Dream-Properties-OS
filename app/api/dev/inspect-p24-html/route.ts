@@ -61,13 +61,16 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "FIRECRAWL_API_KEY not set" }, { status: 500 });
   }
 
+  // V3: use rawHtml (not html). The v2 run returned empty jsonLd + empty
+  // scriptSrcs + empty relevantScripts — because Firecrawl's `html` mode
+  // strips <script> tags before returning. rawHtml preserves them.
   const r = await fetch("https://api.firecrawl.dev/v1/scrape", {
     method: "POST",
     headers: {
       "Authorization": `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ url, formats: ["html"] }),
+    body: JSON.stringify({ url, formats: ["rawHtml"] }),
   });
   if (!r.ok) {
     const body = await r.text();
@@ -78,6 +81,8 @@ export async function GET(request: Request) {
   }
   const payload = await r.json();
   const html: string =
+    (typeof payload?.rawHtml === "string" && payload.rawHtml) ||
+    (typeof payload?.data?.rawHtml === "string" && payload.data.rawHtml) ||
     (typeof payload?.html === "string" && payload.html) ||
     (typeof payload?.data?.html === "string" && payload.data.html) ||
     "";
