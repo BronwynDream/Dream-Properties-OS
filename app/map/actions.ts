@@ -315,9 +315,17 @@ export async function setExternalListingCoords(
   if (lng < 22.5 || lng > 24.0 || lat < -34.3 || lat > -33.5) {
     return { ok: false, error: `coords out of Garden Route bbox: ${lat}, ${lng}` };
   }
+  // Clear prcl_key so the snap-to-parcel trigger (0045) re-runs against
+  // the new coord. Without this, a listing that was previously snapped
+  // to (say) a Pezula parcel would keep displaying at that parcel's
+  // centroid even after the operator manually pastes correct Central
+  // Knysna coords — because the map renders pin position from the
+  // parcel, not from external_listing.lat/lng. Setting prcl_key=null
+  // makes the trigger's "when prcl_key is null" guard fire on this
+  // update, snapping to the new containing parcel.
   const { error } = await supabase
     .from("external_listing")
-    .update({ lat, lng })
+    .update({ lat, lng, prcl_key: null })
     .eq("id", externalListingId);
   if (error) return { ok: false, error: error.message };
   revalidatePath("/map");
@@ -388,9 +396,12 @@ export async function regeocodeExternalListing(
     return { ok: true, lng: coord.lng, lat: coord.lat, source: "unchanged" };
   }
 
+  // Same prcl_key wipe as the manual-coord path — the trigger only
+  // snaps when prcl_key is null, and the map's pin position comes from
+  // the parcel, not from the raw lat/lng.
   const { error: updErr } = await supabase
     .from("external_listing")
-    .update({ lat: coord.lat, lng: coord.lng })
+    .update({ lat: coord.lat, lng: coord.lng, prcl_key: null })
     .eq("id", externalListingId);
   if (updErr) return { ok: false, error: updErr.message };
 
