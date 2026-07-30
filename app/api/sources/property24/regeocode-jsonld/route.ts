@@ -83,18 +83,20 @@ export async function POST(request: Request) {
 
   const supabase = createServiceClient();
 
-  // Pull active P24 rows in order of largest existing coord uncertainty
-  // first — rows without prcl_key snap first (they've never been
-  // parcel-verified), then oldest updates. Preserves the "biggest
-  // movers first" invariant Simon has been eyeballing in the dry-run
-  // preview.
+  // Pull active P24 rows in order of last-attempted (nulls first =
+  // never attempted). Was ordering by prcl_key nulls first, which
+  // caused the drain to stall — no-hit rows never had prcl_key
+  // modified, so successive clicks kept re-scanning the same batch.
+  // regeocode_attempted_at is bumped on every attempt below (hit,
+  // unchanged, OR no-hit) so the queue always advances. See
+  // migration 0062.
   const { data: rows, error } = await supabase
     .from("external_listing")
     .select("id, source_ref, url, lat, lng")
     .eq("source", "property24")
     .eq("active", true)
     .not("url", "is", null)
-    .order("prcl_key", { ascending: true, nullsFirst: true })
+    .order("regeocode_attempted_at", { ascending: true, nullsFirst: true })
     .limit(limit);
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
 
@@ -131,6 +133,12 @@ export async function POST(request: Request) {
   let updated = 0;
   const startedAt = Date.now();
 
+  // Collect ids of rows we attempted, regardless of outcome, so we can
+  // bulk-bump regeocode_attempted_at at the end of the batch. Advances
+  // the drain queue even when nothing was updated (hit + unchanged or
+  // no-hit paths).
+  const attemptedIds: string[] = [];
+
   for (const r of (rows ?? []) as any[]) {
     scanned++;
     // Wall-time guard — same pattern as refresh route. Firecrawl budget
@@ -139,6 +147,7 @@ export async function POST(request: Request) {
       console.warn(`[regeocode-jsonld] wall-time budget exhausted after ${scanned - 1} rows`);
       break;
     }
+    attemptedIds.push(r.id);
 
     const listing = await scrapeListingDetail(apiKey, r.url);
     if (!listing) {
@@ -208,6 +217,21 @@ export async function POST(request: Request) {
     }
 
     await new Promise((res) => setTimeout(res, SCRAPE_DELAY_MS));
+  }
+
+  // Advance the drain queue: bump regeocode_attempted_at on EVERY row
+  // we tried this batch, regardless of whether we found coords or not.
+  // Without this, the next click re-queries the same rows (see
+  // migration 0062 comment for the failure story).
+  if (!dry && attemptedIds.length > 0) {
+    const now = new Date().toISOString();
+    const { error: bumpErr } = await supabase
+      .from("external_listing")
+      .update({ regeocode_attempted_at: now })
+      .in("id", attemptedIds);
+    if (bumpErr) {
+      console.error(`[regeocode-jsonld] failed to bump regeocode_attempted_at: ${bumpErr.message}`);
+    }
   }
 
   changes.sort((a, b) => b.moved_km - a.moved_km);
