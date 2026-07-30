@@ -293,6 +293,36 @@ export async function createPropertyFromExternalListings(
   return { ok: true, propertyId: newProp.id };
 }
 
+// Manual coord override for an external listing — used when
+// re-geocoding still returns a wrong answer (Mapbox result cached or
+// address genuinely ambiguous). Admin pastes the real coords
+// (right-click on Google Maps → copy → paste here) and the pin snaps.
+export async function setExternalListingCoords(
+  externalListingId: string,
+  lng: number,
+  lat: number,
+): Promise<{ ok: boolean; error?: string }> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "unauthorized" };
+  const { data: me } = await supabase.from("app_user").select("role, active").eq("id", user.id).single();
+  if (me?.role !== "admin" || me.active === false) return { ok: false, error: "admin only" };
+  if (!externalListingId) return { ok: false, error: "externalListingId required" };
+  if (!Number.isFinite(lng) || !Number.isFinite(lat)) return { ok: false, error: "invalid lng/lat" };
+  // Garden Route bbox check — refuse anything wildly off, so a typo
+  // (23 vs -34, wrong sign) doesn't drop the pin in Botswana.
+  if (lng < 22.5 || lng > 24.0 || lat < -34.3 || lat > -33.5) {
+    return { ok: false, error: `coords out of Garden Route bbox: ${lat}, ${lng}` };
+  }
+  const { error } = await supabase
+    .from("external_listing")
+    .update({ lat, lng })
+    .eq("id", externalListingId);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/map");
+  return { ok: true };
+}
+
 // Re-geocode a single external_listing. Used when an operator spots a
 // pin visibly in the wrong place (e.g. "8 Grey St, Knysna Central"
 // ending up at Pezula because Mapbox picked the wrong Grey Street).
