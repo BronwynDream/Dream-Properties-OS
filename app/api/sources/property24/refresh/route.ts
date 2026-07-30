@@ -10,6 +10,7 @@ import {
   centroidForArea,
   inGardenRoute,
 } from "@/lib/external-listings/geocode";
+import { findErfCentroidByAddress } from "@/lib/external-listings/erfLookup";
 import { rebuildDedupAndMatch } from "@/lib/external-listings/dedup";
 
 export const runtime = "nodejs";
@@ -211,12 +212,31 @@ async function run(request: Request) {
         continue;
       }
 
-      // Geocode via Mapbox (P24 doesn't expose reliable coords; Firecrawl
-      // LLM extract hallucinates them). Fall back to suburb centroid if
-      // geocoding fails or drifts outside the Garden Route bbox.
+      // Coord resolution — try in order:
+      //   1. Muni ERF-lookup (address → local mirror → cadastral centroid).
+      //      Cadastrally correct by construction; kills the wrong-Grey-
+      //      Street class of bug Bronwyn hit 2026-07-29.
+      //   2. Mapbox geocode (unreliable in small SA towns; the LLM's own
+      //      lat/lng was even worse — we stopped asking it).
+      //   3. Suburb centroid fallback (Belvidere, Pezula, Leisure Isle,
+      //      etc.) so the pin lands roughly where the listing sits even
+      //      when we can't pin an exact address.
       let coord: { lng: number; lat: number } | null = null;
       let usedCentroid = false;
-      if (listing.addressRaw) {
+      let usedErfLookup = false;
+      const addressForLookup = listing.addressRaw
+        ? listing.suburb
+          ? `${listing.addressRaw}, ${listing.suburb}`
+          : listing.addressRaw
+        : null;
+      if (addressForLookup) {
+        const erfHit = await findErfCentroidByAddress(addressForLookup);
+        if (erfHit && inGardenRoute({ lng: erfHit.lng, lat: erfHit.lat })) {
+          coord = { lng: erfHit.lng, lat: erfHit.lat };
+          usedErfLookup = true;
+        }
+      }
+      if (!coord && listing.addressRaw) {
         const geo = await geocodeAddress(listing.addressRaw, {
           suburb: listing.suburb,
         });
@@ -228,6 +248,9 @@ async function run(request: Request) {
           coord = centroid;
           usedCentroid = true;
         }
+      }
+      if (usedErfLookup) {
+        console.log(`[property24] ${listing.sourceRef}: pinned via Muni ERF-lookup`);
       }
 
       const now = new Date().toISOString();
