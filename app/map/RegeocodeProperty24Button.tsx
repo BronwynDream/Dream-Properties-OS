@@ -3,21 +3,31 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-// Manual admin trigger to re-geocode every Property24 row via Mapbox.
-// Fixes rows whose coords were hallucinated by Firecrawl's LLM extract
-// (Simola listings landing near Wilderness, etc.). Idempotent — safe to
-// re-run any time. Uses Mapbox forward-geocoding + Knysna centroid
-// fallback; wall-time-capped at 240s → ~200 rows per invocation.
-// Admin session cookie is the auth; cron uses CRON_SECRET bearer.
+// Manual admin trigger to re-geocode every Property24 row via P24's own
+// schema.org JSON-LD block (parsed from the listing detail page HTML).
+// This is P24's canonical source-of-truth — the same coords render P24's
+// map widget — so pins are cadastrally correct by construction.
+//
+// Replaces the earlier Mapbox-first / muni-ERF chain (both of which
+// covered maybe 30-50% of listings). JSON-LD covers ~all listings.
+//
+// Firecrawl-bounded to 15 rows per invocation (Vercel Pro caps functions
+// at 300s and each detail scrape is ~15s). Show "N pending" in the
+// success message so the admin knows to click again to drain the queue.
+// Idempotent — safe to re-run any time; nulls prcl_key so the auto-snap
+// trigger re-binds each row to its true cadastre polygon.
 
-type RegeocodeResponse = {
+type RegeocodeJsonLdResponse = {
   ok?: boolean;
   scanned?: number;
-  totalRows?: number;
+  hitJsonLd?: number;
+  unchanged?: number;
+  noHit?: number;
+  noHitReasons?: Record<string, { count: number; sampleUrls: string[] }>;
   updated?: number;
-  centroidFallback?: number;
-  noResolution?: number;
-  durationMs?: number;
+  changeCount?: number;
+  changes?: { moved_km: number }[];
+  note?: string;
   error?: string;
 };
 
@@ -32,30 +42,26 @@ export default function RegeocodeProperty24Button() {
     setErr(null);
     startTransition(async () => {
       try {
-        const res = await fetch("/api/sources/property24/regeocode", {
+        const res = await fetch("/api/sources/property24/regeocode-jsonld", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
         });
-        const json = (await res.json()) as RegeocodeResponse;
+        const json = (await res.json()) as RegeocodeJsonLdResponse;
         if (!res.ok || json.error) {
           setErr(json.error ?? `HTTP ${res.status}`);
           return;
         }
-        const sec = json.durationMs != null ? Math.round(json.durationMs / 1000) : "?";
-        const scannedPart =
-          json.scanned != null && json.totalRows != null
-            ? `${json.scanned} / ${json.totalRows}`
-            : `${json.scanned ?? "?"}`;
-        const centroidPart =
-          json.centroidFallback && json.centroidFallback > 0
-            ? ` (${json.centroidFallback} via centroid fallback)`
+        const worstMove = json.changes?.[0]?.moved_km;
+        const worstPart =
+          worstMove != null && worstMove > 0.5
+            ? ` · biggest move ${worstMove}km`
             : "";
-        const noResPart =
-          json.noResolution && json.noResolution > 0
-            ? ` · ${json.noResolution} unresolved`
-            : "";
+        const remainingPart =
+          (json.scanned ?? 0) >= 15
+            ? " · click again to continue"
+            : " · queue drained";
         setMsg(
-          `Re-geocoded ${json.updated ?? 0} of ${scannedPart} in ${sec}s${centroidPart}${noResPart}`,
+          `Updated ${json.updated ?? 0} of ${json.scanned ?? 0} · ${json.hitJsonLd ?? 0} JSON-LD hits · ${json.unchanged ?? 0} unchanged · ${json.noHit ?? 0} no-hit${worstPart}${remainingPart}`,
         );
         router.refresh();
       } catch (e) {
@@ -77,9 +83,9 @@ export default function RegeocodeProperty24Button() {
           fontSize: 12,
           justifyContent: "center",
         }}
-        title="Re-geocodes every Property24 row via Mapbox using its address_raw. Fixes rows whose coords were hallucinated by Firecrawl's LLM extract. Idempotent; nulls prcl_key so the auto-snap trigger re-binds each row to its true cadastre polygon."
+        title="Re-scrapes each Property24 row's detail page and extracts coords from schema.org JSON-LD (P24's own map data). Firecrawl-bounded to 15 rows per click — re-click to drain the queue. Idempotent; nulls prcl_key so the auto-snap trigger re-binds each row to its true cadastre polygon."
       >
-        {pending ? "Re-geocoding Property24 rows (may take a few minutes)…" : "Re-geocode Property24"}
+        {pending ? "Re-scraping Property24 JSON-LD (may take up to 5 min)…" : "Re-geocode Property24"}
       </button>
 
       {msg && (
