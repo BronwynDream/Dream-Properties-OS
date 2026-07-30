@@ -131,17 +131,16 @@ export async function findErfCentroidByAddress(
 
   const supabase = createServiceClient();
 
-  // Query muni_property. We use ILIKE on street_name for case + trim
-  // tolerance. Street_no is exact-match when we have it — a house at
-  // "12" is a different building from "10".
-  let q = supabase
-    .from("muni_property")
-    .select("sg_number, erf_number, street_no, street_name, suburb, suburb_hint")
-    .ilike("street_name", parsed.streetName);
-  if (parsed.streetNo) {
-    q = q.eq("street_no", parsed.streetNo);
-  }
-  const { data: candidates, error } = await q.limit(20);
+  // Query muni_property via the suffix-normalising RPC (migration 0061).
+  // The muni importer stores street_name with its type suffix attached
+  // ("GREY STREET"); we strip suffixes on the caller side ("GREY"). The
+  // RPC strips on the stored side too so both compare apples-to-apples.
+  // Street_no is exact-match when we have it — a house at "12" is a
+  // different building from "10".
+  const { data: candidates, error } = await supabase.rpc("muni_property_by_address", {
+    p_street_no: parsed.streetNo,
+    p_street_name: parsed.streetName,
+  });
   if (error || !candidates || candidates.length === 0) return null;
 
   // Suburb-narrow when we have a hint. Prefer exact suburb, else
