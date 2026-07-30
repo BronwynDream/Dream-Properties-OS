@@ -255,25 +255,33 @@ export async function scrapeListingDetail(
       : typeof data.html === "string"
         ? data.html
         : "";
-  const jsonLdCoords = parseJsonLdCoords(rawHtml);
-  const lat: number | null = jsonLdCoords?.lat ?? null;
-  const lng: number | null = jsonLdCoords?.lng ?? null;
+  const jsonLd = parseJsonLdFields(rawHtml);
+  const lat: number | null = jsonLd.coords?.lat ?? null;
+  const lng: number | null = jsonLd.coords?.lng ?? null;
 
-  // Price: markdown-regex is authoritative; the LLM's `price` field is a
-  // fallback because it has silently returned nonsense (erf numbers,
-  // rates, single-digit values) on real listings. See priceParse.ts for
-  // the rule set. Any disagreement between the two is logged so we can
-  // spot systematic drift.
-  const llmPrice = extracted.price != null && Number.isFinite(Number(extracted.price))
-    ? Math.round(Number(extracted.price))
-    : null;
-  const markdown = typeof data.markdown === "string" ? data.markdown : "";
-  const mdParsed = parsePriceFromMarkdown(markdown);
-  const reconciled = reconcilePrice(llmPrice, mdParsed.price);
-  if (reconciled.warn) {
-    console.warn(`[property24] ${sourceRef}: ${reconciled.warn} (candidates: ${mdParsed.candidates.join(", ")})`);
+  // Price: prefer JSON-LD (schema.org RealEstateListing.offers.price is
+  // structured and unambiguous). Falls back to markdown-regex + LLM
+  // reconciliation when JSON-LD price is missing.
+  //
+  // Bronwyn caught the 2026-07-30 "R 130 304 000" bug: the markdown parser
+  // grabbed a Uitzicht farm's 130 304 m² floorSize and interpreted it as
+  // 130 million Rand. The actual JSON-LD priceCurrency:"ZAR" price:26000000
+  // was right there — markdown parsing just never checked it. Prefer
+  // JSON-LD as the source of truth; the markdown path stays as fallback
+  // for listings without JSON-LD (older/inactive?).
+  let price: number | null = jsonLd.price;
+  if (price == null) {
+    const llmPrice = extracted.price != null && Number.isFinite(Number(extracted.price))
+      ? Math.round(Number(extracted.price))
+      : null;
+    const markdown = typeof data.markdown === "string" ? data.markdown : "";
+    const mdParsed = parsePriceFromMarkdown(markdown);
+    const reconciled = reconcilePrice(llmPrice, mdParsed.price);
+    if (reconciled.warn) {
+      console.warn(`[property24] ${sourceRef}: ${reconciled.warn} (candidates: ${mdParsed.candidates.join(", ")})`);
+    }
+    price = reconciled.price;
   }
-  const price: number | null = reconciled.price;
 
   return {
     sourceRef,
@@ -293,27 +301,30 @@ export async function scrapeListingDetail(
   };
 }
 
-// Pull coordinates out of Property24's schema.org RealEstateListing
+// Pull structured fields from Property24's schema.org RealEstateListing
 // JSON-LD block. Every P24 detail page ships a
 //   <script type="application/ld+json"> { "@graph": [ ... ] } </script>
 // containing a Place with { "@type": "Place", "latitude": -34.06,
-// "longitude": 23.08 } — verified via the inspect-p24-html diagnostic
-// on the Rexford 4-bed listing.
+// "longitude": 23.08 } and an Offer with { "price": "6995000",
+// "priceCurrency": "ZAR" } — verified via the inspect-p24-html
+// diagnostic on the Rexford 4-bed listing.
 //
-// The Place lives nested inside the RealEstateListing under
-// "@graph"[n]."address"... but P24 also puts latitude/longitude at the
-// listing level directly. We recursively walk the parsed JSON looking
-// for the first pair of latitude+longitude keys — that's more resilient
-// than schema-matching against a specific nesting path (which P24 has
-// changed in the past for other fields).
+// Recursive walk for coord and price nodes — more resilient than
+// matching a specific nesting path (P24 has changed shape before).
 //
-// Sanity-guards the result to the Garden Route lat/lng range so we
-// don't accidentally use a coincidental "latitude" property from an
-// unrelated JSON block (defensive; unlikely to fire).
-export function parseJsonLdCoords(rawHtml: string): { lat: number; lng: number } | null {
-  if (!rawHtml) return null;
+// Coord sanity-guarded to Garden Route bbox. Price sanity-guarded to
+// ZAR currency and >100k (rejects tiny numbers that might be per-m²
+// rates, deposit amounts, or similar).
+export function parseJsonLdFields(rawHtml: string): {
+  coords: { lat: number; lng: number } | null;
+  price: number | null;
+} {
+  const empty = { coords: null, price: null };
+  if (!rawHtml) return empty;
   const re = /<script\b[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
   let m: RegExpExecArray | null;
+  let coords: { lat: number; lng: number } | null = null;
+  let price: number | null = null;
   while ((m = re.exec(rawHtml)) !== null) {
     const body = (m[1] ?? "").trim();
     if (!body) continue;
@@ -324,8 +335,47 @@ export function parseJsonLdCoords(rawHtml: string): { lat: number; lng: number }
     } catch {
       continue;
     }
-    const hit = findLatLng(parsed);
-    if (hit) return hit;
+    if (!coords) coords = findLatLng(parsed);
+    if (price == null) price = findZarPrice(parsed);
+    if (coords && price != null) break;
+  }
+  return { coords, price };
+}
+
+// Back-compat alias — the earlier signature only returned coords, and
+// there might be external callers or tests using it. Delegate.
+export function parseJsonLdCoords(rawHtml: string): { lat: number; lng: number } | null {
+  return parseJsonLdFields(rawHtml).coords;
+}
+
+// Recursive walk for the first ZAR-denominated price on any object.
+// P24's Offer nodes look like { "@type": "Offer", "price": "26000000",
+// "priceCurrency": "ZAR" }. Guard against confusing floorSize or other
+// numeric fields — require priceCurrency: ZAR on the same object.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function findZarPrice(node: any): number | null {
+  if (node == null) return null;
+  if (Array.isArray(node)) {
+    for (const el of node) {
+      const hit = findZarPrice(el);
+      if (hit != null) return hit;
+    }
+    return null;
+  }
+  if (typeof node !== "object") return null;
+  const currency = typeof node.priceCurrency === "string"
+    ? node.priceCurrency.toUpperCase()
+    : null;
+  const priceVal = node.price;
+  if (currency === "ZAR" && (typeof priceVal === "number" || typeof priceVal === "string")) {
+    const n = Number(priceVal);
+    if (Number.isFinite(n) && n >= 100_000 && n <= 1_000_000_000) {
+      return Math.round(n);
+    }
+  }
+  for (const key of Object.keys(node)) {
+    const hit = findZarPrice(node[key]);
+    if (hit != null) return hit;
   }
   return null;
 }

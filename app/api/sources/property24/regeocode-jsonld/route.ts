@@ -187,9 +187,22 @@ export async function POST(request: Request) {
     });
 
     if (!dry) {
+      // Also update price if JSON-LD returned one — same rationale as
+      // coords, this is P24's canonical source. Bronwyn caught a Uitzicht
+      // farm displaying R 130 304 000 when the actual price is R 26 000 000
+      // (the markdown parser grabbed the 130,304 m² size and treated it
+      // as thousands). JSON-LD priceCurrency:ZAR price:26000000 is the
+      // truth. Silently accepts whatever JSON-LD says — if P24 is wrong,
+      // the fix belongs at P24, not in our extraction rules.
+      const patch: Record<string, unknown> = {
+        lat: listing.lat,
+        lng: listing.lng,
+        prcl_key: null,
+      };
+      if (listing.price != null) patch.price = listing.price;
       const { error: upErr } = await supabase
         .from("external_listing")
-        .update({ lat: listing.lat, lng: listing.lng, prcl_key: null })
+        .update(patch)
         .eq("id", r.id);
       if (!upErr) updated++;
     }
