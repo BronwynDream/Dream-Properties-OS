@@ -356,6 +356,17 @@ export default async function MapPage() {
   const geoCount = rows.filter((r) => r.lng != null && r.lat != null).length;
   const missingCount = totalCount - geoCount;
 
+  // Raw external-listing counts per source. Used by the map's source chip
+  // to show "how many P24 rows are we tracking" (the DB truth), not "how
+  // many merged pins happen to include P24" (which collapses multi-
+  // externals-per-property into one and undercounts by ~half — the
+  // 186-vs-342 discrepancy Simon spotted 2026-07-31).
+  const externalCounts = {
+    dream_website: externals.filter((e) => e.source === "dream_website").length,
+    property24: externals.filter((e) => e.source === "property24").length,
+    private_property: externals.filter((e) => e.source === "private_property").length,
+  };
+
   const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
 
   // Directors get a compact Lightstone spend meter in the rail. Read via the
@@ -381,6 +392,7 @@ export default async function MapPage() {
         isAdmin={isAdmin}
         mapboxToken={mapboxToken}
         stats={{ total: totalCount, geocoded: geoCount, missing: missingCount }}
+        externalCounts={externalCounts}
         budget={budget}
       />
     </>

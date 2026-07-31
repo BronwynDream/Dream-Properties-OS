@@ -1,19 +1,21 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
-import { parsePriceFromMarkdown, reconcilePrice } from "@/lib/external-listings/priceParse";
+import { parseJsonLdFields } from "@/lib/external-listings/property24";
 
 export const runtime = "nodejs";
 
 // GET /api/sources/property24/inspect?ref=117325992
 //
-// Diagnostic: dumps everything the parser sees for one P24 row so we can
-// figure out why a price is wrong. Returns:
-//   - current DB price
-//   - the LLM's extracted price (raw.extract.price)
-//   - every markdown regex candidate with ±80 chars of context
-//   - the reconcile decision + which source it came from
-//   - a snippet showing the first 500 chars of the markdown
+// Diagnostic: dumps what the scraper sees for one P24 row so we can figure
+// out why a coord or price is wrong. Returns:
+//   - current DB price + coords
+//   - what JSON-LD says (the canonical source of truth for both since
+//     2026-07-31)
+//   - what the LLM extracted (for reference — no longer trusted)
+//   - the first 800 chars of markdown
+//   - every "R [number]" match in the markdown, with ±80 chars of context,
+//     so we can see what a listing looks like when JSON-LD is absent
 //
 // Admin-only. Read-only — never writes.
 
@@ -43,7 +45,7 @@ export async function GET(request: Request) {
   const supabase = createServiceClient();
   const { data: row, error } = await supabase
     .from("external_listing")
-    .select("id, source_ref, url, price, headline, raw")
+    .select("id, source_ref, url, price, lat, lng, headline, raw")
     .eq("source", "property24")
     .eq("source_ref", sourceRef)
     .maybeSingle();
@@ -51,15 +53,11 @@ export async function GET(request: Request) {
 
   const raw = row.raw as any;
   const markdown: string = (raw && typeof raw.markdown === "string") ? raw.markdown : "";
-  const llmPrice = raw?.extract?.price != null && Number.isFinite(Number(raw.extract.price))
-    ? Math.round(Number(raw.extract.price))
-    : null;
+  const rawHtml: string =
+    typeof raw?.rawHtml === "string" ? raw.rawHtml : typeof raw?.html === "string" ? raw.html : "";
+  const jsonLd = parseJsonLdFields(rawHtml);
+  const llmExtract = raw?.extract ?? null;
 
-  const parsed = parsePriceFromMarkdown(markdown);
-  const reconciled = reconcilePrice(llmPrice, parsed.price);
-
-  // Collect every "R [number]" occurrence so we can see what's on the page,
-  // regardless of whether the parser accepted it. Show ±80 chars of context.
   const allRandOccurrences: { match: string; context: string; index: number }[] = [];
   const anyR = /R\s*[\d\s,]{3,}/g;
   for (const m of markdown.matchAll(anyR)) {
@@ -78,18 +76,18 @@ export async function GET(request: Request) {
     sourceRef: row.source_ref,
     url: row.url,
     headline: row.headline,
-    dbPrice: row.price != null ? Number(row.price) : null,
-    llmExtractPrice: llmPrice,
-    parseResult: parsed,
-    reconciled,
+    db: {
+      price: row.price != null ? Number(row.price) : null,
+      lat: row.lat != null ? Number(row.lat) : null,
+      lng: row.lng != null ? Number(row.lng) : null,
+    },
+    jsonLd,
+    llmExtract,
     markdown: {
       hasMarkdown: markdown.length > 0,
       length: markdown.length,
       firstChars: markdown.slice(0, 800),
     },
     allRandOccurrences,
-    // Also expose what extract mode returned so we can see what other
-    // fields the LLM captured (headline, address, etc.).
-    llmExtractAll: raw?.extract ?? null,
   });
 }

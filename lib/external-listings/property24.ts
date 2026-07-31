@@ -7,7 +7,18 @@
 // with backoff. Errors logged and returned as null so the caller can
 // carry on with the remaining URLs.
 
-import { parsePriceFromMarkdown, reconcilePrice } from "./priceParse";
+// Price extraction is JSON-LD-only. The LLM and markdown-regex fallbacks
+// were removed 2026-07-31 after both produced provably wrong prices on
+// production data:
+//   - LLM extract returned the listing ID as price on POR listings
+//     (Fernwood Estate 117227622 and Simola 117117095 both shipped with
+//     price === source_ref, i.e. the URL's listing-id segment).
+//   - Markdown regex picked up "R 130 304 000" for a 130,304 m² Uitzicht
+//     farm (size-as-price via some page rendering that prefixed the size
+//     with R). Not fixed by PR #50's JSON-LD switch because JSON-LD
+//     returned coord-only for that row.
+// If P24 doesn't ship a priceCurrency:ZAR offer node, we now show "Price
+// on request" — honest — instead of a hallucinated number.
 
 const FIRECRAWL_URL = "https://api.firecrawl.dev/v1/scrape";
 
@@ -137,7 +148,13 @@ export async function scrapeListingIndex(
   baseUrl: string,
   opts: { maxPages?: number } = {},
 ): Promise<string[]> {
-  const maxPages = opts.maxPages ?? 20;
+  // Cap raised 20→30 on 2026-07-31. P24 shows 505 listings for Knysna
+  // across 26 pages (~19-20 per page); at 20 pages we were topping out
+  // around 400 discoverable URLs, then losing ~10% to scrape failures,
+  // leaving us at ~350 rows against a real catalogue of ~500. Discovery
+  // still short-circuits on the first empty page, so this only spends
+  // extra time on genuinely deeper catalogues.
+  const maxPages = opts.maxPages ?? 30;
   const seen = new Set<string>();
   for (let page = 1; page <= maxPages; page++) {
     const pageUrl = page === 1 ? baseUrl : `${baseUrl}?Page=${page}`;
@@ -205,10 +222,6 @@ export async function scrapeListingDetail(
       headline: { type: "string", description: "The listing's headline / title" },
       address: { type: "string", description: "Street address as displayed" },
       suburb: { type: "string", description: "Suburb name only" },
-      price: {
-        type: "number",
-        description: "Asking price in Rand as a plain integer, no symbols",
-      },
       bedrooms: { type: "number" },
       bathrooms: { type: "number" },
       property_type: {
@@ -220,11 +233,10 @@ export async function scrapeListingDetail(
         description: "The estate agency marketing the listing",
       },
       image_url: { type: "string", description: "The primary hero image URL" },
-      // NOTE: lat/lng deliberately NOT requested. P24 embeds coords in
-      // JS data attributes for their own map widget — not visible text.
-      // Firecrawl's LLM extract would hallucinate ~50% of the time
-      // (e.g. Simola listing landing near Wilderness, ~50km off). We
-      // geocode via Mapbox in the route handler instead.
+      // NOTE: price + lat/lng deliberately NOT requested. Both come from
+      // schema.org JSON-LD (parsed below from rawHtml). Firecrawl's LLM
+      // extract hallucinates on both — coords ~50% off, price returned as
+      // the listing-id segment of the URL on POR listings.
     },
   };
 
@@ -259,29 +271,12 @@ export async function scrapeListingDetail(
   const lat: number | null = jsonLd.coords?.lat ?? null;
   const lng: number | null = jsonLd.coords?.lng ?? null;
 
-  // Price: prefer JSON-LD (schema.org RealEstateListing.offers.price is
-  // structured and unambiguous). Falls back to markdown-regex + LLM
-  // reconciliation when JSON-LD price is missing.
-  //
-  // Bronwyn caught the 2026-07-30 "R 130 304 000" bug: the markdown parser
-  // grabbed a Uitzicht farm's 130 304 m² floorSize and interpreted it as
-  // 130 million Rand. The actual JSON-LD priceCurrency:"ZAR" price:26000000
-  // was right there — markdown parsing just never checked it. Prefer
-  // JSON-LD as the source of truth; the markdown path stays as fallback
-  // for listings without JSON-LD (older/inactive?).
-  let price: number | null = jsonLd.price;
-  if (price == null) {
-    const llmPrice = extracted.price != null && Number.isFinite(Number(extracted.price))
-      ? Math.round(Number(extracted.price))
-      : null;
-    const markdown = typeof data.markdown === "string" ? data.markdown : "";
-    const mdParsed = parsePriceFromMarkdown(markdown);
-    const reconciled = reconcilePrice(llmPrice, mdParsed.price);
-    if (reconciled.warn) {
-      console.warn(`[property24] ${sourceRef}: ${reconciled.warn} (candidates: ${mdParsed.candidates.join(", ")})`);
-    }
-    price = reconciled.price;
-  }
+  // Price is JSON-LD-only. If P24 didn't ship a priceCurrency:ZAR offer
+  // on this page, we return null — the listing is treated as "Price on
+  // request". Fallback extractors (LLM + markdown regex) both produced
+  // demonstrably wrong prices in production; see the file header for the
+  // two specific bugs that motivated this.
+  const price: number | null = jsonLd.price;
 
   return {
     sourceRef,
