@@ -990,8 +990,26 @@ export default function MapView({
       })),
     };
 
+    // eslint-disable-next-line no-console
+    console.log("[market-clusters] effect run", {
+      mergedPinsTotal: mergedPins.length,
+      marketOnlyCount: marketOnly.length,
+      sampleMarketOnly: marketOnly.slice(0, 3).map((p) => ({
+        key: p.key,
+        lng: p.lng,
+        lat: p.lat,
+        sources: p.sources,
+      })),
+      mapStyleLoaded: map.isStyleLoaded(),
+    });
+
     function install(m: mapboxgl.Map) {
       const existing = m.getSource("market-clusters") as mapboxgl.GeoJSONSource | undefined;
+      // eslint-disable-next-line no-console
+      console.log("[market-clusters] install", {
+        featuresCount: geojson.features.length,
+        sourceAlreadyExists: !!existing,
+      });
       if (existing) {
         existing.setData(geojson);
         return;
@@ -1073,16 +1091,29 @@ export default function MapView({
     const map = mapRef.current;
     if (!map) return;
 
+    let logged = false;
     const applyVisibility = () => {
       const z = map.getZoom();
       // Aligns with the cluster layer's `maxzoom: MARKET_UNCLUSTER_ZOOM + 1`
       // (Mapbox maxzoom is exclusive). Below the threshold the cluster
       // circle covers this pin; at or above, individual markers take over.
       const clustered = z < MARKET_UNCLUSTER_ZOOM + 1;
+      let marketMarkerCount = 0;
       for (const marker of Object.values(markersRef.current)) {
         const el = marker.getElement();
         if (!el.classList.contains("market")) continue;
+        marketMarkerCount++;
         el.style.display = clustered ? "none" : "";
+      }
+      if (!logged) {
+        // eslint-disable-next-line no-console
+        console.log("[market-visibility] first-apply", {
+          zoom: z,
+          clustered,
+          totalMarkers: Object.keys(markersRef.current).length,
+          marketMarkers: marketMarkerCount,
+        });
+        logged = true;
       }
     };
 
