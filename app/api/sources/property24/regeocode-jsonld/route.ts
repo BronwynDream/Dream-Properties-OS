@@ -92,7 +92,7 @@ export async function POST(request: Request) {
   // migration 0062.
   const { data: rows, error } = await supabase
     .from("external_listing")
-    .select("id, source_ref, url, lat, lng")
+    .select("id, source_ref, url, lat, lng, price")
     .eq("source", "property24")
     .eq("active", true)
     .not("url", "is", null)
@@ -104,9 +104,10 @@ export async function POST(request: Request) {
     id: string;
     source_ref: string;
     url: string;
-    before: { lat: number | null; lng: number | null };
-    after: { lat: number; lng: number };
+    before: { lat: number | null; lng: number | null; price: number | null };
+    after: { lat: number | null; lng: number | null; price: number | null };
     moved_km: number;
+    priceChanged: boolean;
   }[] = [];
 
   // Per-row failure reasons so we can diagnose why hitJsonLd < scanned.
@@ -150,65 +151,93 @@ export async function POST(request: Request) {
     attemptedIds.push(r.id);
 
     const listing = await scrapeListingDetail(apiKey, r.url);
+    const prevLat = r.lat != null ? Number(r.lat) : null;
+    const prevLng = r.lng != null ? Number(r.lng) : null;
+    const prevPrice = r.price != null ? Number(r.price) : null;
+
     if (!listing) {
+      // Transient Firecrawl failure — don't touch data. The attempted_at
+      // bump at end-of-batch means we'll re-try later without stalling
+      // the queue.
       noHit++;
       recordNoHit("scrape_failed", r.url);
       await new Promise((res) => setTimeout(res, SCRAPE_DELAY_MS));
       continue;
     }
-    if (listing.lat == null || listing.lng == null) {
+
+    const coordOk =
+      listing.lat != null &&
+      listing.lng != null &&
+      inGardenRoute({ lng: listing.lng, lat: listing.lat });
+
+    if (!coordOk) {
+      // Page loaded but no usable JSON-LD coord. As of 2026-07-31 that
+      // also means we should distrust whatever price is on the row: the
+      // historical value came from the removed LLM + markdown-regex
+      // fallback chain (source of the listing-id-as-price bug on POR
+      // pages and the size-as-price bug on the Uitzicht farm). Null it —
+      // showing "Price on request" beats showing a hallucinated number.
       noHit++;
-      recordNoHit("no_jsonld_coord", r.url);
-      await new Promise((res) => setTimeout(res, SCRAPE_DELAY_MS));
-      continue;
-    }
-    if (!inGardenRoute({ lng: listing.lng, lat: listing.lat })) {
-      noHit++;
-      recordNoHit("coord_outside_garden_route", r.url);
+      if (listing.lat == null || listing.lng == null) {
+        recordNoHit("no_jsonld_coord", r.url);
+      } else {
+        recordNoHit("coord_outside_garden_route", r.url);
+      }
+      if (!dry && prevPrice != null) {
+        const { error: upErr } = await supabase
+          .from("external_listing")
+          .update({ price: null })
+          .eq("id", r.id);
+        if (!upErr) updated++;
+      }
       await new Promise((res) => setTimeout(res, SCRAPE_DELAY_MS));
       continue;
     }
     hitJsonLd++;
 
-    const prevLat = r.lat != null ? Number(r.lat) : null;
-    const prevLng = r.lng != null ? Number(r.lng) : null;
-    const closeEnough =
+    const coordCloseEnough =
       prevLat != null && prevLng != null &&
-      Math.abs(prevLat - listing.lat) < 0.0002 &&
-      Math.abs(prevLng - listing.lng) < 0.0002;
-    if (closeEnough) {
+      Math.abs(prevLat - listing.lat!) < 0.0002 &&
+      Math.abs(prevLng - listing.lng!) < 0.0002;
+    const priceUnchanged = prevPrice === listing.price;
+
+    if (coordCloseEnough && priceUnchanged) {
       unchanged++;
       await new Promise((res) => setTimeout(res, SCRAPE_DELAY_MS));
       continue;
     }
 
-    const dLat = prevLat != null ? Math.abs(listing.lat - prevLat) : 0;
-    const dLng = prevLng != null ? Math.abs(listing.lng - prevLng) : 0;
+    const dLat = prevLat != null ? Math.abs(listing.lat! - prevLat) : 0;
+    const dLng = prevLng != null ? Math.abs(listing.lng! - prevLng) : 0;
     const moved_km = Math.round(Math.sqrt(dLat * dLat + dLng * dLng) * 111 * 10) / 10;
 
     changes.push({
       id: r.id,
       source_ref: r.source_ref,
       url: r.url,
-      before: { lat: prevLat, lng: prevLng },
-      after: { lat: listing.lat, lng: listing.lng },
+      before: { lat: prevLat, lng: prevLng, price: prevPrice },
+      after: { lat: listing.lat, lng: listing.lng, price: listing.price },
       moved_km,
+      priceChanged: !priceUnchanged,
     });
 
     if (!dry) {
-      // Also update price if JSON-LD returned one — same rationale as
-      // coords, this is P24's canonical source. Bronwyn caught a Uitzicht
-      // farm displaying R 130 304 000 when the actual price is R 26 000 000
-      // (the markdown parser grabbed the 130,304 m² size and treated it
-      // as thousands). JSON-LD priceCurrency:ZAR price:26000000 is the
-      // truth. Silently accepts whatever JSON-LD says — if P24 is wrong,
-      // the fix belongs at P24, not in our extraction rules.
+      // Full patch — coords, price, and null-out prcl_key so the snap-
+      // to-parcel trigger re-runs against the new coord.
+      //
+      // listing.price is JSON-LD-only as of 2026-07-31 (see property24.ts
+      // header). When JSON-LD didn't ship a priceCurrency:ZAR node, price
+      // is null — the row displays as "Price on request" until the next
+      // scrape finds one, which is more truthful than the old fallback
+      // chain's hallucinations. One-shot backfill: reset
+      // regeocode_attempted_at for all P24 rows, then drain, so every row
+      // gets re-evaluated under the new logic.
       const patch: Record<string, unknown> = {
         lat: listing.lat,
         lng: listing.lng,
+        price: listing.price,
         prcl_key: null,
       };
-      if (listing.price != null) patch.price = listing.price;
       const { error: upErr } = await supabase
         .from("external_listing")
         .update(patch)
