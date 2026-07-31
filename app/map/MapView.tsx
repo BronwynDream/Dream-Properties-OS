@@ -991,7 +991,7 @@ export default function MapView({
     };
 
     // eslint-disable-next-line no-console
-    console.debug("[market-clusters] effect run", {
+    console.log("[market-clusters] effect run", {
       mergedPinsTotal: mergedPins.length,
       marketOnlyCount: marketOnly.length,
       sampleMarketOnly: marketOnly.slice(0, 3).map((p) => ({
@@ -1006,7 +1006,7 @@ export default function MapView({
     function install(m: mapboxgl.Map) {
       const existing = m.getSource("market-clusters") as mapboxgl.GeoJSONSource | undefined;
       // eslint-disable-next-line no-console
-      console.debug("[market-clusters] install", {
+      console.log("[market-clusters] install", {
         featuresCount: geojson.features.length,
         sourceAlreadyExists: !!existing,
       });
@@ -1107,7 +1107,7 @@ export default function MapView({
       }
       if (!logged) {
         // eslint-disable-next-line no-console
-        console.debug("[market-visibility] first-apply", {
+        console.log("[market-visibility] first-apply", {
           zoom: z,
           clustered,
           totalMarkers: Object.keys(markersRef.current).length,
