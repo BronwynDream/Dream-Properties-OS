@@ -189,6 +189,7 @@ export default function MapView({
   isAdmin,
   mapboxToken,
   stats,
+  externalCounts,
   budget,
 }: {
   properties: MapProperty[];
@@ -198,6 +199,15 @@ export default function MapView({
   isAdmin: boolean;
   mapboxToken: string;
   stats: Stats;
+  // Raw DB counts per external source. Passed straight through to the
+  // "Sources" chip so the number matches what SQL says, not what merging
+  // + dedup collapses down to. Optional so an older caller doesn't 500;
+  // when absent the chips fall back to merged-pin counts.
+  externalCounts?: {
+    dream_website: number;
+    property24: number;
+    private_property: number;
+  };
   budget?: BudgetSummary | null;
 }) {
   const router = useRouter();
@@ -942,6 +952,147 @@ export default function MapView({
     didInitialFitRef.current = true;
   }, [renderPins]);
 
+  // Market-only pin clustering. At regional / suburb zoom levels the
+  // hundreds of scraped Property24 + Private Property listings turn the
+  // map into unreadable confetti. Dream's own OS pins (mandate-typed,
+  // ~21 of them) stay individually visible at every zoom — they're the
+  // ones Bronwyn navigates by. Everything else (market-only merged pins,
+  // i.e. no `our` record) collapses into cluster circles until zoom ≥
+  // MARKET_UNCLUSTER_ZOOM.
+  //
+  // Implementation:
+  //   - A native mapboxgl GeoJSON source with cluster:true handles the
+  //     visual clustering. cluster-circle + cluster-count layers on top.
+  //   - The HTML markers for market pins still exist (they power price
+  //     labels + click-to-select) but get display:none-d when the
+  //     current zoom is below the uncluster threshold (see the zoom-
+  //     visibility effect just below).
+  //   - Click on a cluster circle expands it via Mapbox's built-in
+  //     getClusterExpansionZoom.
+  const MARKET_UNCLUSTER_ZOOM = 13;
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    // Cluster pins that are strictly "other agencies' market listings":
+    // no matched OS record AND no dream_website source. Dream's own
+    // scraped-website pins are functionally our stock and stay visible
+    // as individual markers at every zoom.
+    const marketOnly = mergedPins.filter(
+      (p) => !p.our && !p.sources.includes("dream_website"),
+    );
+    const geojson: GeoJSON.FeatureCollection = {
+      type: "FeatureCollection",
+      features: marketOnly.map((p) => ({
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [p.lng, p.lat] },
+        properties: { key: p.key },
+      })),
+    };
+
+    function install(m: mapboxgl.Map) {
+      const existing = m.getSource("market-clusters") as mapboxgl.GeoJSONSource | undefined;
+      if (existing) {
+        existing.setData(geojson);
+        return;
+      }
+      m.addSource("market-clusters", {
+        type: "geojson",
+        data: geojson,
+        cluster: true,
+        clusterMaxZoom: MARKET_UNCLUSTER_ZOOM,
+        clusterRadius: 50,
+      });
+      m.addLayer({
+        id: "market-cluster-circles",
+        type: "circle",
+        source: "market-clusters",
+        filter: ["has", "point_count"],
+        maxzoom: MARKET_UNCLUSTER_ZOOM + 1,
+        paint: {
+          "circle-color": "#132B84",
+          "circle-radius": [
+            "step",
+            ["get", "point_count"],
+            16,
+            10, 22,
+            50, 30,
+          ],
+          "circle-opacity": 0.9,
+          "circle-stroke-width": 2,
+          "circle-stroke-color": "rgba(255,255,255,0.9)",
+        },
+      });
+      m.addLayer({
+        id: "market-cluster-count",
+        type: "symbol",
+        source: "market-clusters",
+        filter: ["has", "point_count"],
+        maxzoom: MARKET_UNCLUSTER_ZOOM + 1,
+        layout: {
+          "text-field": ["get", "point_count_abbreviated"],
+          "text-size": 13,
+          "text-font": ["DIN Pro Bold", "Arial Unicode MS Bold"],
+        },
+        paint: { "text-color": "#FFFFFF" },
+      });
+      m.on("click", "market-cluster-circles", (e) => {
+        const f = e.features?.[0];
+        if (!f) return;
+        const clusterId = f.properties?.cluster_id as number | undefined;
+        if (clusterId == null) return;
+        const src = m.getSource("market-clusters") as mapboxgl.GeoJSONSource;
+        src.getClusterExpansionZoom(clusterId, (err, zoom) => {
+          if (err || zoom == null) return;
+          const coords = (f.geometry as GeoJSON.Point).coordinates as [number, number];
+          m.easeTo({ center: coords, zoom });
+        });
+      });
+      m.on("mouseenter", "market-cluster-circles", () => {
+        m.getCanvas().style.cursor = "pointer";
+      });
+      m.on("mouseleave", "market-cluster-circles", () => {
+        m.getCanvas().style.cursor = "";
+      });
+    }
+
+    if (map.isStyleLoaded()) install(map);
+    else map.once("style.load", () => install(map));
+
+    const onStyleLoad = () => install(map);
+    map.on("style.load", onStyleLoad);
+    return () => {
+      map.off("style.load", onStyleLoad);
+    };
+  }, [mergedPins]);
+
+  // Hide the HTML markers for market-only pins when we're at cluster
+  // zoom. Handled here rather than in the marker sync effect because
+  // zoom changes shouldn't trigger the full marker teardown/rebuild.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const applyVisibility = () => {
+      const z = map.getZoom();
+      // Aligns with the cluster layer's `maxzoom: MARKET_UNCLUSTER_ZOOM + 1`
+      // (Mapbox maxzoom is exclusive). Below the threshold the cluster
+      // circle covers this pin; at or above, individual markers take over.
+      const clustered = z < MARKET_UNCLUSTER_ZOOM + 1;
+      for (const marker of Object.values(markersRef.current)) {
+        const el = marker.getElement();
+        if (!el.classList.contains("market")) continue;
+        el.style.display = clustered ? "none" : "";
+      }
+    };
+
+    applyVisibility();
+    map.on("zoom", applyVisibility);
+    return () => {
+      map.off("zoom", applyVisibility);
+    };
+  }, [renderPins]);
+
   // Toggle draggability + drag-mode class as dragKey changes. Runs after any
   // marker sync so the class always reflects the latest state.
   //
@@ -1067,7 +1218,19 @@ export default function MapView({
           <div className="source-chips">
             {SOURCE_ORDER.map((s) => {
               const on = enabledSources.has(s);
-              const count = sourceCounts.get(s) ?? 0;
+              // For external sources, prefer the raw DB count from the
+              // server — "how many rows are we tracking" is the number
+              // Bronwyn will trust against a portal spot-check. The
+              // merged-pin count collapses many-externals-per-property
+              // to one and undercounts (Simon spotted 186 vs 342 for
+              // P24 on 2026-07-31). dream_os stays on merged-pin count
+              // because it's a count of our own records, not externals.
+              const count =
+                s === "dream_os"
+                  ? sourceCounts.get(s) ?? 0
+                  : externalCounts?.[s as "dream_website" | "property24" | "private_property"] ??
+                    sourceCounts.get(s) ??
+                    0;
               return (
                 <button
                   key={s}
