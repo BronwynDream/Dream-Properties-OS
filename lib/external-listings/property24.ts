@@ -148,7 +148,13 @@ export async function scrapeListingIndex(
   baseUrl: string,
   opts: { maxPages?: number } = {},
 ): Promise<string[]> {
-  const maxPages = opts.maxPages ?? 20;
+  // Cap raised 20→30 on 2026-07-31. P24 shows 505 listings for Knysna
+  // across 26 pages (~19-20 per page); at 20 pages we were topping out
+  // around 400 discoverable URLs, then losing ~10% to scrape failures,
+  // leaving us at ~350 rows against a real catalogue of ~500. Discovery
+  // still short-circuits on the first empty page, so this only spends
+  // extra time on genuinely deeper catalogues.
+  const maxPages = opts.maxPages ?? 30;
   const seen = new Set<string>();
   for (let page = 1; page <= maxPages; page++) {
     const pageUrl = page === 1 ? baseUrl : `${baseUrl}?Page=${page}`;
