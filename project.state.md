@@ -4,7 +4,155 @@ Running log of what's decided, built, and next. Updated at the end of each worki
 session. `PROJECT.md` remains the canonical business/design doc; this file is the
 "where are we right now" companion.
 
-_Last updated: 2026-07-28_
+_Last updated: 2026-08-01_
+
+---
+
+## P24 MAP INTEGRITY — DIAGNOSTIC + STAGED FIXES (2026-07-31 → 2026-08-01)
+
+Long session. Simon opened with the fatigue signal — "we seem to be
+building more code onto bugs every single session … a little bit
+demoralized" — and asked to regroup rather than build. Regroup
+turned into a bounded diagnostic on the /map screen that surfaced
+five real bugs; four shipped, one reverted mid-arc after making the
+map worse than before.
+
+### The diagnostic (agreed with Simon before code)
+Ran four checks against live Property24 + Bon Bon's DB:
+- **P24 site count for Knysna area 322**: 505 houses + 32 commercial
+  across 26 pages. Vacant-land + apartments branches 404 (URL
+  taxonomy has changed). Bronwyn's "186 P24 listings is impossible"
+  was wrong direction — 186 was undercounting, real is ~500+.
+- **DB vs chip**: DB had 342 active P24 rows but the sidebar chip
+  showed 186. Merged-pin count derivation collapsed many-externals-
+  per-property into one and dropped standalones.
+- **Wrong prices confirmed**: Uitzicht farm still R 130 304 000 after
+  PR #50; Fernwood plot and Simola house shipping with
+  `price === source_ref` (LLM extract returning the listing-id from
+  the URL as price on POR listings).
+- **JSON-LD miss rate**: 30% of drains had no JSON-LD. Those rows
+  retained pre-PR-48 coords + prices from the removed fallback chain.
+
+### Shipped
+- **PR #52 — P24 map integrity bundle** (`e0ea1c8`, merged).
+  Three commits:
+  - JSON-LD-only price extraction. Killed the LLM `price` field from
+    the Firecrawl extract schema and removed the markdown-regex +
+    reconcilePrice fallback from `scrapeListingDetail`. When P24
+    doesn't ship a `priceCurrency:ZAR` node, price resolves to null
+    → renders as "Price on request" instead of a hallucinated
+    number. `regeocode-jsonld` also now nulls stale wrong prices on
+    rows where JSON-LD is absent (backfill path). Deleted
+    `lib/external-listings/priceParse.ts` and the `reparse-prices`
+    route — both encoded the removed logic. `inspect` route
+    rewritten around JSON-LD.
+  - Pagination cap 20 → 30 in `scrapeListingIndex`. Real P24 has
+    505 listings across 26 pages; 20-page cap ceilinged discovery
+    at ~400 URLs.
+  - Source chip fix: `externalCounts` prop from page.tsx carries
+    raw per-source DB counts. Chip now reads authoritative (352
+    matched what SQL said) instead of merged-pin count (186).
+- **PR #54 — Revert market-pin clustering** (`ff06cc5`, merged).
+  The clustering commit that shipped in PR #52 didn't render (never
+  tested against a real Mapbox instance before push), but its
+  paired zoom-hide-market-markers effect DID work. Net: at any
+  regional zoom the map showed zero market pins AND no clusters.
+  Reverted the two useEffects while keeping the price + count fixes
+  that landed correctly.
+- **PR #55 — Migration 0063: no snap for sectional-title**
+  (`3a6cc9d`, merged, applied). Root cause spotted in a specific
+  screenshot: a 3-bed apartment at 3 Mount Joy lit up the entire
+  Highfields estate parcel. Trigger from 0045 was grabbing the
+  parent-of-scheme parcel because sectional-title units share one
+  parcel with the whole scheme. Migration excludes property_type
+  matching `(apartment|flat|sectional|townhouse|duplex|penthouse)`
+  from both snap paths (trigger + `snap_all_to_parcels()` RPC).
+  Backfill nulls prcl_key on existing rows hit by regex.
+- **PR #56 — Migration 0064: no snap when parcel > 1 ha**
+  (unmerged at session end; SQL applied to Bon Bon manually).
+  Same underlying problem as 0063 but different symptom: at Pezula,
+  eight unrelated plots from eight agencies (R2.1M through R29.95M)
+  merged into ONE pin covering the whole Pezula estate. Cause:
+  individual plots aren't in the cadastre; only the estate parent
+  parcel is. All eight snapped to it, shared prcl_key, and the
+  dedup ladder collapsed them because prcl_key equality outranks
+  price-similarity. Migration adds `ST_Area(cp.geom::geography) <=
+  10000` to both snap paths. Backfill nulls prcl_key on rows
+  currently snapped to a parcel > 1 ha. Trade-off documented: a
+  legit ≥1 ha farm listing renders as a pin instead of a polygon.
+
+### Applied to Bon Bon
+- Both 0063 and 0064 SQL blocks pasted into Studio and run
+  successfully. Simon confirmed "both success".
+- Regeocode-jsonld drain started (was ~25 pending mid-session).
+  Needed to complete so rows whose lat/lng got rewritten to a
+  parcel centroid by earlier snap pull fresh JSON-LD coords.
+
+### Feedback moments
+Simon: "we seem to be going backwards in this session" — the
+market-pin clustering regression. Real correction: I shipped
+clustering code that hadn't been loaded in a browser once. From
+now on, before merging any Mapbox layer changes, load the app and
+verify visually. Type-check + local diff-review is not enough for
+map-render code where install races + layer stacking bite silently.
+
+Simon: "im a novice so how do i open the develop menu" — session
+had multiple moments where I gave Safari console/dev-menu paths
+without noticing Simon's stack context. Save as user memory: not
+frontend-native.
+
+### Loose ends carrying forward
+- **PR #56 not merged** — Simon applied the SQL to Bon Bon manually
+  but the migration file isn't on main yet. Merge to keep the repo
+  and prod DB schema in sync.
+- **Regeocode drain not confirmed complete** — 25+ rows were
+  pending. Needed to click "Re-geocode Property24" until 0 pending
+  for the coord backfill to complete.
+- **Source-chip toggles don't filter for-sale polygon layer** — a
+  user with all sources off can still see coloured parcel fills
+  AND clicking one opens the market-listing panel. Simon spotted
+  both. Not shipped; needs a second useEffect in MapView that
+  filters `forSalePolygons` by enabled sources, plus a guard in
+  the click handler.
+- **P24 chip UI clarity** — the "Erf boundaries" checkbox toggles
+  a diagnostic layer completely independent of listing data.
+  Simon was confused about what these polygons represented when
+  he clicked one with all sources off. Consider renaming to
+  "Show cadastral outlines" and/or dimming when no sources are on.
+- **Clustering, done properly** — parked. Right implementation is
+  probably to move market-pin rendering off HTML markers entirely
+  and onto a native Mapbox symbol layer, so one source drives both
+  cluster and unclustered display. Attempting via shadow-hiding
+  HTML markers behind a cluster layer (my first attempt) was
+  fragile. Load the app in a browser before shipping.
+- **Vacant-land + apartments P24 index URLs** — both 404 on P24's
+  current site structure. `for-sale/knysna` DOES include vacant
+  land in its listing (verified via Fernwood plot 117227622 in
+  DB), so we're not losing them entirely. But the four-branch
+  discovery loop is doing wasted work. Worth verifying if we can
+  drop the two dead URLs.
+- **Individual Pezula / Belvidere / Thesen erven not in cadastre**
+  — root data limitation. 0064 works around by not-snapping;
+  proper fix would be importing finer-grained cadastral data for
+  private estates. Separate arc.
+
+### Debugging lessons worth remembering
+- **JSON-LD prices are trustworthy; markdown-regex prices are
+  landmines.** P24's markdown can contain size figures formatted
+  like currency ("R 130 304 000" for a 130,304 m² farm); an LLM
+  asked for `price: number` on a POR listing will return whatever
+  large number it sees, including the URL's listing-id segment.
+  Only trust `priceCurrency:ZAR` on a schema.org Offer node.
+  Anything else, show "Price on request".
+- **Snap-to-parcel needs a parcel-size sanity check.** A 1 ha
+  threshold works for Knysna. In other markets the cutoff would
+  differ (rural farms are legitimately 5+ ha).
+- **The dedup ladder's prcl_key match outranks price-similarity.**
+  If lots of unrelated listings share a prcl_key (as happens with
+  parent-of-scheme parcels), they collapse regardless of price.
+  Either the ladder should re-order (price gate above prcl_key)
+  or (as done here) prevent bad shared prcl_key assignments at
+  the snap step.
 
 ---
 
