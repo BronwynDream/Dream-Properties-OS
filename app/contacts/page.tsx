@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import TopBar from "@/app/components/TopBar";
@@ -104,8 +105,29 @@ export default async function ContactsPage({
         <hr className="tideline" />
 
         <section className="app-body">
-          <div style={{ marginBottom: 24 }}>
-            <SearchInput />
+          <div
+            style={{
+              display: "flex",
+              gap: 12,
+              alignItems: "center",
+              marginBottom: 24,
+            }}
+          >
+            <div style={{ flex: 1 }}>
+              <SearchInput />
+            </div>
+            <Link
+              href="/contacts/new"
+              className="cta"
+              style={{
+                padding: "10px 16px",
+                fontSize: 13,
+                whiteSpace: "nowrap",
+                textDecoration: "none",
+              }}
+            >
+              + New seller
+            </Link>
           </div>
 
           {q.length < 2 ? (

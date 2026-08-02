@@ -3,6 +3,32 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 
+// Shape of the optional seller block passed from NewPropertyForm.tsx.
+// If present, creates a party + a preparing transfer + a draft listing under
+// that transfer + a transfer_party(side='seller') linking them all. Kept
+// permissive on the client (blank fields = null on the row) so an agent
+// can capture whatever the seller has volunteered so far.
+export type SellerInput = {
+  party_type: "individual" | "trust" | "company" | "close_corporation";
+  full_name?: string | null;
+  id_number?: string | null;
+  passport_no?: string | null;
+  matrimonial_regime?:
+    | "single"
+    | "married_in_community"
+    | "married_anc_no_accrual"
+    | "married_anc_with_accrual"
+    | "foreign_marriage"
+    | "divorced"
+    | "widowed"
+    | "unknown"
+    | null;
+  entity_name?: string | null;
+  registration_no?: string | null;
+  email?: string | null;
+  phone?: string | null;
+};
+
 // Create a new property from the take-on flow. Address is required; everything
 // else is optional. Returns the new property id so the caller can redirect
 // straight to /properties/[id] and start dragging documents onto it.
@@ -11,6 +37,10 @@ import { createClient } from "@/lib/supabase/server";
 // we get lightstone_property_id + normalised address parts (lat/lng, suburb
 // name). We coalesce those onto the row so the very first Fetch-from-Lightstone
 // call on this property skips the address re-resolve.
+//
+// Seller integration: if the agent captured seller details in-line, the
+// action also creates a preparing transfer + draft listing + transfer_party
+// so mandates and OTPs generated later can pre-fill from party+property.
 export async function createProperty(input: {
   primary_address: string;
   suburb_id?: string | null;
@@ -20,6 +50,7 @@ export async function createProperty(input: {
   latitude?: number | null;
   longitude?: number | null;
   suburb_name?: string | null;
+  seller?: SellerInput | null;
 }) {
   const supabase = createClient();
   const {
@@ -77,8 +108,125 @@ export async function createProperty(input: {
     });
   }
 
+  // Seller capture — optional. Creates party + preparing transfer + draft
+  // listing + transfer_party. Errors here don't roll back the property (agent
+  // can re-attempt seller capture from the property record) but are surfaced
+  // to the caller so the UI can show a warning.
+  let sellerWarning: string | null = null;
+  if (input.seller) {
+    const sellerRes = await attachSellerToNewProperty(
+      supabase,
+      newProp.id,
+      address,
+      input.seller,
+    );
+    if (!sellerRes.ok) sellerWarning = sellerRes.error;
+  }
+
   revalidatePath("/properties");
-  return { ok: true as const, id: newProp.id };
+  revalidatePath("/contacts");
+  return { ok: true as const, id: newProp.id, sellerWarning };
+}
+
+// Internal: build the seller-party row, create the preparing-transfer +
+// draft-listing skeleton, and link party↔transfer via transfer_party. Extracted
+// so we can call it from both the property-first flow (createProperty) and the
+// seller-first flow (/contacts/new) in a follow-up ship.
+async function attachSellerToNewProperty(
+  supabase: ReturnType<typeof createClient>,
+  propertyId: string,
+  primaryAddress: string,
+  seller: SellerInput,
+): Promise<{ ok: true; partyId: string; transferId: string; listingId: string } | { ok: false; error: string }> {
+  const partyRow = buildPartyRow(seller);
+  if (!partyRow) {
+    return { ok: false, error: "Seller name is required." };
+  }
+
+  const { data: newParty, error: partyErr } = await supabase
+    .from("party")
+    .insert(partyRow)
+    .select("id, display_name")
+    .single();
+  if (partyErr || !newParty) {
+    return { ok: false, error: partyErr?.message ?? "Could not create seller." };
+  }
+
+  const { data: newTransfer, error: transferErr } = await supabase
+    .from("transfer")
+    .insert({
+      property_id: propertyId,
+      name: `${primaryAddress} — ${newParty.display_name} (preparing)`,
+      status: "preparing",
+    })
+    .select("id")
+    .single();
+  if (transferErr || !newTransfer) {
+    return { ok: false, error: transferErr?.message ?? "Could not open preparing transfer." };
+  }
+
+  const { data: newListing, error: listingErr } = await supabase
+    .from("listing")
+    .insert({
+      property_id: propertyId,
+      transfer_id: newTransfer.id,
+      status: "draft",
+    })
+    .select("id")
+    .single();
+  if (listingErr || !newListing) {
+    return { ok: false, error: listingErr?.message ?? "Could not create draft listing." };
+  }
+
+  const { error: tpErr } = await supabase.from("transfer_party").insert({
+    transfer_id: newTransfer.id,
+    party_id: newParty.id,
+    side: "seller",
+    is_primary: true,
+  });
+  if (tpErr) {
+    return { ok: false, error: tpErr.message };
+  }
+
+  return { ok: true, partyId: newParty.id, transferId: newTransfer.id, listingId: newListing.id };
+}
+
+function buildPartyRow(s: SellerInput): Record<string, unknown> | null {
+  const email = s.email?.trim() || null;
+  const phone = s.phone?.trim() || null;
+
+  if (s.party_type === "individual") {
+    const fullName = (s.full_name ?? "").trim();
+    if (!fullName) return null;
+    // Naive split: last word = surname, everything before = first_names. SA
+    // compound surnames (van der Merwe, etc) get miscategorised; agent can
+    // edit on the Seller Record page. Good enough for pre-fill on a mandate.
+    const parts = fullName.split(/\s+/);
+    const surname = parts.length > 1 ? parts.slice(-1).join(" ") : null;
+    const firstNames = parts.length > 1 ? parts.slice(0, -1).join(" ") : fullName;
+    return {
+      party_type: "individual",
+      display_name: fullName,
+      first_names: firstNames,
+      surname,
+      id_number: s.id_number?.trim() || null,
+      passport_no: s.passport_no?.trim() || null,
+      matrimonial_regime: s.matrimonial_regime ?? "unknown",
+      email,
+      phone,
+    };
+  }
+
+  const entityName = (s.entity_name ?? "").trim();
+  if (!entityName) return null;
+  return {
+    party_type: s.party_type,
+    display_name: entityName,
+    entity_name: entityName,
+    registration_no: s.registration_no?.trim() || null,
+    email,
+    phone,
+  };
 }
 
 // Fold `loserId` into `winnerId`. Both must belong to the same property (the

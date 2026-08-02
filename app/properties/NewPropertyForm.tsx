@@ -3,6 +3,11 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createProperty } from "./actions";
+import AddSellerFields, {
+  emptySeller,
+  normaliseSeller,
+  type SellerFormValue,
+} from "./AddSellerFields";
 
 export type SuburbOption = { id: string; name: string };
 
@@ -43,6 +48,12 @@ export default function NewPropertyForm({
   const [pickedId, setPickedId] = useState<number | null>(null);
   const [pickedSuburbName, setPickedSuburbName] = useState<string | null>(null);
 
+  // Seller sub-form state. Closed by default; agent clicks "+ Add seller" to
+  // open. `seller` holds the raw form values, `normaliseSeller` extracts the
+  // action-ready shape (or null if nothing meaningful was captured).
+  const [seller, setSeller] = useState<SellerFormValue>(emptySeller);
+  const [sellerOpen, setSellerOpen] = useState(false);
+
   function reset() {
     setAddress("");
     setSuburbId("");
@@ -56,6 +67,8 @@ export default function NewPropertyForm({
     setSource(null);
     setPickedId(null);
     setPickedSuburbName(null);
+    setSeller(emptySeller);
+    setSellerOpen(false);
   }
 
   // Parse "lat, lng" — allows spaces, comma, or slash separator. Returns
@@ -140,6 +153,24 @@ export default function NewPropertyForm({
       setErr(coordsErr);
       return;
     }
+    const normalised = sellerOpen ? normaliseSeller(seller) : null;
+    // Guard: if the seller block is open but no name was captured, treat as
+    // "not attaching a seller" rather than blocking submission on a half-open
+    // panel. Silent skip; the property still lands.
+    const sellerPayload = normalised
+      ? {
+          party_type: normalised.partyType,
+          full_name: normalised.fullName || null,
+          id_number: normalised.idNumber || null,
+          passport_no: normalised.passportNo || null,
+          matrimonial_regime: normalised.matrimonialRegime,
+          entity_name: normalised.entityName || null,
+          registration_no: normalised.registrationNo || null,
+          email: normalised.email || null,
+          phone: normalised.phone || null,
+        }
+      : null;
+
     startTransition(async () => {
       const res = await createProperty({
         primary_address: address,
@@ -150,10 +181,17 @@ export default function NewPropertyForm({
         suburb_name: pickedSuburbName,
         latitude: lat,
         longitude: lng,
+        seller: sellerPayload,
       });
       if (!res.ok) {
         setErr(res.error);
         return;
+      }
+      // Non-fatal: property was created but seller-attach failed. Log for
+      // now (agent can add the seller from the record afterwards); the
+      // Seller Record UI will surface this properly later.
+      if (res.sellerWarning) {
+        console.warn("createProperty seller warning:", res.sellerWarning);
       }
       reset();
       setOpen(false);
@@ -438,6 +476,14 @@ export default function NewPropertyForm({
             style={{ ...inputStyle, fontFamily: "'JetBrains Mono', ui-monospace, monospace" }}
           />
         </label>
+
+        <AddSellerFields
+          value={seller}
+          onChange={setSeller}
+          open={sellerOpen}
+          onOpenChange={setSellerOpen}
+          disabled={pending}
+        />
 
         <div style={{ display: "flex", gap: 8, gridColumn: "1 / -1", justifyContent: "flex-end" }}>
           <button
