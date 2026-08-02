@@ -583,8 +583,15 @@ function parseDreamListing(url: string, html: string): DreamListing {
     listingImages[0] ??
     firstMatch(html, /<img[^>]+src="([^"]+\.(?:jpg|jpeg|png|webp))"/i);
 
-  // Suburb sniff — Knysna suburb names Dream typically uses.
-  const suburb = suburbFromText([address_raw, metaDesc, h1, headline].filter(Boolean).join(" "));
+  // Suburb sniff — Knysna suburb names Dream typically uses. We now scan the
+  // whole visible body too: many listings state the area only in prose
+  // (e.g. "…in the lush surrounds of Pezula Private Estate"), never in the
+  // headline or image filename. Body noise from menus / footers is present
+  // but low-count; count-max in suburbFromText picks the dominant mention.
+  const bodyText = stripTags(body) ?? "";
+  const suburb = suburbFromText(
+    [address_raw, metaDesc, h1, headline, bodyText].filter(Boolean).join(" "),
+  );
 
   const bedrooms = numberAfter(body, /(\d+)\s*(?:bed|bedroom)/i);
   const bathrooms = numberAfter(body, /(\d+)\s*(?:bath|bathroom)/i);
@@ -756,37 +763,59 @@ function addressFromImageFilename(url: string | null | undefined): string | null
 
 // Widened from Knysna-only so the scraper can extract "Plett" / "George" /
 // "Wilderness" / "Centreville" from a filename or headline and hand them to
-// the geocoder as an area anchor. Order matters — more-specific area names
-// come first so "Brenton on Sea" wins over "Brenton" alone.
+// the geocoder as an area anchor. Order matters as a tiebreaker in
+// suburbFromText: more-specific area names come first so "Brenton on Sea"
+// wins over "Brenton", and "Pezula Private Estate" wins over "Pezula" when
+// mention counts tie.
 const GARDEN_ROUTE_AREAS = [
+  "Pezula Private Estate",
+  "Pezula Golf Estate",
   "Brenton on Sea",
   "Plettenberg Bay",
   "Thesen Islands",
   "Knysna Heights",
+  "Knysna Central",
+  "Knysna Quays",
+  "Hudson Heights",
+  "Fernwood Estate",
   "Hunters Home",
   "Leisure Isle",
   "The Heads",
   "Belvidere",
   "Centreville",
   "Sparrebosch",
+  "Welbedacht",
   "Sedgefield",
   "Wilderness",
   "Eastford",
   "Old Place",
   "Paradise",
   "Rexford",
+  "Fernwood",
   "Brenton",
   "Pezula",
   "Simola",
   "Plett",
   "George",
 ];
+
+// Count-max selection. Body text (menus, related-listing footers) mentions
+// unrelated suburbs at very low counts (≤ 2); the actual property's suburb
+// appears many times (address, prose, image filenames, section headers).
+// Ties resolve to the earlier entry — which is ordered most-specific first.
 function suburbFromText(hay: string): string | null {
   if (!hay) return null;
+  let bestName: string | null = null;
+  let bestCount = 0;
   for (const s of GARDEN_ROUTE_AREAS) {
-    if (new RegExp(`\\b${s.replace(/\s+/g, "\\s+")}\\b`, "i").test(hay)) return s;
+    const re = new RegExp(`\\b${s.replace(/\s+/g, "\\s+")}\\b`, "gi");
+    const count = hay.match(re)?.length ?? 0;
+    if (count > bestCount) {
+      bestCount = count;
+      bestName = s;
+    }
   }
-  return null;
+  return bestName;
 }
 
 const PROPERTY_TYPES: [RegExp, string][] = [
