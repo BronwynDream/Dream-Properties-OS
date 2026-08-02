@@ -7,6 +7,10 @@
     {
       "path": "/api/sources/property24/refresh",
       "schedule": "0 5 * * 1"
+    },
+    {
+      "path": "/api/sources/dream/refresh",
+      "schedule": "0 3 * * *"
     }
   ]
 }
