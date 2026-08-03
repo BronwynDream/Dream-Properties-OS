@@ -152,7 +152,9 @@ export default function TopBarClient({
 
         <div className="topbar-tools">
           <span className="topbar-who">
-            <span className="topbar-who-name">{name}</span>
+            <Link href="/account/password" className="topbar-who-name" title="Account settings">
+              {name}
+            </Link>
             <span className={`topbar-who-role role-${role}`}>{role}</span>
           </span>
           <form action="/auth/signout" method="post">
@@ -220,6 +222,21 @@ export default function TopBarClient({
               </div>
             );
           })}
+
+          <div>
+            <div className="topbar-drawer-section">Account</div>
+            <Link
+              href="/account/password"
+              className={
+                isActiveHref(path, "/account/password")
+                  ? "topbar-drawer-tab topbar-drawer-tab-on"
+                  : "topbar-drawer-tab"
+              }
+              onClick={() => setDrawerOpen(false)}
+            >
+              Change password
+            </Link>
+          </div>
         </nav>
       </div>
     </header>

@@ -160,8 +160,11 @@ export async function inviteTeamMember(input: {
     };
   }
 
+  // Invite link is a code-exchange URL. Route it through /auth/callback so the
+  // session cookie gets written; then land the invitee on /account/password to
+  // set their initial password before they hit the rest of the app.
   const redirectTo = process.env.NEXT_PUBLIC_SITE_URL
-    ? `${process.env.NEXT_PUBLIC_SITE_URL}/login`
+    ? `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback?next=/account/password`
     : undefined;
 
   const { data: invite, error: inviteErr } =

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
@@ -64,6 +65,9 @@ export default function LoginPage() {
             <button className="primary" type="submit" disabled={loading}>
               {loading ? "Signing in…" : "Sign in"}
             </button>
+            <p className="auth-alt">
+              <Link href="/forgot-password">Forgot your password?</Link>
+            </p>
           </form>
         </div>
       </div>

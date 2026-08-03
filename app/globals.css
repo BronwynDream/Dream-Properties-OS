@@ -209,6 +209,45 @@ button.primary:disabled { opacity: 0.6; cursor: default; }
   margin-bottom: 14px;
 }
 
+.ok {
+  background: #ecf7f0;
+  color: #1c5c37;
+  border: 1px solid #c4e2cf;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 13px;
+  margin-bottom: 14px;
+}
+
+.auth-alt {
+  margin: 14px 0 0;
+  font-size: 13px;
+  text-align: center;
+  color: var(--estuary);
+}
+.auth-alt a { color: var(--estuary); text-decoration: underline; }
+
+.account-wrap {
+  max-width: 560px;
+  margin: 32px auto;
+  padding: 0 24px 48px;
+}
+.account-panel {
+  background: var(--white);
+  border: 1px solid #dfe4f0;
+  border-radius: 12px;
+  padding: 24px 26px 28px;
+  box-shadow: 0 4px 18px rgba(15, 42, 99, 0.06);
+}
+.account-signed-in {
+  margin: 0 0 18px;
+  padding: 10px 12px;
+  background: #f6f8fc;
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--estuary);
+}
+
 /* Dashboard shell */
 .app-head {
   background: var(--estuary);
@@ -1414,7 +1453,9 @@ button.doc-thumb {
 .topbar-who-name {
   font-size: 13px; color: rgba(255,255,255,0.88); font-weight: 500;
   max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  text-decoration: none;
 }
+a.topbar-who-name:hover { color: var(--white); text-decoration: underline; }
 .topbar-who-role {
   font-family: "JetBrains Mono", ui-monospace, monospace;
   font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
