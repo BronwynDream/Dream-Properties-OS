@@ -8,6 +8,80 @@ _Last updated: 2026-08-05_
 
 ---
 
+## DEDUP OVER-MERGE: FALLBACK COORDINATES (2026-08-05, later)
+
+Found during the browser verification of the source-chip fix, which is
+how it should work. Simon turned DW on, clicked a pin, and got a
+"market listing" panel offering eight other listings priced R895k to
+R60M as the same property.
+
+### The diagnosis (three queries, two wrong guesses)
+First guess was centroid-collapsed coords — the failure mode already
+documented for the WordPress scraper. Wrong: `centroid_rows` came back
+0. Second guess was a shared `prcl_key`, Pezula-style. Also wrong: every
+`prcl_key` was NULL. The row dump settled it — all nine rows sat on
+**-34.067203, 23.064679, identical to six decimal places**, with
+`geocode_source = 'exact'`.
+
+Two defects compounding in the geo-proximity rule in
+`lib/external-listings/dedup.ts`:
+
+1. **The fallback guard was checking a label the scraper doesn't set
+   honestly.** The rule excluded `geocode_source = 'centroid'` rows —
+   the author correctly anticipated exactly this problem — but Dream's
+   WordPress geocoder returns one fallback point for every address it
+   can't resolve and stamps it `exact`. The guard never fired.
+2. **The price gate had a null bypass.** `if (a.price != null && b.price
+   != null) { ...ratio check... }` then `union()` unconditionally. Two
+   price-on-request listings at 0m each unioned with everything present,
+   bridging R895k to R60M in a single hop. The 15% ratio never got a say.
+
+### Shipped (`7da34c2`)
+- Trust coordinates over labels: a point claimed by more than
+  `COLLISION_LIMIT` (3) rows is a fallback whatever it calls itself, and
+  those rows are excluded from proximity clustering. They can still merge
+  on lightstone id / prcl_key / normalised address — the signals that
+  carry evidence.
+- Absent price now means **don't cluster**, not cluster freely.
+- Same collision guard applied to the 150m property-match fallback, which
+  would otherwise have attached every collided row to whichever of our
+  properties sits nearest the fallback point. That one hadn't bitten yet
+  but is the same defect.
+- **`lib/external-listings/__tests__/dedup.collision.ts`** — first test in
+  the repo. Built from the nine real rows. `npm run test:dedup`. Uses
+  `npx --yes tsx` deliberately: adding tsx to devDependencies would
+  desync `package-lock.json` and break Vercel's `npm ci`.
+
+### Verification
+- Test **fails on the old code** (nine rows collapse to 1 group) and
+  **passes on the new** (9 groups). Checked by reverting both guards and
+  re-running, not by assuming.
+- Second assertion guards the other direction: a genuine cross-portal
+  duplicate (same house, 8m apart, 1.25% price difference) still merges.
+  A dedup fix that stops deduping is worthless.
+- `tsc --noEmit` and `next build` green with the test file in tree.
+- **Not yet run against Bon Bon.** The existing bad `dedup_group_id`
+  values persist until the clustering re-runs — the fix changes how
+  groups are computed, it doesn't retro-fix stored ones.
+
+### Loose ends
+- **Re-run clustering against live data** to clear the three known
+  over-merged groups (`f64ed20f` 9 listings, `8ad5feea` 8, `61374105` 3).
+  `rebuildDedupAndMatch` fires at the tail of every source refresh, so
+  "Refresh Dream listings" on /map should do it. Confirm afterwards with
+  the group-size query in this session's log.
+- **The upstream cause is untouched.** Dream's WordPress scraper is
+  geocoding to a fallback point and labelling it `exact`, and reading
+  listing addresses out of image filenames ("C13 Updated Photos",
+  "Angie", "Avril"). DW is Bronwyn's own website and should be the most
+  trustworthy source on the map; it is currently the least. Own arc.
+- `COLLISION_LIMIT = 3` is a judgement call. Three genuinely-identical
+  coordinates is implausible for distinct properties but not impossible
+  (sectional title). If real duplicates start escaping dedup, that's the
+  number to look at.
+
+---
+
 ## SOURCE-CHIP FILTERING + TREE TIDY (2026-08-05)
 
 First session run from Cowork against the local repo over the device
