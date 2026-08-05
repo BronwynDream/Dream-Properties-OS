@@ -60,6 +60,12 @@ export type ExternalRef = {
 export type ForSalePolygon = {
   prclKey: string;
   state: "os_exclusive" | "os_joint" | "os_sold" | "os_under_offer" | "os_other" | "market";
+  // Which source put this polygon on the map. OS-owned erven are "dream_os";
+  // market polygons carry the portal the listing came from. Without this the
+  // Sources chips can't filter the polygon layer — a user with every source
+  // off still saw coloured parcel fills and could click through to the
+  // market-listing panel (Simon, 2026-08-01).
+  source: SourceKey;
   propertyId?: string;
   listingId?: string;
   price?: number;
@@ -226,6 +232,18 @@ export default function MapView({
     () => {},
   );
 
+  // The for-sale-fill / ungeocoded-dots click handlers are bound to the layer
+  // ONCE and read their data through these refs. Binding them inside the
+  // install routine (as we did before) meant every re-install stacked another
+  // listener — harmless while the deps only changed on a data refetch, but a
+  // real leak now that toggling a source chip re-installs the layers.
+  const polyLookupRef = useRef<Map<string, ForSalePolygon>>(new Map());
+  const mergedPinsRef = useRef<MergedPin[]>(mergedPins);
+  const forSaleHandlersBoundRef = useRef(false);
+  useEffect(() => {
+    mergedPinsRef.current = mergedPins;
+  }, [mergedPins]);
+
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [enabledMandates, setEnabledMandates] = useState<Set<string>>(
     () => new Set(MANDATE_ORDER),
@@ -329,6 +347,38 @@ export default function MapView({
       return true;
     });
   }, [mergedPins, enabledMandates, enabledSources]);
+
+  // Mandate lookup so OS polygons can honour the Mandate chips the same way
+  // OS pins do.
+  const mandateByPropertyId = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const p of properties) m.set(p.id, p.mandateType);
+    return m;
+  }, [properties]);
+
+  // The polygon + dot layers are driven by these filtered arrays, NOT the raw
+  // props. Same visibility contract as visiblePins: source chip must be on,
+  // and for our own stock the mandate chip must be on too. Filtering the data
+  // (rather than adding a Mapbox filter expression) also disarms the click
+  // handlers for free — a hidden polygon isn't in the lookup, so clicking
+  // where it used to be can't open the market-listing panel.
+  const visibleForSalePolygons = useMemo(
+    () =>
+      forSalePolygons.filter((poly) => {
+        if (!enabledSources.has(poly.source)) return false;
+        if (poly.source === "dream_os" && poly.propertyId) {
+          const mandate = mandateByPropertyId.get(poly.propertyId);
+          if (mandate && !enabledMandates.has(mandate)) return false;
+        }
+        return true;
+      }),
+    [forSalePolygons, enabledSources, enabledMandates, mandateByPropertyId],
+  );
+
+  const visibleUngeocoded = useMemo(
+    () => ungeocoded.filter((u) => enabledSources.has(u.source)),
+    [ungeocoded, enabledSources],
+  );
 
   const visibleProperties = useMemo(
     () => properties.filter((p) => enabledMandates.has(p.mandateType)),
@@ -617,7 +667,12 @@ export default function MapView({
     const map = mapRef.current;
     if (!map) return;
 
-    const forSalePrclKeys = forSalePolygons.map((r) => r.prclKey);
+    const forSalePrclKeys = visibleForSalePolygons.map((r) => r.prclKey);
+
+    // Keep the click-handler lookup in step with what's actually rendered.
+    polyLookupRef.current = new Map<string, ForSalePolygon>(
+      visibleForSalePolygons.map((r) => [r.prclKey, r]),
+    );
 
     function installForSaleLayers(m: mapboxgl.Map) {
       // Parcels source must already be present (added by installErfLayer).
@@ -630,7 +685,7 @@ export default function MapView({
         if (m.getLayer(id)) m.removeLayer(id);
       }
 
-      if (forSalePolygons.length > 0) {
+      if (visibleForSalePolygons.length > 0) {
         m.addLayer(
           {
             id: "for-sale-fill",
@@ -640,7 +695,7 @@ export default function MapView({
             minzoom: 14,
             filter: ["in", ["get", "prcl_key"], ["literal", forSalePrclKeys]],
             paint: {
-              "fill-color": buildMatchExpr(forSalePolygons),
+              "fill-color": buildMatchExpr(visibleForSalePolygons),
               "fill-opacity": 0.35,
             },
           },
@@ -655,31 +710,33 @@ export default function MapView({
           minzoom: 14,
           filter: ["in", ["get", "prcl_key"], ["literal", forSalePrclKeys]],
           paint: {
-            "line-color": buildMatchExpr(forSalePolygons),
+            "line-color": buildMatchExpr(visibleForSalePolygons),
             "line-width": ["interpolate", ["linear"], ["zoom"], 14, 1.5, 18, 3],
             "line-opacity": 1.0,
           },
         });
       }
 
-      // Click + hover on the fill layer.
-      if (m.getLayer("for-sale-fill")) {
-        // Build a lookup map from prclKey → ForSalePolygon for click handler.
-        const prclLookup = new Map<string, ForSalePolygon>(
-          forSalePolygons.map((r) => [r.prclKey, r]),
-        );
+      // Click + hover on the fill layer — bound once, then left alone. A
+      // layer-scoped Mapbox listener whose layer is absent simply never
+      // fires, so it survives the teardown/re-add cycle above.
+      if (!forSaleHandlersBoundRef.current) {
+        forSaleHandlersBoundRef.current = true;
         m.on("click", "for-sale-fill", (e) => {
           const feature = e.features?.[0];
           if (!feature) return;
           const pk = feature.properties?.prcl_key as string | undefined;
           if (!pk) return;
-          const poly = prclLookup.get(pk);
+          // Lookup holds only the polygons currently allowed by the chips, so
+          // a filtered-out source can't open the preview panel.
+          const poly = polyLookupRef.current.get(pk);
           if (!poly) return;
           // Resolve to the merged pin key so the existing preview panel works.
+          const pins = mergedPinsRef.current;
           const matchedPin = poly.propertyId
-            ? mergedPins.find((p) => p.matchedPropertyId === poly.propertyId || p.our?.id === poly.propertyId)
+            ? pins.find((p) => p.matchedPropertyId === poly.propertyId || p.our?.id === poly.propertyId)
             : poly.listingId
-            ? mergedPins.find((p) => p.externals.some((ex) => ex.id === poly.listingId))
+            ? pins.find((p) => p.externals.some((ex) => ex.id === poly.listingId))
             : null;
           if (matchedPin) setSelectedKey(matchedPin.key);
         });
@@ -695,7 +752,7 @@ export default function MapView({
       if (m.getSource("ungeocoded-externals")) {
         (m.getSource("ungeocoded-externals") as mapboxgl.GeoJSONSource).setData({
           type: "FeatureCollection",
-          features: ungeocoded.map((u) => ({
+          features: visibleUngeocoded.map((u) => ({
             type: "Feature" as const,
             geometry: { type: "Point" as const, coordinates: [u.lng, u.lat] },
             properties: { id: u.id, source: u.source, price: u.price, headline: u.headline },
@@ -706,7 +763,7 @@ export default function MapView({
           type: "geojson",
           data: {
             type: "FeatureCollection",
-            features: ungeocoded.map((u) => ({
+            features: visibleUngeocoded.map((u) => ({
               type: "Feature" as const,
               geometry: { type: "Point" as const, coordinates: [u.lng, u.lat] },
               properties: { id: u.id, source: u.source, price: u.price, headline: u.headline },
@@ -732,7 +789,7 @@ export default function MapView({
           if (!feature) return;
           const extId = feature.properties?.id as string | undefined;
           if (!extId) return;
-          const matchedPin = mergedPins.find((p) =>
+          const matchedPin = mergedPinsRef.current.find((p) =>
             p.externals.some((ex) => ex.id === extId),
           );
           if (matchedPin) setSelectedKey(matchedPin.key);
@@ -768,7 +825,7 @@ export default function MapView({
       map.off("style.load", onStyleLoad);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [forSalePolygons, ungeocoded]);
+  }, [visibleForSalePolygons, visibleUngeocoded]);
 
   // Split-duplicates mode: expand each merged pin into one pin per source.
   // The split rows sit at the same coord with a tiny angular offset so the
@@ -1146,7 +1203,7 @@ export default function MapView({
               checked={showErf}
               onChange={(e) => setShowErf(e.target.checked)}
             />
-            Erf boundaries
+            Cadastral outlines
             <span
               style={{
                 marginLeft: "auto",
@@ -1159,6 +1216,23 @@ export default function MapView({
               z ≥ 14
             </span>
           </label>
+          {/* The cadastre is a survey layer, not listing data: it draws every
+              erf in the deeds/GIS extract whether or not anything is for sale,
+              and clicking one returns municipal valuation data. Saying so
+              inline stops the "what are these polygons?" question that came up
+              when a director had every source chip off and still saw fills. */}
+          <p
+            style={{
+              margin: "4px 0 0 24px",
+              fontSize: 10,
+              lineHeight: 1.45,
+              color: "#8090b5",
+              fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+            }}
+          >
+            Every surveyed erf + muni valuation. Not listings — unaffected by
+            the Sources filter.
+          </p>
 
           {isAdmin && <RefreshDreamButton />}
           {isAdmin && <RefreshMuniButton />}

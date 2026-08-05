@@ -4,7 +4,83 @@ Running log of what's decided, built, and next. Updated at the end of each worki
 session. `PROJECT.md` remains the canonical business/design doc; this file is the
 "where are we right now" companion.
 
-_Last updated: 2026-08-01_
+_Last updated: 2026-08-05_
+
+---
+
+## SOURCE-CHIP FILTERING + TREE TIDY (2026-08-05)
+
+First session run from Cowork against the local repo over the device
+bridge. Cleared the two map loose ends carried forward from 2026-08-01
+and tidied the working tree.
+
+### Shipped
+- **Source chips now filter the polygon + dot layers.** `ForSalePolygon`
+  gained a `source: SourceKey` field, set server-side in `app/map/page.tsx`
+  (`dream_os` for OS erven, the portal for market rows). MapView derives
+  `visibleForSalePolygons` / `visibleUngeocoded` and drives the
+  `for-sale-fill`, `for-sale-outline` and `ungeocoded-dots` layers off
+  those instead of the raw props. Closes Simon's bug: with every source
+  chip off you still saw coloured parcel fills, and clicking one opened
+  the market-listing panel.
+- **Click-through guard comes for free.** Because the filtering happens on
+  the *data* rather than via a Mapbox filter expression, the click
+  handler's lookup only ever holds polygons that are actually rendered.
+  A hidden polygon isn't in the lookup, so the handler bails. No separate
+  guard to keep in sync.
+- **OS polygons honour the Mandate chips too.** Same visibility contract
+  as `visiblePins` — an OS erf whose mandate chip is off no longer paints.
+- **Listener-leak fix (found while doing the above).** The
+  `for-sale-fill` click/hover handlers were registered inside
+  `installForSaleLayers`, which re-runs on every data change. Harmless
+  while deps only changed on a refetch; a real leak once chip toggles
+  re-install the layers. Handlers are now bound once behind
+  `forSaleHandlersBoundRef` and read current data through
+  `polyLookupRef` / `mergedPinsRef`.
+- **"Erf boundaries" renamed to "Cadastral outlines"** with an inline
+  caption: "Every surveyed erf + muni valuation. Not listings — unaffected
+  by the Sources filter." This was the other half of Simon's confusion —
+  the checkbox toggles a survey layer with its own muni-valuation popup,
+  and nothing in the UI said so.
+
+### Tidy
+- Eleven macOS duplicate-copy artifacts (`MapView 2.tsx` through
+  `MapView 5.tsx`, `page 2.tsx`, `property24 2.ts`, `route 2.ts`,
+  `0063_no_snap_sectional_title 2.sql`) plus two raw `.eml` drops moved to
+  `_to_delete/`. All were older snapshots of files git already tracks —
+  nothing unique lost. **Simon still needs to delete `_to_delete/`**; the
+  device bridge cannot unlink files.
+- `.gitignore`: added `_to_delete/` and `*.eml`.
+- `tsconfig.json`: excluded `_to_delete` (the stale copies were failing
+  typecheck with TS2307 while they sit in-tree). Remove that exclude once
+  the folder is gone.
+- **PR #56 was already merged** (`a1bb45c`) and `0064_no_snap_large_parcels.sql`
+  is on main — that loose end from last session is closed. Repo and Bon Bon
+  are in sync.
+
+### Verification
+- `tsc --noEmit` green, `next build` green (49 routes). **Build was run in
+  the cloud container, not on the Mac** — `next build` over the device
+  bridge stalled ~10 min without writing a byte to `.next`, because webpack
+  reads several thousand `node_modules` files through the mount. Source
+  was tarballed, staged, then `npm ci` + build in the container. Worth
+  remembering as the pattern for any future Cowork session.
+- **NOT yet loaded in a browser.** Per the 2026-08-01 lesson, map-layer
+  changes must be visually verified before merge. Simon to run
+  `npm run dev`, open /map, zoom past z14, and toggle each source chip —
+  fills and dots should appear and vanish with the chips, and with all
+  four off only cadastral outlines (if that box is ticked) should remain.
+
+### Environment notes for future Cowork sessions
+- Git writes in the bridged folder leave stale `.git/*.lock` and
+  `tmp_obj_*` files behind, because the mount refuses `unlink`. Every
+  write op needs the locks moved aside first (`mv` within the mount
+  works; `mv` to `/tmp` does not — it crosses filesystems and degrades
+  to copy+unlink). Commits succeed once cleared.
+- `git commit` needs `-c user.name -c user.email` passed explicitly; the
+  bridge user has no git identity.
+- `pkill -f "next build"` kills the calling shell — the pattern matches
+  the bash -c command line itself. Bracket a character.
 
 ---
 

@@ -308,6 +308,7 @@ export default async function MapPage() {
     polygonByKey.set(r.prclKey, {
       prclKey: r.prclKey,
       state: deriveOsState(r),
+      source: "dream_os",
       propertyId: r.id,
       price: r.askingPrice ?? undefined,
       headline: r.listingHeadline ?? undefined,
@@ -325,6 +326,10 @@ export default async function MapPage() {
     polygonByKey.set(e.prcl_key, {
       prclKey: e.prcl_key,
       state: "market",
+      // Carries the portal through to the client so the Sources chips can
+      // filter this polygon out. dream_website never reaches here (the guard
+      // above only admits P24 / PP), so the cast is safe.
+      source: e.source as SourceKey,
       listingId: e.id,
       price: e.price != null ? Number(e.price) : undefined,
       headline: e.headline ?? undefined,
