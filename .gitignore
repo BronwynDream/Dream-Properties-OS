@@ -32,3 +32,9 @@ tsconfig.tsbuildinfo
 
 # Bronwyn's contract templates — provenance only, model as data
 _contract_templates/
+
+# Scratch: files moved out of the tree pending deletion by Simon
+_to_delete/
+
+# Raw email drops (source material, not code)
+*.eml
