@@ -244,15 +244,45 @@ export async function rebuildDedupAndMatch(
   }
 
   // Geo-proximity within CLUSTER_METERS AND price within CLUSTER_PRICE_RATIO.
-  // Excludes centroid-fallback rows: when Mapbox can't resolve a specific
-  // address the scraper drops the pin at a shared suburb/estate centroid, and
-  // every unresolved Leisure Isle listing then lands on the same coordinate.
-  // The 20m rule would union them all (and transitively drag in mismatched
-  // price bands via the 15% ratio chain — one R19.9M pin dragging in R60M and
-  // R895k listings that never should have clustered). Centroid rows can still
-  // join clusters on lightstone id / prcl_key / normalised address above.
+  //
+  // Two guards sit in front of this rule, both learned from real damage:
+  //
+  // 1. COORDINATE COLLISIONS. When a geocoder can't resolve a specific address
+  //    it returns one fallback point for everything it gave up on. The scraper
+  //    used to label those rows geocode_source='centroid' and this rule
+  //    excluded them by that flag — but Dream's WordPress scraper labels them
+  //    'exact', so the flag guard never fired. On 2026-08-05 nine Dream-website
+  //    listings were found sharing -34.067203, 23.064679 to six decimal places,
+  //    merged into one map pin spanning R895k to R60M. Trust the coordinates,
+  //    not the label: a point claimed by more than COLLISION_LIMIT rows is a
+  //    fallback whatever it calls itself. Collided rows can still join a
+  //    cluster via lightstone id, prcl_key or normalised address above — the
+  //    paths that carry real evidence — they just can't cluster on proximity
+  //    alone.
+  //
+  // 2. MISSING PRICES. This block used to skip the ratio check when either
+  //    price was null and then union anyway, so a price-on-request listing
+  //    merged with every neighbour regardless of value. Two POR rows were
+  //    enough to chain R895k to R60M in a single hop and defeat the 15% gate
+  //    entirely. A listing with no price carries no evidence that it is the
+  //    same property as the one beside it, so proximity alone must not merge
+  //    it. Absent price now means "don't cluster", not "cluster freely".
+  const COLLISION_LIMIT = 3;
+  const coordKey = (r: Row) =>
+    `${Number(r.lat).toFixed(6)},${Number(r.lng).toFixed(6)}`;
+  const rowsPerCoord = new Map<string, number>();
+  for (const r of rows) {
+    if (r.lat == null || r.lng == null) continue;
+    const k = coordKey(r);
+    rowsPerCoord.set(k, (rowsPerCoord.get(k) ?? 0) + 1);
+  }
+
   const geo = rows.filter(
-    (r) => r.lat != null && r.lng != null && r.geocode_source !== "centroid",
+    (r) =>
+      r.lat != null &&
+      r.lng != null &&
+      r.geocode_source !== "centroid" &&
+      (rowsPerCoord.get(coordKey(r)) ?? 0) <= COLLISION_LIMIT,
   );
   for (let i = 0; i < geo.length; i++) {
     for (let j = i + 1; j < geo.length; j++) {
@@ -263,11 +293,11 @@ export async function rebuildDedupAndMatch(
         { lat: Number(b.lat), lng: Number(b.lng) },
       );
       if (d > CLUSTER_METERS) continue;
-      if (a.price != null && b.price != null) {
-        const min = Math.min(a.price, b.price);
-        const max = Math.max(a.price, b.price);
-        if (max > 0 && (max - min) / max > CLUSTER_PRICE_RATIO) continue;
-      }
+      // No price on either side → no evidence of sameness → no merge.
+      if (a.price == null || b.price == null) continue;
+      const min = Math.min(a.price, b.price);
+      const max = Math.max(a.price, b.price);
+      if (max > 0 && (max - min) / max > CLUSTER_PRICE_RATIO) continue;
       uf.union(a.id, b.id);
     }
   }
@@ -362,7 +392,15 @@ export async function rebuildDedupAndMatch(
         if (lt.every((t) => p.tokens.has(t))) return p.id;
       }
     }
-    if (r.lat != null && r.lng != null) {
+    // Weakest signal, and the same collision guard applies: a coordinate that
+    // dozens of listings share is the geocoder's shrug, not a location. Left
+    // ungated it would attach every collided row to whichever of our
+    // properties happens to sit within 150m of the fallback point.
+    if (
+      r.lat != null &&
+      r.lng != null &&
+      (rowsPerCoord.get(coordKey(r)) ?? 0) <= COLLISION_LIMIT
+    ) {
       let best: { id: string; d: number } | null = null;
       for (const p of propsWithGeo) {
         const d = metresBetween(
