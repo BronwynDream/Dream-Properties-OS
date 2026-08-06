@@ -130,14 +130,39 @@ training signal available — a human lawyer-adjacent correction on a real deal.
 Overrides accumulate as candidate variants for the library, which is how the
 clause library grows from use rather than only from bulk AI extraction.
 
-## Slice 1 — mandates only, all four (agreed 2026-08-05)
+## Slice 1 — mandates (agreed 2026-08-05, corrected 2026-08-06)
 
-Scope: Sole, Exclusive, Open, Joint. Business Mandate is out (different
-document — sells a business, not a property). Agreement of Sale is out.
+**Sole and Exclusive are the same thing at Dream** (Simon, 2026-08-06). So the
+scope is *three* property mandates, not four: **Exclusive/Sole, Joint, Open**.
+Business Mandate is out — it sells a business, not a property. Agreement of
+Sale is out.
 
-Rationale: mandates are simple enough to prove the machinery — clause library,
-fill resolver, entry-point context, edit-then-PDF — without betting the hardest
-legal document on an unproven engine.
+Two consequences, both to handle in this slice:
+
+1. **`mandate.type` has redundant enum values.** It carries `sole`, `joint`,
+   `open` and `exclusive`, where `sole` and `exclusive` mean one thing. A
+   mandate stored under either value is invisible to a filter on the other, so
+   `/mandates` counts and the expiry watchlist can both undercount.
+   Consolidate on `exclusive` — Bronwyn's master is titled "EXCLUSIVE MANDATE"
+   — and migrate existing `sole` rows. Check what production actually holds
+   before assuming:
+
+   ```sql
+   select type, count(*) from mandate group by type order by 2 desc;
+   ```
+
+2. **The existing template is a placeholder built from the wrong document.**
+   `MandateSole.tsx`'s own header records it: *"Structure follows Bronwyn's
+   Business Mandate template ... adapted for a residential / land sale. When
+   Bronwyn ships a real property-mandate .docx template, we adjust the clause
+   language here in-place."* The real masters arrived 2026-08-04. Its clause
+   wording is **not** Bronwyn's, so it must be replaced wholesale from
+   `docs/templates/dream-properties-exclusive-mandate-template.md` rather than
+   edited toward correctness.
+
+Rationale for mandates first: simple enough to prove the machinery — clause
+library, fill resolver, entry-point context, edit-then-PDF — without betting
+the hardest legal document on an unproven engine.
 
 ### Steps
 
