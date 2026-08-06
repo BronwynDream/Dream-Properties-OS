@@ -207,7 +207,11 @@ alter table mandate add column if not exists term_months         int;
 comment on column mandate.asking_price is
   'Marketing price agreed in the mandate. Distinct from listing.asking_price, which can move without a new mandate.';
 comment on column mandate.term_months is
-  'Mandate period. Exclusive master fixes 12; Open and Joint leave it blank for the agent.';
+  'Mandate period in months. Always asked, never defaulted (Simon, 2026-08-05) - the Exclusive master hardcodes 12 but Dream negotiates it per mandate.';
+comment on column mandate.commission_incl_vat is
+  'True = the agreed percentage already includes VAT. This selects a different clause VARIANT, not just a display flag: the masters read "plus VAT thereon", which is exclusive wording. Printing an inclusive percentage into that sentence overstates commission by 15% on a signed contract.';
+comment on column mandate.commission_pct is
+  'Agreed commission percentage. No default - masters show 5% but Dream also writes 3.5%.';
 
 -- ---------------------------------------------------------------------------
 -- TRIGGERS + RLS

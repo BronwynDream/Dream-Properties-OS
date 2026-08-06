@@ -195,12 +195,63 @@ discovered on a signed contract).
 - Discovering that `mandate` rows already in production depend on the `notes`
   string format being parsed anywhere.
 
+## Commercial terms: always asked, never defaulted (Simon, 2026-08-05)
+
+> *"There's no hard-coded commission. The agent should just be interviewed when
+> they are asked for an agreement... whether it's including VAT or without VAT,
+> because that's also important. Whether it's exclusive for a term, a 12-month
+> term — just interview the agent as you're building the contract."*
+
+So no commission default, no term default, per mandate type or otherwise. Every
+mandate asks:
+
+| Field | Type | Note |
+|---|---|---|
+| `commission_pct` | numeric | 5, 3.5, whatever was negotiated. No default. |
+| `commission_incl_vat` | boolean | Changes the clause **wording**, not just a number — see below. |
+| `term_months` | int | No default. Drives `expiry_date = signed_date + term`. |
+| `asking_price` | numeric | Prefilled from `listing.asking_price` when arriving from a listing, editable. |
+
+### The VAT flag is a clause variant, not a checkbox
+
+This is the part that would silently produce a wrong contract if treated as a
+formatting flag. Bronwyn's masters read:
+
+> "Commission shall be calculated at 5% (Five percent) of the purchase price,
+> **plus VAT thereon**, by the Seller on fulfillment of this mandate."
+
+"Plus VAT thereon" is VAT-**exclusive** wording. If an agent negotiates a
+commission that is VAT-inclusive, the sentence itself has to change — printing
+an inclusive percentage into a clause that says "plus VAT" overstates Dream's
+commission by 15% on the face of a signed document.
+
+So `clause.key = 'mandate.commission'` carries two variants:
+
+- **exclusive** — "...of the purchase price, plus VAT thereon..." (verbatim master)
+- **inclusive** — wording to be confirmed with Bronwyn, since the masters have
+  no inclusive version. Do not invent it: get her words.
+
+`applies_when` selects on `commission_incl_vat`, so the agent answers a plain
+question and the right sentence is chosen for them.
+
+### Tokenising the masters
+
+The Exclusive and Open masters hardcode both figures in prose, and the prose
+spells them out in words. Both need tokens plus a number-to-words helper (one
+already exists in `MandateSole.tsx` for Rand amounts):
+
+- `5% (Five percent)` → `{{commission_pct}}% ({{commission_pct_words}} percent)`
+- `12 (Twelve) months` → `{{term_months}} ({{term_months_words}}) months`
+
+Note the Exclusive master's tail provision — commission still due if a
+purchaser introduced during the mandate buys within **six months of expiry** —
+is a separate fixed period, not the mandate term. Do not tokenise it to the
+same value.
+
 ## Open questions for Bronwyn
 
-- Commission is hardcoded 5% in the Exclusive and Open masters but a blank
-  `__%` in the Joint. Is 5% the default to pre-fill, and is it ever varied?
-- Exclusive master fixes the term at 12 months; Open and Joint leave it blank.
-  Default term per mandate type?
+- **VAT-inclusive commission wording.** The masters only have the
+  "plus VAT thereon" version. Her words needed for the inclusive variant.
 - The Open mandate has the full PPRA Immovable Property Condition Report
   appended (11 questions plus additional-information block). Should that ship
   as part of the Open mandate document, or as a separately generated annexure
