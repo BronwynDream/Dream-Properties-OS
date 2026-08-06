@@ -8,6 +8,72 @@ _Last updated: 2026-08-05_
 
 ---
 
+## DOCUMENT ENGINE — PLAN 007 + MIGRATION 0065 (2026-08-05, evening)
+
+Bronwyn emailed thirteen master templates on 2026-08-04. Simon asked for a
+documents section wired through from the other pages, with automatic fill or
+an AI interview depending on how the agent arrives.
+
+### Decisions locked with Simon
+- **Output**: editable inside the OS, PDF only at finalisation. Not a DOCX
+  round-trip — that would let someone edit offline and bypass the clause logic.
+- **First slice**: mandates only, all four (Sole exists; Exclusive, Open, Joint
+  to build). Business Mandate excluded — it sells a business, not a property.
+- **Interview**: hybrid. Deterministic questions for the clause toggles the
+  masters already enumerate; AI only for drafting free-text suspensive
+  conditions, and it must propose from the clause library before writing new.
+- **Template storage**: three layers — skeleton in code, clause bodies in the
+  database, field values per document. Simon asked for a recommendation here;
+  the deciding factor was his clause-library plan (Bronwyn keeps suspensive
+  variants by entity type, and he intends to AI-extract more from past
+  contracts). Dozens of variants per slot is a table, not a deploy.
+
+### Domain correction worth keeping
+**There is no separate Offer to Purchase.** The Agreement of Sale IS the offer
+— clause 13 of Bronwyn's master makes the first signature an irrevocable offer
+until accepted. One document, two signature stages, not two documents. Simon
+had assumed two.
+
+### Shipped (`c35c279`)
+- `plans/007-document-engine.md` — architecture, fill-source rule (record →
+  derived → asked), entry-point context table, interview split, learning loop,
+  PDF recommendation with the rejected alternative and why.
+- `supabase/migrations/0065_document_engine.sql` — clause, clause_variant,
+  doc_template, doc_template_slot, document_draft; typed asking_price /
+  commission_pct / commission_incl_vat / term_months on mandate (Phase 1
+  concatenated these into `mandate.notes` as a string).
+  `clause_variant.source` separates verbatim-from-master / agent-edit /
+  ai-extracted / manual, and AI-extracted variants start `approved = false` so
+  they cannot reach a binding document unread.
+- `docs/templates/` — extracted text of all nine text-bearing masters. The
+  clause library seeds from these verbatim.
+
+### Audit findings on Phase 1 (worth knowing before extending it)
+The existing mandate flow writes a `mandate` row only. It never creates a
+`document` or `document_link` row, never uploads a file, and `mandate.document_id`
+stays null — `actions.ts` flags this as intended Phase 2 work. Rendering is
+React→HTML with a print stylesheet in `DocumentPage.tsx`; there is no PDF
+engine in the repo at all.
+
+### Next
+- Seed the clause library from `docs/templates/`, clause by clause, verbatim.
+- `lib/documents/resolve.ts` — the fill resolver.
+- `/documents` hub + entry points + draft editor.
+- PDF: `puppeteer-core` + `@sparticuz/chromium`, isolated behind
+  `lib/documents/render.ts` so it can be swapped if the Vercel bundle complains.
+
+### Open for Bronwyn (in the plan)
+Commission default (5% hardcoded in Exclusive and Open, blank in Joint);
+default mandate term per type; and whether the PPRA condition report appended
+to the Open mandate should be a shared annexure any mandate can attach —
+`lib/ppraDisclosure.ts` already models the questions, so it wants to be shared.
+
+### Verification
+SQL parse-checked with pglast (42 statements); every referenced table resolves
+to an earlier migration. **Migration not applied to Bon Bon yet.**
+
+---
+
 ## DEDUP OVER-MERGE: FALLBACK COORDINATES (2026-08-05, later)
 
 Found during the browser verification of the source-chip fix, which is
