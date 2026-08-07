@@ -8,6 +8,79 @@ _Last updated: 2026-08-05_
 
 ---
 
+## DOCUMENT VAULT — STATUS READ + TWO CORRECTIONS (2026-08-06)
+
+Simon asked where the document vault stands and how agents reach documents,
+mandates and templates. Answering it properly surfaced two things worth
+carrying forward.
+
+### Honest status of the vault
+There is a document **viewer** attached to the Property Record and a mandate
+**printer** that stores nothing. There is no vault.
+
+- **Ways in, all four via a property**: Property Record → Documents section
+  (grouped per transfer, 1-hour signed URLs); Property Record → Prepare
+  mandate → editor → browser print; `/triage` (the ingestion path that
+  actually creates `document` rows); `/mandates` (mandate data rows, not
+  documents).
+- **No nav entry.** Records = Properties / Map / Contacts / Erf Lookup /
+  Estates. Deals = Mandates / Pipeline / Viewings / Compliance. Admin =
+  Triage / Dupes / Team / Settings. No Documents anywhere, and
+  `app/documents/` has no `page.tsx` — it is a folder of shared components,
+  so `/documents` would 404.
+- **Nothing generated is kept.** Saving a mandate writes a `mandate` row only.
+  No `document` row, no file, no version. "What did we send the Wilsons in
+  March" is unanswerable from the OS.
+- Pre-promotion commits (7 The Grove, Plot A4, Oupad) have no `document` rows,
+  so their files exist but don't show. Everything still lives in the `staging`
+  bucket rather than `documents` / `fica`.
+
+### Template count, settled
+Thirteen files from Bronwyn reduce to **eight generative templates plus one
+annexure**: three property mandates (Exclusive/Sole, Joint, Open), Business
+mandate, two sale agreements (house, plot), movables, addendum (the plain and
+&-movables versions are one template with a toggle), and the PPRA disclosure
+as a shared annexure with house/plot question sets. The two letterhead files
+aren't templates — that's `DocumentPage.tsx`.
+
+### Correction 1 — Sole IS Exclusive at Dream (Simon, 2026-08-06)
+Flagged as a possible discrepancy because `MandateSole.tsx` prints the heading
+"SOLE MANDATE" over a clause granting "an EXCLUSIVE MANDATE", and because SA
+practice often distinguishes them. Simon: they are the same thing at Dream.
+Not a defect. **But `mandate.type` carries both `sole` and `exclusive` as
+separate enum values for one concept**, so a mandate saved under either is
+invisible to a filter on the other — `/mandates` and the expiry watchlist can
+both undercount. Consolidate on `exclusive` after checking production:
+`select type, count(*) from mandate group by type order by 2 desc;`
+
+### Correction 2 — the one existing template came from the wrong document
+`MandateSole.tsx`'s own header: *"Structure follows Bronwyn's Business Mandate
+template ... adapted for a residential / land sale. When Bronwyn ships a real
+property-mandate .docx template, we adjust the clause language here in-place."*
+It was a placeholder built from the **business-sale** contract while waiting
+for the real masters. Those arrived 2026-08-04. Its wording is not Bronwyn's,
+so replace it wholesale from
+`docs/templates/dream-properties-exclusive-mandate-template.md` — editing it
+clause by clause would just be guessing which lines happen to match.
+
+### Also flagged
+Schema has a `lease` agreement type but Bronwyn sent no lease or rental
+template. Either a missing document or a dead enum value — ask.
+
+### Next session starts here
+1. Apply migration 0065 to Bon Bon (still not applied).
+2. `select type, count(*) from mandate group by type;` then consolidate
+   sole → exclusive.
+3. Seed the clause library from `docs/templates/`, verbatim.
+4. `lib/documents/resolve.ts`, then the `/documents` hub, entry points,
+   editor, PDF.
+
+Still needed from Bronwyn: her wording for a VAT-inclusive commission clause
+(her masters only have "plus VAT thereon"), and whether the PPRA condition
+report is a shared annexure or stays inside the Open mandate.
+
+---
+
 ## DOCUMENT ENGINE — PLAN 007 + MIGRATION 0065 (2026-08-05, evening)
 
 Bronwyn emailed thirteen master templates on 2026-08-04. Simon asked for a
