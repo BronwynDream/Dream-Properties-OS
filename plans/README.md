@@ -16,6 +16,7 @@ your row when done.
 | 005  | Replace map pins with cadastral polygon shading | P1 | M | — | DONE (merged 2026-07-27 as `f4af39e` + `49e9c45`; migration 0045 pending manual application in Supabase Studio) |
 | 006  | Contact CRM — party search + role timeline | P1 | M | — | DONE (merged 2026-07-27 as `86baf7f` + `d04a3c6`; migration 0046 pending manual application in Supabase Studio) |
 | 007  | Document engine — template library, clause library, context-aware fill | P1 | L | 006 | IN PROGRESS (planned 2026-08-05; migration 0065 written, not yet applied. Slice 1 = four mandates) |
+| 008  | Contact CRM v2 — agent contact books, interest matching, compliant outreach | P1 | L | 006 | IN PROGRESS (planned 2026-08-06; migration 0066 written, not applied. Slice 1 = import + interests + consent; bulk send GATED on NCC registration) |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
 
