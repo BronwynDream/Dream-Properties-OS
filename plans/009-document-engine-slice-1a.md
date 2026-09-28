@@ -690,14 +690,15 @@ For the human/agent who owns this next:
   `app/properties/[id]/documents/mandate/new/MandateEditor.tsx:6` still
   imports it and removing the file mid-session would break the mandate
   editor for Bronwyn.
-- **VAT-inclusive commission wording is a pending Bronwyn ask** (plan
+- **DECIDED 2026-09-28 (Simon, confirmed with Bronwyn): **"plus VAT thereon" is final** and is the only seeded commission wording. VAT-inclusive commission happens in ~1 in 20 mandates a year; handle it as a per-document manual edit of the commission clause in the slice-1b draft editor (flagged on the document). Do not seed an inclusive variant. Seed source is `docs/templates/2026-final/`.** The note below is superseded.
+- ~~**VAT-inclusive commission wording is a pending Bronwyn ask** (plan
   007 lines 278-280). The seed deliberately omits that variant so the
   slice-1b editor prompts an agent for it rather than silently defaulting
   to guessed text. When Bronwyn's wording arrives, add a new
   `clause_variant` on `mandate.commission` labelled e.g. `'Inclusive
   VAT'` with `applies_when = '{"commission_incl_vat": true}'::jsonb`
   and `is_default = false` (the exclusive variant stays default because
-  it matches the master).
+  it matches the master).~~
 - **The `sole` enum value is now deprecated but still tolerated.** Do
   not later "clean it up" by dropping it from the enum without a schema
   rebuild plan — Postgres cannot drop an enum value with an outstanding
@@ -707,8 +708,8 @@ For the human/agent who owns this next:
 ## Follow-ups explicitly deferred out of this plan
 
 - Slice 1b — resolver, `/documents` hub, entry-point wiring, draft
-  editor, PDF renderer. (Plan 007's remaining scope. Will become
-  plan 013 after Bronwyn's VAT-inclusive wording answer arrives.)
+  editor, PDF renderer. (Plan 007's remaining scope. Now unblocked:
+  becomes plan 013. VAT decision recorded above.)
 - Consolidating the `.mandate-sole` CSS class in `app/globals.css:1899`.
   Cosmetic; touching global CSS for this alone risks incidental
   regressions. Slice 1b will retire it with the template rewrite.

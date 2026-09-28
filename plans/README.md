@@ -16,7 +16,7 @@ Plans 007 and 008 came out of standalone Simon+Claude sessions, not from an impr
 | 004  | Firecrawl Property24 scraper as a new `external_listing` source | P2 | M | — | DONE (merged 2026-07-26 as `dd17bd2`; `FIRECRAWL_API_KEY` set in Vercel) |
 | 005  | Replace map pins with cadastral polygon shading | P1 | M | — | DONE (merged 2026-07-27 as `f4af39e` + `49e9c45`; migration 0045 pending manual application in Supabase Studio) |
 | 006  | Contact CRM — party search + role timeline | P1 | M | — | DONE (merged 2026-07-27 as `86baf7f` + `d04a3c6`; migration 0046 pending manual application in Supabase Studio) |
-| 007  | Document engine — template library, clause library, context-aware fill | P1 | L | 006 | IN PROGRESS (design done 2026-08-05; slice 1a broken out into plan 009; slice 1b = resolver + `/documents` hub + editor + PDF, still to be planned once Bronwyn's VAT-inclusive wording arrives) |
+| 007  | Document engine — template library, clause library, context-aware fill | P1 | L | 006 | IN PROGRESS (design done 2026-08-05; slice 1a broken out into plan 009; slice 1b = resolver + `/documents` hub + editor + PDF, unblocked 2026-09-28: "plus VAT" is final, inclusive is a rare manual edit; plan as 013) |
 | 008  | Contact CRM v2 — agent contact books, interest matching, compliant outreach | P1 | L | 006 | IN PROGRESS (planned 2026-08-06; migration 0066 written, not applied. Slice 1 = import + interests + consent; bulk send GATED on NCC registration) |
 | 009  | Document engine slice 1a — apply migration 0065, consolidate `mandate.type` sole→exclusive, seed clause library | P1 | M | 007 (design) | TODO |
 | 010  | Dependency vulnerability sweep — `npm audit fix` non-breaking (mailparser, pdfjs-dist, transitives) | P1 | S | — | TODO |
