@@ -1,4 +1,4 @@
-# Plan 011: Intake commit-path integrity — surface parse failures, catch link-insert errors
+# Plan 011: Intake commit-path integrity — surface parse failures, catch link-insert errors, reject non-property subjects, split combined-name purchasers
 
 > **Executor instructions**: Follow this plan step by step. Run every
 > verification command and confirm the expected result before moving to the
@@ -15,18 +15,25 @@
 ## Status
 
 - **Priority**: P2
-- **Effort**: S (one session; ~2–3 hours)
-- **Risk**: LOW — both changes add signal (error surfacing, error
-  logging), remove nothing, do not touch commit_batch RPC semantics.
-  Every write path stays functionally equivalent when nothing fails.
+- **Effort**: M (one focused session; ~4–6 hours after the 2026-09-28 walkthrough extended the scope)
+- **Risk**: LOW — every change adds signal or a defensive gate;
+  nothing removes existing behaviour on the happy path. The one-line
+  extract-prompt change is the highest-risk item (LLM regressions on
+  edge cases) — verify against a few real intake batches before merge.
 - **Depends on**: none (safe to run before or after plan 010)
 - **Category**: correctness / bug
-- **Planned at**: commit `042b246`, 2026-09-28
+- **Planned at**: commit `042b246`, 2026-09-28. Extended 2026-09-28 evening
+  after the live walkthrough (`docs/qa/2026-09-28-live-walkthrough.md`)
+  found two more intake-time defects (#4B non-property subjects auto-become
+  properties; #5A LLM extract copies "X and Y" as one purchaser).
 
 ## Why this matters
 
-Two silent-failure sites in the intake commit pipeline. Both discovered
-in the /improve audit (2026-09-28).
+Four intake defects in one plan, because the fixes are all in the same
+two files (`lib/intake/*`, `app/api/intake/email/route.ts`) and travel
+better as one atomic change than four small ones. Items 1 and 2 came
+out of the 2026-09-28 audit; items 3 and 4 came out of the live
+walkthrough that afternoon.
 
 **1. `lib/intake/extract-batch.ts:63-65` — PDF/DOCX parse errors swallowed.**
 
@@ -101,6 +108,83 @@ Every uncaught link failure loses a document from the record permanently
 unless the operator notices the batch has "filed 0" when they expected
 "filed 3".
 
+**3. `app/api/intake/email/route.ts:519-556` — non-property subjects auto-create property rows.**
+
+```ts
+async function resolveProperty(supabase, subjectValue, fallbackLabel) {
+  const q = subjectValue.trim();
+  if (q.length >= 3) {
+    const { data: matches } = await supabase.rpc("match_property_by_address", {...});
+    const best = matches?.[0];
+    if (best) return { id: best.id, ... };
+  }
+  const primary_address = q || "(untitled intake)";
+  const { data: newProp, error } = await supabase
+    .from("property")
+    .insert({ primary_address })
+    .select("id, primary_address")
+    .single();
+  ...
+}
+```
+
+Any forwarded email or dropped folder whose subject doesn't fuzzy-match
+an existing property at `PROPERTY_MATCH_THRESHOLD` gets a brand-new
+`property` row whose `primary_address` is the raw subject string. The
+2026-09-28 live walkthrough found seven such rows on production —
+`Dream Properties - Master Templates`, `26 Lower Duthie - Rates account`,
+`26 Lower Duthie Pics`, `26 Lower Duthie Seller Details`,
+`Pezula Private Estate information and Architectural Design Manual and Knysna General`,
+`PLOT19 Eagles Way - proposed plans`,
+`Plot: 21 Emu Crescent, The Heads continued` — several of which then got
+associated deals in the pipeline. Data cleanup lives in
+`docs/qa/2026-09-28-cleanup.sql`; this plan closes the door.
+
+The fix is a small guard list (`lib/intake/subject-guard.ts`): if the
+subject matches the non-property pattern set, do NOT create a property.
+Park the batch's `property_id` as null and let triage assign one by
+hand. This is a smaller intervention than "reject the batch" — the
+files still land in staging, the batch still shows up in triage, the
+operator just picks the property manually instead of accepting the
+subject.
+
+**4. `lib/extract.ts:5-47` — "X and Y" combined-name purchasers extract as one party.**
+
+The extraction system prompt says "Capture ALL buyers and sellers"
+(line 18) and the JSON schema shape says
+`"purchasers": [ { "party_type": "individual", "name": "" ... } ]`
+(line 41). But it does not tell the model how to handle the very
+common case where Bronwyn's mandate or OTP has a joint signature line
+like:
+
+> Purchaser: PHILLIP ALFRED TRAYHORN DAVIS AND KATHERINE DAVIS
+
+The LLM copies that verbatim into `purchasers[0].name`, creating one
+purchaser row for two people. Later docs (FICA questionnaires) then
+mention "Phil Davis" and "Kate Davis" separately, creating two more
+rows. Result on 7 The Grove today: three purchaser parties for what
+should be two individuals sharing a joint purchase.
+
+Downstream damage:
+- `/compliance` shows FICA gaps against three parties instead of two,
+  overstating outstanding work.
+- The dupe finder can't repair it: it computes trigram similarity on
+  `display_name`, and `similarity('Phil Davis', 'PHILLIP ALFRED TRAYHORN DAVIS and KATHERINE DAVIS')` is well under 0.5.
+- Even a manual merge in `/dupes?kind=party` won't help — merging can
+  only collapse two rows to one, not fuse "one row" into "two rows +
+  joint link". The bad row has to be structurally decomposed first.
+
+The fix is a rule added to `lib/extract.ts` SYSTEM_PROMPT that tells
+the model to split names joined by ` and `, ` AND `, ` & ` into
+separate purchaser (or seller) entries. Every downstream mechanic
+already handles multiple parties per side (see 0002_core.sql —
+`transfer_party` is many-to-many). This is a one-paragraph prompt
+addition.
+
+Cleanup of the existing bad rows (7 The Grove, 159 Sharples Close) is
+out of scope here — the dedup surface won't help; a targeted admin
+operation is needed. Track that separately in the QA doc.
+
 ## Current state
 
 **Files this plan touches:**
@@ -111,12 +195,19 @@ unless the operator notices the batch has "filed 0" when they expected
 - `lib/intake/commit-batch.ts` — the shared commit pipeline. Called by
   `app/triage/actions.ts` and the intake webhook. Wraps
   `commit_batch` RPC + document promotion + `ingest_file` status update.
+- `app/api/intake/email/route.ts` — the Resend inbound webhook. Its
+  `resolveProperty()` (lines 519-556) is the auto-create-property site
+  this plan guards.
+- `lib/intake/subject-guard.ts` — **NEW file** owning the reject
+  pattern list. Keeping the list in its own module makes it
+  test-friendly and easy for Bronwyn/Simon to extend without
+  re-reading the webhook route.
+- `lib/extract.ts` — SYSTEM_PROMPT (lines 5-36) is where the
+  "split X and Y into two purchasers" rule lands. No new file.
 
-**Downstream call sites (context, not scope):**
-- `app/api/intake/email/route.ts` — invokes both, in that order, on
-  every inbound email.
-- `app/triage/actions.ts` — invokes both from server actions when Simon
-  or an admin manually walks a batch through review.
+**Downstream call sites (context, not scope beyond above):**
+- `app/triage/actions.ts` — invokes extract + commit from server actions when
+  Simon or an admin manually walks a batch through review.
 - `app/api/extract/route.ts` — invokes extract-batch only (called from
   the batch page UI).
 
@@ -149,14 +240,20 @@ unless the operator notices the batch has "filed 0" when they expected
 
 ## Scope
 
-**In scope (the only files you should modify):**
-- `lib/intake/extract-batch.ts` (add parse-error surfacing on
+**In scope (the only files you should modify or create):**
+- `lib/intake/extract-batch.ts` (Step 1 — add parse-error surfacing on
   `textFromFile`; add a per-file error log line in the batch loop when
   BOTH text-extract and OCR fail)
-- `lib/intake/commit-batch.ts` (destructure `.error` on both
+- `lib/intake/commit-batch.ts` (Step 2 — destructure `.error` on both
   `document_link.insert` calls; on failure, log + increment a
   `linkFailed` counter; return counter in `CommitBatchResult` so callers
   can surface it)
+- `lib/intake/subject-guard.ts` (Step 3 — CREATE; small module exporting
+  a reject-pattern predicate)
+- `app/api/intake/email/route.ts` (Step 3 — wire the guard into
+  `resolveProperty`)
+- `lib/extract.ts` (Step 4 — augment SYSTEM_PROMPT with a "split
+  combined names" rule)
 - `plans/README.md` (mark plan status on completion)
 
 **Out of scope (do NOT touch):**
@@ -474,7 +571,209 @@ that flows into the return value.
 - You find a third `document_link.insert` in this file that this plan
   did not enumerate. That would mean the file drifted since planning.
 
-### Step 3: Regression check — dedup test still passes, existing intake flow still ships
+### Step 3: Guard `resolveProperty` against non-property subjects
+
+The 2026-09-28 walkthrough surfaced seven `property` rows created from
+subject strings that were never addresses ("Pics", "Rates account",
+"Master Templates", etc.). The pattern re-runs every time an inbound
+Resend email arrives with a garbled subject. Fix at the source.
+
+**Do:**
+
+1. Create `lib/intake/subject-guard.ts` with a small predicate module.
+   Keep it deliberately conservative — false positives here are
+   annoying (an intake batch shows up in triage without an
+   auto-assigned property) but false negatives create the exact junk
+   rows this plan is closing. Content:
+
+   ```ts
+   // Predicate: is this email subject / batch label plausibly a
+   // property address, or is it something else (a document description,
+   // a folder name, an admin annotation)?
+   //
+   // Used by app/api/intake/email/route.ts resolveProperty to decide
+   // whether to auto-create a property row from the subject. If this
+   // returns true, the batch's property_id stays null and triage picks
+   // the property by hand.
+   //
+   // Extend the pattern list as new false-positive shapes are found in
+   // production. Deliberately not exhaustive — a real address that
+   // happens to include a matched substring will fall to the guard,
+   // and the operator resolves in triage. That is the right trade-off
+   // (property auto-created from a wrong subject silently pollutes
+   // the map, dashboard, dupes; batch without a property just needs
+   // one click in triage to attach).
+
+   const NON_PROPERTY_PATTERNS: RegExp[] = [
+     // Folder-name shapes seen 2026-09-28
+     /\bmaster templates?\b/i,
+     /\brates account\b/i,
+     /\bseller details\b/i,
+     /\bpics?\b/i,
+     /\bphotos?\b/i,
+     /\bproposed plans?\b/i,
+     /\bdesign manual\b/i,
+     /\bcondition report\b/i,
+     // Document-shape subjects (invoices, quotations, etc.)
+     /\b(quotation|invoice|receipt|statement)\b/i,
+     // Bare fragments that are clearly not addresses
+     /^(re|fw|fwd|forward)[: ]/i,
+   ];
+
+   export function looksLikeNonProperty(subject: string): boolean {
+     const s = subject.trim();
+     if (s.length < 3) return true; // too short to be an address
+     return NON_PROPERTY_PATTERNS.some((re) => re.test(s));
+   }
+   ```
+
+2. Wire it into `app/api/intake/email/route.ts` — modify `resolveProperty`
+   (currently lines 519-556). Before the `insert into property` branch,
+   check the guard. Add the import at the top of the file:
+
+   ```ts
+   import { looksLikeNonProperty } from "@/lib/intake/subject-guard";
+   ```
+
+   Then update `resolveProperty` so the CREATE branch becomes:
+
+   ```ts
+   async function resolveProperty(
+     supabase: SupabaseClient,
+     subjectValue: string,
+     fallbackLabel: string,
+   ): Promise<ResolveResult> {
+     const q = subjectValue.trim();
+     if (q.length >= 3) {
+       const { data: matches } = await supabase.rpc("match_property_by_address", {
+         q,
+         min_sim: PROPERTY_MATCH_THRESHOLD,
+       });
+       const best = (matches as Array<{ id: string; primary_address: string; sim: number }> | null)?.[0];
+       if (best) {
+         return {
+           id: best.id,
+           batchLabel: best.primary_address ?? fallbackLabel,
+           matched: true,
+           matchedName: best.primary_address ?? null,
+         };
+       }
+     }
+
+     // NEW GUARD: if the subject looks like a document / folder name
+     // rather than a property address, do NOT auto-create. Return a
+     // ResolveResult with a null id (see caller for the null-id path).
+     if (looksLikeNonProperty(q)) {
+       return {
+         id: null,
+         batchLabel: fallbackLabel,
+         matched: false,
+         matchedName: null,
+       };
+     }
+
+     const primary_address = q || "(untitled intake)";
+     const { data: newProp, error } = await supabase
+       .from("property")
+       .insert({ primary_address })
+       .select("id, primary_address")
+       .single();
+     if (error || !newProp) {
+       throw new Error(`could not create property: ${error?.message ?? "no row"}`);
+     }
+     return {
+       id: newProp.id,
+       batchLabel: newProp.primary_address ?? fallbackLabel,
+       matched: false,
+       matchedName: null,
+     };
+   }
+   ```
+
+3. Update the `ResolveResult` type at `app/api/intake/email/route.ts:514-517`
+   so `id` is `string | null` instead of `string`:
+
+   ```ts
+   type ResolveResult = {
+     id: string | null;
+     batchLabel: string;
+     matched: boolean;
+     matchedName: string | null;
+   };
+   ```
+
+4. Update the caller of `resolveProperty` (grep for it in the same file
+   — one site around line 220-260). When `resolveResult.id` is null,
+   the batch is created without a `property_id` — do NOT abort intake.
+   The rest of the batch flow (upload files, classify, extract) works
+   fine on a null property_id; only auto-commit is blocked, which is
+   the intended outcome. Set `auto_commit_allowed = false` explicitly
+   for batches without a property_id, so triage has to attach a
+   property before the batch can auto-commit.
+
+   The exact edit depends on the current caller shape — read the file
+   and make the null-safe change. If any downstream code assumes
+   `property_id` is non-null and this creates a NOT NULL constraint
+   violation on `ingest_batch`, STOP and report: `ingest_batch.property_id`
+   was already nullable before (created with the batch, populated
+   later in triage), so this should be safe, but confirm before
+   pushing the migration state.
+
+**Verify**:
+- `npm run typecheck` exits 0 after the type widening
+- `grep -n "looksLikeNonProperty" app/ lib/ --include="*.ts"` shows two
+  matches: the definition and the one import in the webhook route
+- `grep -n "id: null" app/api/intake/email/route.ts` shows exactly one
+  match (the new guard branch)
+- Manual smoke: send yourself an email with subject "Rates account" to
+  the intake address on a preview deploy; confirm the batch appears in
+  triage with no property_id and does not create a property row.
+
+**STOP if**:
+- The caller of `resolveProperty` chains directly into code that
+  requires a non-null `property_id` and cannot be null-guarded. That
+  would mean the intake batch model has drifted from what this plan
+  expects.
+- Wiring the guard requires touching `commit_batch` RPC or the batch
+  schema — both out of scope. Report and stop.
+
+### Step 4: Update the extract SYSTEM_PROMPT to split combined-name purchasers/sellers
+
+**Do:**
+
+1. Edit `lib/extract.ts:5-36` SYSTEM_PROMPT. Find the "Capture ALL
+   buyers and sellers…" rule (line 18) and add the following paragraph
+   immediately after it. Keep it inside the same `export const SYSTEM_PROMPT = \`...\`;` template literal:
+
+   ```
+   - Joint purchasers or joint sellers on ONE signature line ("X AND Y", "X & Y") are TWO separate entries in the JSON array, not one. If the document lists purchaser: "PHILLIP ALFRED TRAYHORN DAVIS AND KATHERINE DAVIS", produce purchasers with two entries: {"name": "PHILLIP ALFRED TRAYHORN DAVIS", ...} and {"name": "KATHERINE DAVIS", ...}. The same applies to sellers. Do not concatenate names into a single party. If additional docs (e.g. FICA questionnaires) name the same people as "Phil Davis" and "Kate Davis", still emit them as two individuals — the OS deduplicates downstream.
+   ```
+
+2. Do NOT change the JSON_SHAPE constant — the schema already supports
+   multiple entries in the `purchasers` and `sellers` arrays. The LLM
+   just needed the instruction.
+
+**Verify**:
+- `npm run typecheck` exits 0 (prompt is a string literal; can't break
+  types)
+- `grep -c "AND KATHERINE DAVIS" lib/extract.ts` returns 1 — proves the
+  new rule text landed
+- Manual smoke (optional but recommended before merging): re-run
+  extraction on one of the historical batches where the bug is visible
+  (7 The Grove, 159 Sharples Close) via `/api/extract` and confirm the
+  LLM now produces two purchaser entries instead of one. Do NOT commit
+  the extracted rows during this smoke — inspect and roll back.
+
+**STOP if**:
+- The LLM regresses on unrelated cases (e.g. now splits a single
+  purchaser whose legal name contains "and"). If manual smoke reveals
+  this, refine the prompt rule with a counter-example and re-test —
+  but confine the change to that one rule paragraph.
+- OpenRouter's response shape changes such that additional array
+  entries fail JSON parsing downstream. Not expected; `mapExtractionToRows`
+  in `lib/extract.ts` already iterates arrays.
+
+### Step 5: Regression check — dedup test still passes, existing intake flow still ships
 
 **Do:**
 1. `npm run test:dedup` — the only existing test. Confirms the shared
@@ -482,28 +781,33 @@ that flows into the return value.
 2. `npm run build` — confirms every downstream server component and
    route handler still resolves.
 3. Grep for external callers of the return type:
-   `grep -rn "CommitBatchResult\|commitBatchWithClient\|extractBatchWithClient" app/ lib/ --include="*.ts" --include="*.tsx"`
-   Confirm every caller destructures `.ok`, `.error`, `.filed`,
-   `.deduped` and does not directly access an undocumented field. If
-   any caller uses object-spread and passes the result somewhere else,
-   the new `linkFailed` field flows for free.
+   `grep -rn "CommitBatchResult\|commitBatchWithClient\|extractBatchWithClient\|resolveProperty" app/ lib/ --include="*.ts" --include="*.tsx"`
+   Confirm every caller of `commitBatchWithClient` destructures `.ok`,
+   `.error`, `.filed`, `.deduped` and does not directly access an
+   undocumented field. Confirm every caller of the now-nullable
+   `resolveProperty` result null-guards `.id` before use.
 
 **Verify**:
 - Test + build both exit 0
 - No caller of `commitBatchWithClient` errors on the new return field
   (TypeScript widening handles it)
+- No caller of `resolveProperty` unwraps `.id` unconditionally
+  (typecheck will catch this)
 
 **STOP if**:
 - Any caller breaks. Report and stop.
 
-### Step 4: Update `plans/README.md` and commit
+### Step 6: Update `plans/README.md` and commit
 
 **Do:**
 1. Edit `plans/README.md` — set plan 011 status to DONE.
-2. Commit with the message in the "Git workflow" section.
+2. Commit with the message in the "Git workflow" section — updated to
+   reflect the extended scope:
+   `Plan 011: intake commit-path integrity (parse+link errors, subject guard, purchaser split)`
 
 **Verify**:
-- `git status` shows only the three in-scope files modified
+- `git status` shows only the five in-scope files modified plus
+  `plans/README.md`
 - `git log --oneline -1` shows the new commit
 
 ## Test plan
@@ -535,8 +839,17 @@ Machine-checkable. ALL must hold:
   returns exactly one line
 - [ ] `grep -n "document_link insert failed" lib/intake/commit-batch.ts`
   returns exactly two lines
+- [ ] `lib/intake/subject-guard.ts` exists and exports `looksLikeNonProperty`
+- [ ] `grep -n "looksLikeNonProperty" app/api/intake/email/route.ts`
+  returns exactly one match (the import) plus the call site
+- [ ] `grep -n "id: null" app/api/intake/email/route.ts` returns
+  exactly one match (the guard branch)
+- [ ] `grep -c "AND KATHERINE DAVIS" lib/extract.ts` returns 1
+  (the new split-combined-names rule)
 - [ ] `git status` shows only `lib/intake/extract-batch.ts`,
-  `lib/intake/commit-batch.ts`, `plans/README.md` modified
+  `lib/intake/commit-batch.ts`, `lib/intake/subject-guard.ts` (new),
+  `app/api/intake/email/route.ts`, `lib/extract.ts`, `plans/README.md`
+  modified
 
 ## STOP conditions
 
@@ -582,5 +895,20 @@ For the human/agent who owns this next:
 ## Follow-ups explicitly deferred out of this plan
 
 - UI surfacing of `linkFailed` in triage / webhook return.
-- Integration tests for the two fix sites (plan 012).
+- Integration tests for the four fix sites (plan 012 — its scope now
+  includes the subject-guard predicate and a corrupt-doc extract test).
 - Structured logging migration.
+- **Data cleanup for the seven junk property rows** already created
+  by past intake runs: `docs/qa/2026-09-28-cleanup.sql` (Simon runs
+  after per-row approval). Not code, not this plan.
+- **Data cleanup for the existing bad "X and Y" party rows** (7 The
+  Grove, 159 Sharples Close). The dupe finder + `merge_parties` won't
+  help — a "one row" can't be structurally split into "two rows +
+  joint link" via merge. Needs a small admin operation (delete the
+  combined row, re-run extract on the source docs so the fixed prompt
+  emits two rows). Track separately in the QA doc.
+- **Plan 015 — dupe-scan fixes.** Related but different scope: fixes
+  the dedup surface itself (deed-match not firing on 6 Bowden Park,
+  party trigram missing combined-name pairs). Pending Simon's SQL
+  investigation of the 6 Bowden Park pair — see the walkthrough at
+  `docs/qa/2026-09-28-live-walkthrough.md` items #1 and #5.

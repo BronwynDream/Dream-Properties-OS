@@ -117,7 +117,7 @@ insert into clause_variant (clause_id, label, body, applies_when, is_default, so
 select
   (select id from clause where key = 'mandate.term'),
   'Joint master',
-  $body$The Selling Agents have the joint mandate in respect of the property for a period of {{term_months}} ({{term_months_words}}) months from the date of signature of this mandate.  In the event of the property being sold to a Purchaser introduced during this mandate period by any of the Selling Agents, within six (6) months of the expiry of this mandate, the introducing Agent shall be entitled to the commission as agreed above.$body$,
+  $body$The Selling Agents have the joint mandate in respect of the property for a period of {{term_months}} months from the date of signature of this mandate.  In the event of the property being sold to a Purchaser introduced during this mandate period by any of the Selling Agents, within six (6) months of the expiry of this mandate, the introducing Agent shall be entitled to the commission as agreed above.$body$,
   null, false, 'master_template', true, null, null
 on conflict (clause_id, label) do nothing;
 

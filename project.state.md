@@ -67,16 +67,25 @@ clause by clause would just be guessing which lines happen to match.
 Schema has a `lease` agreement type but Bronwyn sent no lease or rental
 template. Either a missing document or a dead enum value — ask.
 
+### 2026-09-28: migrations applied to Bon Bon (production)
+0065 document engine, 0066 contact CRM v2, 0067 sole→exclusive (0 rows: already clean),
+0068 clause library seed. Applied by Simon via the Supabase SQL editor, each wrapped in
+begin/commit. Verified: 9 clauses, 19 variants, 3 doc_templates, 0 sole mandates.
+0068 Joint "mandate.term" corrected to match Bronwyn's final master (no words-in-brackets).
+Plan 009 code cherry-picked onto main as 085982f.
+
 ### Next session starts here
 1. Apply migration 0065 to Bon Bon (still not applied).
 2. `select type, count(*) from mandate group by type;` then consolidate
    sole → exclusive.
-3. Seed the clause library from `docs/templates/`, verbatim.
+3. Seed the clause library from `docs/templates/2026-final/` (Bronwyn's FINAL
+   set, 2026-09-17; supersedes the August extracts), verbatim.
 4. `lib/documents/resolve.ts`, then the `/documents` hub, entry points,
    editor, PDF.
 
-Still needed from Bronwyn: her wording for a VAT-inclusive commission clause
-(her masters only have "plus VAT thereon"), and whether the PPRA condition
+DECIDED 2026-09-28 (Simon, confirmed with Bronwyn): **"plus VAT thereon" is final** and is the only seeded commission wording. VAT-inclusive commission happens in ~1 in 20 mandates a year; handle it as a per-document manual edit of the commission clause in the slice-1b draft editor (flagged on the document). Do not seed an inclusive variant.
+
+Still needed from Bronwyn: whether the PPRA condition
 report is a shared annexure or stays inside the Open mandate.
 
 ---
