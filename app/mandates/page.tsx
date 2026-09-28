@@ -9,8 +9,8 @@ export const dynamic = "force-dynamic";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-type MandateType = "exclusive" | "sole" | "joint" | "open";
-const MANDATE_TYPES: MandateType[] = ["exclusive", "sole", "joint", "open"];
+type MandateType = "exclusive" | "joint" | "open";
+const MANDATE_TYPES: MandateType[] = ["exclusive", "joint", "open"];
 
 type MandateRow = {
   id: string;

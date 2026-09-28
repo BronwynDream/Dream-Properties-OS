@@ -3,7 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTransition } from "react";
 
-const TYPES = ["exclusive", "sole", "joint", "open"] as const;
+const TYPES = ["exclusive", "joint", "open"] as const;
 type MandateType = (typeof TYPES)[number];
 
 export default function TypeFilterChips({

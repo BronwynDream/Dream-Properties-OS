@@ -17,7 +17,7 @@ given schema. Rules:
   role is one of: director, member, trustee, partner, ubo.
 - Capture ALL buyers and sellers, including from FICA questionnaires and identity documents.
 - suspensive_condition status is one of: pending, fulfilled, waived, failed.
-- mandate type is one of: sole, joint, open, exclusive.
+- mandate type is one of: joint, open, exclusive.
 - Return JSON only. No commentary, no markdown fences.
 - property.property_type is ONE of: house, apartment, townhouse, vacant_land, estate_plot, farm, commercial. A property inside a named estate (Pezula, Thesen Islands, Simola, Leisure Isle, Belvidere) is usually 'estate_plot' unless the doc clearly says apartment/townhouse.
 - property.ownership_type is ONE of: full_freehold, sectional, share_block, leasehold, fractional, timeshare. 'Full title' / 'freehold' → full_freehold. 'Sectional title' → sectional. If nothing indicates otherwise for a single-erf freestanding house/plot, use full_freehold.
