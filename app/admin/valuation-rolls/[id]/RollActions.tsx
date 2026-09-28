@@ -66,7 +66,7 @@ export default function RollActions({ id, status }: { id: string; status: string
           style={{
             fontSize: 11,
             color: "var(--paper-mute, #6a7692)",
-            fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+            fontFamily: "var(--font-mono)",
             letterSpacing: "0.04em",
           }}
         >
@@ -79,7 +79,7 @@ export default function RollActions({ id, status }: { id: string; status: string
             fontSize: 12,
             color: "var(--green, #1F7A4D)",
             fontWeight: 600,
-            fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+            fontFamily: "var(--font-mono)",
           }}
         >
           {msg}
@@ -91,7 +91,7 @@ export default function RollActions({ id, status }: { id: string; status: string
             fontSize: 12,
             color: "var(--amber, #D17E22)",
             fontWeight: 600,
-            fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+            fontFamily: "var(--font-mono)",
           }}
         >
           {err}
@@ -104,7 +104,7 @@ export default function RollActions({ id, status }: { id: string; status: string
 function btnStyle(active: boolean, variant: "solid" | "outline"): React.CSSProperties {
   const solidActive = variant === "solid" && active;
   return {
-    fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+    fontFamily: "var(--font-mono)",
     fontSize: 11,
     letterSpacing: "0.12em",
     textTransform: "uppercase",

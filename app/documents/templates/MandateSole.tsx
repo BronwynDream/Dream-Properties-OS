@@ -324,7 +324,7 @@ function PrintStyles() {
         display: inline-block;
         width: 20px;
         color: #C8A032;
-        font-family: "JetBrains Mono", ui-monospace, monospace;
+        font-family: var(--font-mono);
       }
       .mandate-section-body p { margin: 6px 0; text-align: justify; }
       .mandate-signatures { margin-top: 32px; page-break-inside: avoid; }
@@ -338,7 +338,7 @@ function PrintStyles() {
       .mandate-signature-slot { display: flex; flex-direction: column; gap: 4px; }
       .mandate-signature-rule { height: 1px; background: #4A566E; margin-top: 24px; }
       .mandate-signature-label {
-        font-family: "JetBrains Mono", ui-monospace, monospace;
+        font-family: var(--font-mono);
         font-size: 8.5pt;
         letter-spacing: 0.08em;
         color: #4A566E;

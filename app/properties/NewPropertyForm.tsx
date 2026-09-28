@@ -228,7 +228,7 @@ export default function NewPropertyForm({
       <div style={{ marginBottom: 14 }}>
         <p
           style={{
-            fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+            fontFamily: "var(--font-mono)",
             fontSize: 10,
             letterSpacing: "0.14em",
             textTransform: "uppercase",
@@ -265,7 +265,7 @@ export default function NewPropertyForm({
         <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 8 }}>
           <p
             style={{
-              fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+              fontFamily: "var(--font-mono)",
               fontSize: 10,
               letterSpacing: "0.14em",
               textTransform: "uppercase",
@@ -388,7 +388,7 @@ export default function NewPropertyForm({
               margin: "8px 0 0",
               fontSize: 11,
               color: "#7A5814",
-              fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+              fontFamily: "var(--font-mono)",
               letterSpacing: "0.04em",
               textTransform: "uppercase",
             }}
@@ -473,7 +473,7 @@ export default function NewPropertyForm({
             onChange={(e) => setCoords(e.target.value)}
             placeholder="-34.0777, 23.0619"
             disabled={pending}
-            style={{ ...inputStyle, fontFamily: "'JetBrains Mono', ui-monospace, monospace" }}
+            style={{ ...inputStyle, fontFamily: "var(--font-mono)" }}
           />
         </label>
 
@@ -565,7 +565,7 @@ export default function NewPropertyForm({
 
 const fieldLabel: React.CSSProperties = {
   display: "block",
-  fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+  fontFamily: "var(--font-mono)",
   fontSize: 10,
   letterSpacing: "0.12em",
   textTransform: "uppercase",

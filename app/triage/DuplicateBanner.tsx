@@ -89,7 +89,7 @@ export default function DuplicateBanner({ batches }: { batches: BatchLite[] }) {
           <p
             style={{
               margin: 0,
-              fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+              fontFamily: "var(--font-mono)",
               fontSize: 10,
               letterSpacing: "0.12em",
               textTransform: "uppercase",
@@ -128,11 +128,11 @@ export default function DuplicateBanner({ batches }: { batches: BatchLite[] }) {
               <div>
                 <p style={{ margin: 0, fontSize: 13, color: "#3a2f10", fontWeight: 500 }}>
                   {c.label}
-                  <span style={{ marginLeft: 8, fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 10, color: "#7a6234" }}>
+                  <span style={{ marginLeft: 8, fontFamily: "var(--font-mono)", fontSize: 10, color: "#7a6234" }}>
                     ×{c.batches.length}
                   </span>
                 </p>
-                <p style={{ margin: "2px 0 0", fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 10, color: "#7a6234", letterSpacing: "0.02em" }}>
+                <p style={{ margin: "2px 0 0", fontFamily: "var(--font-mono)", fontSize: 10, color: "#7a6234", letterSpacing: "0.02em" }}>
                   {c.batches.map((b) => `${b.file_count}f/${b.confirmed_count}c${b.property_id ? "✓" : ""}`).join(" · ")}
                 </p>
                 {clusterErr && (
@@ -205,7 +205,7 @@ const btn: React.CSSProperties = {
   color: "#F7EFD9",
   border: "none",
   borderRadius: 3,
-  fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+  fontFamily: "var(--font-mono)",
   fontSize: 11,
   letterSpacing: "0.08em",
   textTransform: "uppercase",

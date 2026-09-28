@@ -202,7 +202,7 @@ export default async function CompliancePage() {
           <h2
             style={{
               marginTop: dealsWithGaps > 0 || dealsWithDocGaps > 0 ? 40 : 0,
-              fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+              fontFamily: "var(--font-mono)",
               fontSize: 11,
               letterSpacing: "0.14em",
               textTransform: "uppercase",
@@ -267,7 +267,7 @@ function Section({
       <div style={{ borderLeft: `3px solid ${stripe}`, paddingLeft: 12, marginBottom: 12 }}>
         <h2
           style={{
-            fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+            fontFamily: "var(--font-mono)",
             fontSize: 11,
             letterSpacing: "0.14em",
             textTransform: "uppercase",
@@ -297,7 +297,7 @@ function UnknownSection({ rows }: { rows: AgentRow[] }) {
       <div style={{ borderLeft: "3px solid var(--ink-400, #8C8172)", paddingLeft: 12, marginBottom: 12 }}>
         <h2
           style={{
-            fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+            fontFamily: "var(--font-mono)",
             fontSize: 11,
             letterSpacing: "0.14em",
             textTransform: "uppercase",
@@ -328,7 +328,7 @@ function UnknownSection({ rows }: { rows: AgentRow[] }) {
               <p
                 style={{
                   margin: 0,
-                  fontFamily: "'Fraunces', 'Cormorant Garamond', serif",
+                  fontFamily: "var(--font-display)",
                   fontSize: 16,
                   color: "var(--estuary, #132B84)",
                   fontWeight: 500,
@@ -341,7 +341,7 @@ function UnknownSection({ rows }: { rows: AgentRow[] }) {
                   margin: "2px 0 0",
                   fontSize: 11,
                   color: "var(--paper-mute, #6a7692)",
-                  fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                  fontFamily: "var(--font-mono)",
                 }}
               >
                 {row.role === "admin" ? "Director" : "Agent"}
@@ -351,7 +351,7 @@ function UnknownSection({ rows }: { rows: AgentRow[] }) {
             <Link
               href="/team"
               style={{
-                fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                fontFamily: "var(--font-mono)",
                 fontSize: 11,
                 letterSpacing: "0.10em",
                 textTransform: "uppercase",
@@ -388,7 +388,7 @@ function AgentEntry({ row, days }: { row: AgentRow; days: number }) {
         <p
           style={{
             margin: 0,
-            fontFamily: "'Fraunces', 'Cormorant Garamond', serif",
+            fontFamily: "var(--font-display)",
             fontSize: 16,
             color: "var(--estuary, #132B84)",
             fontWeight: 500,
@@ -405,7 +405,7 @@ function AgentEntry({ row, days }: { row: AgentRow; days: number }) {
             flexWrap: "wrap",
             fontSize: 11,
             color: "var(--paper-mute, #6a7692)",
-            fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+            fontFamily: "var(--font-mono)",
             letterSpacing: "0.02em",
           }}
         >
@@ -418,7 +418,7 @@ function AgentEntry({ row, days }: { row: AgentRow; days: number }) {
         <p
           style={{
             margin: 0,
-            fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+            fontFamily: "var(--font-mono)",
             fontSize: 13,
             color: overdue ? "var(--critical, #9A3B34)" : "var(--caution, #A9772F)",
             fontWeight: 600,
@@ -436,7 +436,7 @@ function AgentEntry({ row, days }: { row: AgentRow; days: number }) {
             margin: "2px 0 0",
             fontSize: 11,
             color: "var(--paper-mute, #6a7692)",
-            fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+            fontFamily: "var(--font-mono)",
           }}
         >
           <PropertyDate value={row.ffc_expiry_date} />
@@ -559,7 +559,7 @@ function LiveDealFicaGaps({ rows }: { rows: LiveDealGap[] }) {
       <div style={{ borderLeft: "3px solid var(--critical, #9A3B34)", paddingLeft: 12, marginBottom: 12 }}>
         <h2
           style={{
-            fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+            fontFamily: "var(--font-mono)",
             fontSize: 11,
             letterSpacing: "0.14em",
             textTransform: "uppercase",
@@ -595,7 +595,7 @@ function LiveDealFicaGaps({ rows }: { rows: LiveDealGap[] }) {
                 <p
                   style={{
                     margin: 0,
-                    fontFamily: "'Fraunces', 'Cormorant Garamond', serif",
+                    fontFamily: "var(--font-display)",
                     fontSize: 16,
                     color: "var(--estuary, #132B84)",
                     fontWeight: 500,
@@ -612,7 +612,7 @@ function LiveDealFicaGaps({ rows }: { rows: LiveDealGap[] }) {
                 <p
                   style={{
                     margin: "2px 0 8px",
-                    fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                    fontFamily: "var(--font-mono)",
                     fontSize: 10,
                     letterSpacing: "0.10em",
                     textTransform: "uppercase",
@@ -632,7 +632,7 @@ function LiveDealFicaGaps({ rows }: { rows: LiveDealGap[] }) {
                       </Link>
                       <span
                         style={{
-                          fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                          fontFamily: "var(--font-mono)",
                           fontSize: 10,
                           letterSpacing: "0.08em",
                           textTransform: "uppercase",
@@ -653,7 +653,7 @@ function LiveDealFicaGaps({ rows }: { rows: LiveDealGap[] }) {
                 <p
                   style={{
                     margin: 0,
-                    fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                    fontFamily: "var(--font-mono)",
                     fontSize: 13,
                     color: "var(--critical, #9A3B34)",
                     fontWeight: 600,
@@ -824,7 +824,7 @@ function DealDocGaps({ rows }: { rows: DealDocGapsRow[] }) {
       <div style={{ borderLeft: "3px solid var(--caution, #A9772F)", paddingLeft: 12, marginBottom: 12 }}>
         <h2
           style={{
-            fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+            fontFamily: "var(--font-mono)",
             fontSize: 11,
             letterSpacing: "0.14em",
             textTransform: "uppercase",
@@ -860,7 +860,7 @@ function DealDocGaps({ rows }: { rows: DealDocGapsRow[] }) {
                 <p
                   style={{
                     margin: 0,
-                    fontFamily: "'Fraunces', 'Cormorant Garamond', serif",
+                    fontFamily: "var(--font-display)",
                     fontSize: 16,
                     color: "var(--estuary, #132B84)",
                     fontWeight: 500,
@@ -877,7 +877,7 @@ function DealDocGaps({ rows }: { rows: DealDocGapsRow[] }) {
                 <p
                   style={{
                     margin: "2px 0 8px",
-                    fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                    fontFamily: "var(--font-mono)",
                     fontSize: 10,
                     letterSpacing: "0.10em",
                     textTransform: "uppercase",
@@ -891,7 +891,7 @@ function DealDocGaps({ rows }: { rows: DealDocGapsRow[] }) {
                     <li key={i} style={{ fontSize: 12, color: "var(--ink-700, #423B31)", display: "flex", alignItems: "center", gap: 8 }}>
                       <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: 3, background: gapDotColor(g.kind) }} />
                       {g.label}
-                      {g.detail && <span style={{ color: "var(--paper-mute, #6a7692)", fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 10 }}>{g.detail}</span>}
+                      {g.detail && <span style={{ color: "var(--paper-mute, #6a7692)", fontFamily: "var(--font-mono)", fontSize: 10 }}>{g.detail}</span>}
                     </li>
                   ))}
                 </ul>
@@ -900,7 +900,7 @@ function DealDocGaps({ rows }: { rows: DealDocGapsRow[] }) {
                 <p
                   style={{
                     margin: 0,
-                    fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                    fontFamily: "var(--font-mono)",
                     fontSize: 13,
                     color: "var(--caution, #A9772F)",
                     fontWeight: 600,

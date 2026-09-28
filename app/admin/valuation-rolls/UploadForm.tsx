@@ -50,14 +50,14 @@ export default function UploadForm() {
   }
 
   const labelStyle: React.CSSProperties = {
-    fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+    fontFamily: "var(--font-mono)",
     fontSize: 10,
     letterSpacing: "0.14em",
     textTransform: "uppercase",
     color: "var(--paper-mute, #6a7692)",
   };
   const inputStyle: React.CSSProperties = {
-    fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+    fontFamily: "var(--font-mono)",
     fontSize: 13,
     padding: "8px 10px",
     borderRadius: 3,
@@ -73,7 +73,7 @@ export default function UploadForm() {
           <label
             key={k}
             style={{
-              fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+              fontFamily: "var(--font-mono)",
               fontSize: 12,
               letterSpacing: "0.06em",
               color: kind === k ? "var(--estuary, #132B84)" : "var(--paper-mute, #6a7692)",
@@ -165,7 +165,7 @@ export default function UploadForm() {
           type="submit"
           disabled={pending || !file}
           style={{
-            fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+            fontFamily: "var(--font-mono)",
             fontSize: 11,
             letterSpacing: "0.12em",
             textTransform: "uppercase",

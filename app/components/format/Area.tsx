@@ -35,7 +35,7 @@ export default function Area({
     <span
       className={`fmt-area ${className ?? ""}`.trim()}
       style={{
-        fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, monospace)",
+        fontFamily: "var(--font-mono)",
         fontVariantNumeric: "tabular-nums",
         letterSpacing: "0.01em",
         ...style,

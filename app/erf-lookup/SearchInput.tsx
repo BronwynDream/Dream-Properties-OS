@@ -58,7 +58,7 @@ export default function SearchInput({
           style={{
             flex: "1 1 320px",
             minWidth: 240,
-            fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+            fontFamily: "var(--font-mono)",
             fontSize: 15,
             padding: "10px 12px",
             borderRadius: 3,
@@ -72,7 +72,7 @@ export default function SearchInput({
           onChange={(e) => onSuburbChange(e.target.value)}
           disabled={pending}
           style={{
-            fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+            fontFamily: "var(--font-mono)",
             fontSize: 13,
             padding: "10px 12px",
             borderRadius: 3,
@@ -92,7 +92,7 @@ export default function SearchInput({
           type="submit"
           disabled={pending}
           style={{
-            fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+            fontFamily: "var(--font-mono)",
             fontSize: 12,
             letterSpacing: "0.12em",
             textTransform: "uppercase",
@@ -112,7 +112,7 @@ export default function SearchInput({
           margin: 0,
           fontSize: 11,
           color: "var(--paper-mute, #6a7692)",
-          fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+          fontFamily: "var(--font-mono)",
           letterSpacing: "0.02em",
         }}
       >

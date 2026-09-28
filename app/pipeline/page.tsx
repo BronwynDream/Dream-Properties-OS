@@ -205,7 +205,7 @@ export default async function PipelinePage() {
           <h1>
             {totalDeals} deal{totalDeals === 1 ? "" : "s"} in flight
           </h1>
-          <p className="app-sub" style={{ fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 12 }}>
+          <p className="app-sub" style={{ fontFamily: "var(--font-mono)", fontSize: 12 }}>
             Total pipeline value <Rand value={totalRand} />
           </p>
         </header>
@@ -257,7 +257,7 @@ function PipelineColumn({ stage, cards }: { stage: PipelineStage; cards: Transfe
         <p
           style={{
             margin: 0,
-            fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+            fontFamily: "var(--font-mono)",
             fontSize: 10,
             letterSpacing: "0.12em",
             textTransform: "uppercase",
@@ -266,7 +266,7 @@ function PipelineColumn({ stage, cards }: { stage: PipelineStage; cards: Transfe
         >
           {STAGE_LABEL[stage]} · {cards.length}
         </p>
-        <p style={{ margin: "2px 0 0", fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 11, color: "var(--ink-700, #423B31)" }}>
+        <p style={{ margin: "2px 0 0", fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--ink-700, #423B31)" }}>
           <Rand value={total} />
         </p>
         <p style={{ margin: "4px 0 0", fontSize: 10, color: "var(--paper-mute, #6a7692)" }}>
@@ -305,7 +305,7 @@ function PipelineCard({ card }: { card: TransferCard }) {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
         <span
           style={{
-            fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+            fontFamily: "var(--font-mono)",
             fontSize: 10,
             color: stuckTone,
             fontWeight: 600,
@@ -315,7 +315,7 @@ function PipelineCard({ card }: { card: TransferCard }) {
           {card.daysInStage}d
         </span>
         {card.price !== null && (
-          <span style={{ fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 12, color: "var(--estuary, #132B84)", fontWeight: 600 }}>
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--estuary, #132B84)", fontWeight: 600 }}>
             <Rand value={card.price} />
           </span>
         )}
@@ -326,7 +326,7 @@ function PipelineCard({ card }: { card: TransferCard }) {
           prefetch={false}
           style={{
             margin: 0,
-            fontFamily: "'Fraunces', 'Cormorant Garamond', serif",
+            fontFamily: "var(--font-display)",
             fontSize: 14,
             color: "var(--estuary, #132B84)",
             fontWeight: 500,
@@ -340,7 +340,7 @@ function PipelineCard({ card }: { card: TransferCard }) {
         <p
           style={{
             margin: 0,
-            fontFamily: "'Fraunces', 'Cormorant Garamond', serif",
+            fontFamily: "var(--font-display)",
             fontSize: 14,
             color: "var(--estuary, #132B84)",
             fontWeight: 500,
@@ -354,20 +354,20 @@ function PipelineCard({ card }: { card: TransferCard }) {
         <div style={{ fontSize: 11, color: "var(--ink-700, #423B31)", lineHeight: 1.35 }}>
           {card.sellers.length > 0 && (
             <p style={{ margin: 0 }}>
-              <span style={{ color: "var(--paper-mute, #6a7692)", fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase" }}>Seller · </span>
+              <span style={{ color: "var(--paper-mute, #6a7692)", fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase" }}>Seller · </span>
               {card.sellers.join(", ")}
             </p>
           )}
           {card.buyers.length > 0 && (
             <p style={{ margin: 0 }}>
-              <span style={{ color: "var(--paper-mute, #6a7692)", fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase" }}>Buyer · </span>
+              <span style={{ color: "var(--paper-mute, #6a7692)", fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase" }}>Buyer · </span>
               {card.buyers.join(", ")}
             </p>
           )}
         </div>
       )}
 
-      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 2, fontSize: 10, color: "var(--paper-mute, #6a7692)", fontFamily: "'JetBrains Mono', ui-monospace, monospace", letterSpacing: "0.06em", textTransform: "uppercase" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 2, fontSize: 10, color: "var(--paper-mute, #6a7692)", fontFamily: "var(--font-mono)", letterSpacing: "0.06em", textTransform: "uppercase" }}>
         {card.agentName && <span>{card.agentName}</span>}
         {card.mandateType && (
           <span style={{ padding: "1px 6px", background: "var(--paper-2, #ECE6D8)", borderRadius: 2 }}>

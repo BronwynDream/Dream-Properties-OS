@@ -96,7 +96,7 @@ export default function DuplicateTransfersBanner({ cards }: { cards: PipelineCar
           <p
             style={{
               margin: 0,
-              fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+              fontFamily: "var(--font-mono)",
               fontSize: 10,
               letterSpacing: "0.12em",
               textTransform: "uppercase",
@@ -137,11 +137,11 @@ export default function DuplicateTransfersBanner({ cards }: { cards: PipelineCar
                   <Link href={`/properties/${c.propertyId}`} style={{ color: "inherit" }}>
                     {c.address ?? c.propertyId.slice(0, 8)}
                   </Link>
-                  <span style={{ marginLeft: 8, fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 10, color: "#7a6234" }}>
+                  <span style={{ marginLeft: 8, fontFamily: "var(--font-mono)", fontSize: 10, color: "#7a6234" }}>
                     ×{c.transfers.length}
                   </span>
                 </p>
-                <p style={{ margin: "2px 0 0", fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 10, color: "#7a6234", letterSpacing: "0.02em" }}>
+                <p style={{ margin: "2px 0 0", fontFamily: "var(--font-mono)", fontSize: 10, color: "#7a6234", letterSpacing: "0.02em" }}>
                   {c.transfers.map((t) => `${STAGE_LABEL[t.status]} (${t.daysInStage}d)`).join(" · ")}
                 </p>
                 {clusterErr && (
@@ -193,7 +193,7 @@ const btn: React.CSSProperties = {
   color: "#F7EFD9",
   border: "none",
   borderRadius: 3,
-  fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+  fontFamily: "var(--font-mono)",
   fontSize: 11,
   letterSpacing: "0.08em",
   textTransform: "uppercase",

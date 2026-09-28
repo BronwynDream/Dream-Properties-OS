@@ -319,7 +319,7 @@ const panelHeaderStyle: React.CSSProperties = {
 };
 
 const eyebrowStyle: React.CSSProperties = {
-  fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+  fontFamily: "var(--font-mono)",
   fontSize: 10,
   letterSpacing: "0.14em",
   textTransform: "uppercase",
@@ -338,7 +338,7 @@ const panelTitleStyle: React.CSSProperties = {
 
 const fieldLabel: React.CSSProperties = {
   display: "block",
-  fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+  fontFamily: "var(--font-mono)",
   fontSize: 10,
   letterSpacing: "0.12em",
   textTransform: "uppercase",

@@ -104,7 +104,7 @@ export default async function EstateVaultPage({ params }: { params: { id: string
             <Link href="/estates" style={{ color: "var(--gold)", fontWeight: 600 }}>All estates</Link>
           </p>
           <h1>{estate.name}</h1>
-          <p className="app-sub" style={{ fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 12 }}>
+          <p className="app-sub" style={{ fontFamily: "var(--font-mono)", fontSize: 12 }}>
             {estate.kind.replace(/_/g, " ")}
             {(() => {
               const s = Array.isArray(estate.suburb) ? estate.suburb[0] : estate.suburb;
@@ -165,7 +165,7 @@ export default async function EstateVaultPage({ params }: { params: { id: string
                     <h2
                       style={{
                         margin: 0,
-                        fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                        fontFamily: "var(--font-mono)",
                         fontSize: 11,
                         letterSpacing: "0.14em",
                         textTransform: "uppercase",
@@ -207,7 +207,7 @@ export default async function EstateVaultPage({ params }: { params: { id: string
                             <span
                               style={{
                                 marginLeft: 8,
-                                fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                                fontFamily: "var(--font-mono)",
                                 fontSize: 9,
                                 letterSpacing: "0.08em",
                                 textTransform: "uppercase",
@@ -224,7 +224,7 @@ export default async function EstateVaultPage({ params }: { params: { id: string
                         </div>
                         <span
                           style={{
-                            fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                            fontFamily: "var(--font-mono)",
                             fontSize: 10,
                             color: "var(--paper-mute, #6a7692)",
                           }}
@@ -233,7 +233,7 @@ export default async function EstateVaultPage({ params }: { params: { id: string
                         </span>
                         <span
                           style={{
-                            fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                            fontFamily: "var(--font-mono)",
                             fontSize: 10,
                             color: "var(--paper-mute, #6a7692)",
                           }}
@@ -254,7 +254,7 @@ export default async function EstateVaultPage({ params }: { params: { id: string
 }
 
 const dtStyle: React.CSSProperties = {
-  fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+  fontFamily: "var(--font-mono)",
   fontSize: 10,
   letterSpacing: "0.08em",
   textTransform: "uppercase",

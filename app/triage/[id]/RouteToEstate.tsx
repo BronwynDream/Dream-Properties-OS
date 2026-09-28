@@ -58,7 +58,7 @@ export default function RouteToEstate({ batchId, batchLabel, currentEstate, esta
         <Link
           href={`/estates/${currentEstate.id}`}
           style={{
-            fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+            fontFamily: "var(--font-mono)",
             fontSize: 10,
             letterSpacing: "0.08em",
             textTransform: "uppercase",
@@ -103,7 +103,7 @@ export default function RouteToEstate({ batchId, batchLabel, currentEstate, esta
       <p
         style={{
           margin: 0,
-          fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+          fontFamily: "var(--font-mono)",
           fontSize: 10,
           letterSpacing: "0.12em",
           textTransform: "uppercase",
@@ -145,7 +145,7 @@ export default function RouteToEstate({ batchId, batchLabel, currentEstate, esta
             color: selected ? "var(--paper-0, #FBF9F4)" : "var(--paper-mute, #6a7692)",
             border: "none",
             borderRadius: 3,
-            fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+            fontFamily: "var(--font-mono)",
             fontSize: 11,
             letterSpacing: "0.08em",
             textTransform: "uppercase",

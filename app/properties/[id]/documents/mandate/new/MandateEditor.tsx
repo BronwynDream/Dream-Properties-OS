@@ -139,7 +139,7 @@ export default function MandateEditor({
               onChange={(e) => setAskingPrice(e.target.value)}
               placeholder="e.g. 6 500 000"
               disabled={saving}
-              style={{ ...inputStyle, fontFamily: "'JetBrains Mono', ui-monospace, monospace" }}
+              style={{ ...inputStyle, fontFamily: "var(--font-mono)" }}
               inputMode="numeric"
             />
           </label>
@@ -268,7 +268,7 @@ const fieldWrap: React.CSSProperties = { display: "block" };
 
 const fieldLabel: React.CSSProperties = {
   display: "block",
-  fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+  fontFamily: "var(--font-mono)",
   fontSize: 10,
   letterSpacing: "0.12em",
   textTransform: "uppercase",

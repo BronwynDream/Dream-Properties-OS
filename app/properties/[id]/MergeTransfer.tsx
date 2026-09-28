@@ -74,7 +74,7 @@ export default function MergeTransfer({
         >
           <div
             style={{
-              fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+              fontFamily: "var(--font-mono)",
               fontSize: 10,
               letterSpacing: "0.12em",
               textTransform: "uppercase",
@@ -130,8 +130,7 @@ export default function MergeTransfer({
                   {c.transferDate && (
                     <span
                       style={{
-                        fontFamily:
-                          "'JetBrains Mono', ui-monospace, monospace",
+                        fontFamily: "var(--font-mono)",
                         fontSize: 10.5,
                         color: "#6b78a0",
                       }}

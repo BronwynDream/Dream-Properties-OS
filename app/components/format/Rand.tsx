@@ -5,7 +5,7 @@
 //   - Null: "POA" (Price on application) OR the caller's chosen fallback
 //   - Range: en dash between two values
 //
-// Renders in JetBrains Mono with tabular-nums so columns of prices line up
+// Renders in var(--font-mono) with tabular-nums so columns of prices line up
 // cleanly. Compose in table cells with `text-align: right` for ledger feel.
 
 type Props = {
@@ -43,7 +43,7 @@ export default function Rand({
     return (
       <span
         className={`fmt-rand fmt-rand-null ${className ?? ""}`.trim()}
-        style={{ fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, monospace)", ...style }}
+        style={{ fontFamily: "var(--font-mono)", ...style }}
       >
         {fallback}
       </span>
@@ -57,7 +57,7 @@ export default function Rand({
     <span
       className={`fmt-rand ${className ?? ""}`.trim()}
       style={{
-        fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, monospace)",
+        fontFamily: "var(--font-mono)",
         fontVariantNumeric: "tabular-nums",
         fontFeatureSettings: '"tnum"',
         letterSpacing: "0.01em",

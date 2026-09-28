@@ -99,7 +99,7 @@ export default function DealCompliance({
         <p
           style={{
             margin: 0,
-            fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+            fontFamily: "var(--font-mono)",
             fontSize: 10,
             letterSpacing: "0.14em",
             textTransform: "uppercase",
@@ -111,7 +111,7 @@ export default function DealCompliance({
         <h2
           style={{
             margin: "6px 0 0",
-            fontFamily: "'Fraunces', serif",
+            fontFamily: "var(--font-display)",
             fontSize: 22,
             color: "var(--estuary, #132B84)",
             fontWeight: 500,
@@ -215,7 +215,7 @@ function PpraPanel({
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 10, flexWrap: "wrap" }}>
         <p style={{ margin: 0, fontSize: 13, color: "var(--ink-700, #423B31)" }}>
           <b>PPRA Section 67 · {formType === "house" ? "House" : "Plot"} disclosure</b>
-          <span style={{ marginLeft: 10, color: "var(--paper-mute, #6a7692)", fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 11 }}>
+          <span style={{ marginLeft: 10, color: "var(--paper-mute, #6a7692)", fontFamily: "var(--font-mono)", fontSize: 11 }}>
             {summary.total} questions · {summary.unanswered} unanswered · {summary.concerning} concerning
             {summary.concerningMissingExplanation > 0 && ` · ${summary.concerningMissingExplanation} missing explanation`}
           </span>
@@ -252,7 +252,7 @@ function ReadinessPill({ readiness }: { readiness: "complete" | "in_progress" | 
         background: t.bg,
         color: t.fg,
         borderRadius: 3,
-        fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+        fontFamily: "var(--font-mono)",
         fontSize: 10,
         letterSpacing: "0.08em",
         textTransform: "uppercase",
@@ -357,7 +357,7 @@ function PpraRow({
                 color: active
                   ? (concerning ? "var(--status-under-offer-fg)" : "var(--status-active-fg)")
                   : "var(--ink-700, #423B31)",
-                fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                fontFamily: "var(--font-mono)",
                 fontSize: 11,
                 letterSpacing: "0.08em",
                 textTransform: "uppercase",
@@ -371,7 +371,7 @@ function PpraRow({
           );
         })}
         {saved && (
-          <span style={{ fontSize: 10, color: "var(--positive)", marginLeft: 6, fontFamily: "'JetBrains Mono', ui-monospace, monospace" }}>
+          <span style={{ fontSize: 10, color: "var(--positive)", marginLeft: 6, fontFamily: "var(--font-mono)" }}>
             ✓
           </span>
         )}
@@ -427,8 +427,8 @@ function HeaderFields({ disclosure, propertyId }: { disclosure: Disclosure; prop
           style={{ ...inputStyle, resize: "vertical" }}
         />
       </label>
-      {saved && <p style={{ margin: "6px 0 0", fontSize: 10, color: "var(--positive)", fontFamily: "'JetBrains Mono', ui-monospace, monospace" }}>Saved</p>}
-      {saving && <p style={{ margin: "6px 0 0", fontSize: 10, color: "var(--paper-mute)", fontFamily: "'JetBrains Mono', ui-monospace, monospace" }}>Saving…</p>}
+      {saved && <p style={{ margin: "6px 0 0", fontSize: 10, color: "var(--positive)", fontFamily: "var(--font-mono)" }}>Saved</p>}
+      {saving && <p style={{ margin: "6px 0 0", fontSize: 10, color: "var(--paper-mute)", fontFamily: "var(--font-mono)" }}>Saving…</p>}
     </div>
   );
 }
@@ -448,7 +448,7 @@ function CertsPanel({
     <div>
       <p style={{ margin: "0 0 8px", fontSize: 13, color: "var(--ink-700, #423B31)" }}>
         <b>Certificates of compliance</b>
-        <span style={{ marginLeft: 10, color: "var(--paper-mute, #6a7692)", fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 11 }}>
+        <span style={{ marginLeft: 10, color: "var(--paper-mute, #6a7692)", fontFamily: "var(--font-mono)", fontSize: 11 }}>
           seller-supplied · required before transfer
         </span>
       </p>
@@ -515,7 +515,7 @@ function CertRow({
       }}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-        <span style={{ fontFamily: "'Fraunces', serif", fontSize: 14, color: "var(--estuary, #132B84)", fontWeight: 500 }}>
+        <span style={{ fontFamily: "var(--font-display)", fontSize: 14, color: "var(--estuary, #132B84)", fontWeight: 500 }}>
           {row.label}
         </span>
         <CertStatusPill status={status} />
@@ -532,7 +532,7 @@ function CertRow({
         Issuer / reg #
         <input type="text" value={issuer} onChange={(e) => setIssuer(e.target.value)} onBlur={persist} placeholder="e.g. Jones Electrical, ECB 12345" style={inputStyle} />
       </label>
-      <div style={{ minWidth: 60, textAlign: "right", fontSize: 10, fontFamily: "'JetBrains Mono', ui-monospace, monospace", color: err ? "var(--critical)" : saved ? "var(--positive)" : saving ? "var(--paper-mute)" : "transparent" }}>
+      <div style={{ minWidth: 60, textAlign: "right", fontSize: 10, fontFamily: "var(--font-mono)", color: err ? "var(--critical)" : saved ? "var(--positive)" : saving ? "var(--paper-mute)" : "transparent" }}>
         {err ?? (saved ? "Saved" : saving ? "Saving…" : " ")}
       </div>
     </div>
@@ -563,7 +563,7 @@ function CertStatusPill({ status }: { status: "outstanding" | "issued" | "expire
         background: t.bg,
         color: t.fg,
         borderRadius: 3,
-        fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+        fontFamily: "var(--font-mono)",
         fontSize: 9,
         letterSpacing: "0.08em",
         textTransform: "uppercase",
@@ -583,7 +583,7 @@ const btnPrimary: React.CSSProperties = {
   color: "var(--paper-0, #FBF9F4)",
   border: "none",
   borderRadius: 3,
-  fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+  fontFamily: "var(--font-mono)",
   fontSize: 11,
   letterSpacing: "0.10em",
   textTransform: "uppercase",
@@ -595,7 +595,7 @@ const labelStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
   gap: 2,
-  fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+  fontFamily: "var(--font-mono)",
   fontSize: 10,
   letterSpacing: "0.06em",
   textTransform: "uppercase",

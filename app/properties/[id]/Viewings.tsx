@@ -67,7 +67,7 @@ export default function Viewings({ propertyId, listingId, transferId, agentUserI
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, gap: 12, flexWrap: "wrap" }}>
         <p style={{ margin: 0, fontSize: 13, color: "var(--ink-700, #423B31)" }}>
           <b>Viewings</b>
-          <span style={{ marginLeft: 10, color: "var(--paper-mute, #6a7692)", fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 11 }}>
+          <span style={{ marginLeft: 10, color: "var(--paper-mute, #6a7692)", fontFamily: "var(--font-mono)", fontSize: 11 }}>
             show houses · private viewings · valuation visits
           </span>
         </p>
@@ -109,7 +109,7 @@ export default function Viewings({ propertyId, listingId, transferId, agentUserI
 
       {past.length > 0 && (
         <details style={{ marginTop: 12 }}>
-          <summary style={{ fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--paper-mute, #6a7692)", cursor: "pointer" }}>
+          <summary style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--paper-mute, #6a7692)", cursor: "pointer" }}>
             Past viewings · {past.length}
           </summary>
           <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
@@ -163,14 +163,14 @@ function ViewingRow({ v, propertyId }: { v: ViewingItem; propertyId: string }) {
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
         <div>
-          <span style={{ fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 12, color: "var(--estuary, #132B84)", fontWeight: 700 }}>
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--estuary, #132B84)", fontWeight: 700 }}>
             {formatViewingTime(v.scheduledAt)}
           </span>
-          <span style={{ marginLeft: 8, fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 10, color: "var(--paper-mute, #6a7692)", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+          <span style={{ marginLeft: 8, fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--paper-mute, #6a7692)", letterSpacing: "0.08em", textTransform: "uppercase" }}>
             {VIEWING_KIND_LABEL[v.kind]} · {v.durationMinutes}m
           </span>
           {v.agentName && (
-            <span style={{ marginLeft: 8, fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 10, color: "var(--paper-mute, #6a7692)" }}>
+            <span style={{ marginLeft: 8, fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--paper-mute, #6a7692)" }}>
               {v.agentName}
             </span>
           )}
@@ -190,7 +190,7 @@ function ViewingRow({ v, propertyId }: { v: ViewingItem; propertyId: string }) {
       </div>
 
       <div style={{ marginTop: 6 }}>
-        <p style={{ margin: "0 0 4px", fontSize: 10, color: "var(--paper-mute, #6a7692)", fontFamily: "'JetBrains Mono', ui-monospace, monospace", letterSpacing: "0.06em", textTransform: "uppercase" }}>
+        <p style={{ margin: "0 0 4px", fontSize: 10, color: "var(--paper-mute, #6a7692)", fontFamily: "var(--font-mono)", letterSpacing: "0.06em", textTransform: "uppercase" }}>
           Attendees · {v.attendees.length}
         </p>
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -252,7 +252,7 @@ function AttendeeRow({ attendee, propertyId }: { attendee: AttendeeItem; propert
           <span style={{ color: "var(--ink-700, #423B31)", fontWeight: 500 }}>{displayName}</span>
         )}
         {(attendee.phone || attendee.email) && (
-          <div style={{ fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 10, color: "var(--paper-mute, #6a7692)" }}>
+          <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--paper-mute, #6a7692)" }}>
             {attendee.phone}{attendee.phone && attendee.email && " · "}{attendee.email}
           </div>
         )}
@@ -261,7 +261,7 @@ function AttendeeRow({ attendee, propertyId }: { attendee: AttendeeItem; propert
         <button type="button" onClick={() => persistInterest(interest === true ? null : true)} disabled={pending} title="Interested" style={interest === true ? interestBtnOn : interestBtn}>★</button>
         <button type="button" onClick={() => persistInterest(interest === false ? null : false)} disabled={pending} title="Not interested" style={interest === false ? passBtnOn : interestBtn}>·</button>
       </div>
-      <label style={{ display: "flex", alignItems: "center", gap: 4, fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 10, color: "var(--paper-mute, #6a7692)", letterSpacing: "0.06em", textTransform: "uppercase", cursor: "pointer" }}>
+      <label style={{ display: "flex", alignItems: "center", gap: 4, fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--paper-mute, #6a7692)", letterSpacing: "0.06em", textTransform: "uppercase", cursor: "pointer" }}>
         <input type="checkbox" checked={followed} onChange={(e) => persistFollowed(e.target.checked)} disabled={pending} />
         Followed up
       </label>
@@ -412,7 +412,7 @@ const btnPrimary: React.CSSProperties = {
   color: "var(--paper-0, #FBF9F4)",
   border: "none",
   borderRadius: 3,
-  fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+  fontFamily: "var(--font-mono)",
   fontSize: 10,
   letterSpacing: "0.08em",
   textTransform: "uppercase",
@@ -426,7 +426,7 @@ const btnGhost: React.CSSProperties = {
   color: "var(--estuary, #132B84)",
   border: "1px solid var(--estuary, #132B84)",
   borderRadius: 3,
-  fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+  fontFamily: "var(--font-mono)",
   fontSize: 10,
   letterSpacing: "0.08em",
   textTransform: "uppercase",
@@ -470,7 +470,7 @@ const labelStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
   gap: 2,
-  fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+  fontFamily: "var(--font-mono)",
   fontSize: 10,
   letterSpacing: "0.06em",
   textTransform: "uppercase",

@@ -174,7 +174,7 @@ export default function ErfLookup({
             <div style={{ padding: 20 }}>
               <label
                 style={{
-                  fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                  fontFamily: "var(--font-mono)",
                   fontSize: 10,
                   letterSpacing: "0.14em",
                   textTransform: "uppercase",
@@ -234,7 +234,7 @@ export default function ErfLookup({
                 <div style={{ marginTop: 16 }}>
                   <p
                     style={{
-                      fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                      fontFamily: "var(--font-mono)",
                       fontSize: 10,
                       letterSpacing: "0.14em",
                       textTransform: "uppercase",
@@ -275,7 +275,7 @@ export default function ErfLookup({
                             </span>
                             <span
                               style={{
-                                fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                                fontFamily: "var(--font-mono)",
                                 fontSize: 13,
                                 fontWeight: 600,
                                 color: "var(--navy)",
@@ -321,7 +321,7 @@ export default function ErfLookup({
               >
                 <label
                   style={{
-                    fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                    fontFamily: "var(--font-mono)",
                     fontSize: 10,
                     letterSpacing: "0.14em",
                     textTransform: "uppercase",

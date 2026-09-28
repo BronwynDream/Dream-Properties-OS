@@ -92,7 +92,7 @@ export default function InviteUser() {
       <div style={{ gridColumn: "1 / -1", marginBottom: 4 }}>
         <p
           style={{
-            fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+            fontFamily: "var(--font-mono)",
             fontSize: 10,
             letterSpacing: "0.14em",
             textTransform: "uppercase",
@@ -232,7 +232,7 @@ export default function InviteUser() {
 
 const fieldLabel: React.CSSProperties = {
   display: "block",
-  fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+  fontFamily: "var(--font-mono)",
   fontSize: 10,
   letterSpacing: "0.12em",
   textTransform: "uppercase",

@@ -97,7 +97,7 @@ export default function BulkCommit({
       {running && (
         <div
           style={{
-            fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+            fontFamily: "var(--font-mono)",
             fontSize: 11,
             color: "#6b78a0",
           }}
@@ -137,7 +137,7 @@ export default function BulkCommit({
             <li key={i} style={{ fontSize: 11.5, color: "#a12020" }}>
               <span style={{ fontWeight: 600 }}>{e.label}</span>{" "}
               <span
-                style={{ fontFamily: "'JetBrains Mono', ui-monospace, monospace" }}
+                style={{ fontFamily: "var(--font-mono)" }}
               >
                 {e.error}
               </span>

@@ -55,7 +55,7 @@ export default function FicaStatusBadge({ derived, size = "sm", className, style
         background: bg,
         color: fg,
         borderRadius: "var(--radius-sm, 4px)",
-        fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, monospace)",
+        fontFamily: "var(--font-mono)",
         fontSize,
         letterSpacing: "0.08em",
         textTransform: "uppercase",

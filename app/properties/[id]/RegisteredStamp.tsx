@@ -110,10 +110,10 @@ export default function RegisteredStamp({
           <text
             x="130" y="44"
             textAnchor="middle"
-            fontFamily="'JetBrains Mono', ui-monospace, monospace"
             fontSize="22"
             fontWeight="700"
             letterSpacing="5"
+            style={{ fontFamily: "var(--font-mono)" }}
           >
             {copy.primary}
           </text>
@@ -125,9 +125,9 @@ export default function RegisteredStamp({
           <text
             x="130" y="74"
             textAnchor="middle"
-            fontFamily="'JetBrains Mono', ui-monospace, monospace"
             fontSize="9"
             letterSpacing="2.4"
+            style={{ fontFamily: "var(--font-mono)" }}
           >
             {copy.org}
           </text>
@@ -136,10 +136,10 @@ export default function RegisteredStamp({
           <text
             x="130" y="94"
             textAnchor="middle"
-            fontFamily="'JetBrains Mono', ui-monospace, monospace"
             fontSize="11"
             fontWeight="600"
             letterSpacing="2"
+            style={{ fontFamily: "var(--font-mono)" }}
           >
             {dateLine}
           </text>

@@ -68,7 +68,7 @@ export default async function SettingsPage() {
               <>
                 Upload Knysna Muni PDFs — Full General Valuation Roll (5-yearly baseline)
                 or Supplementary Rolls (deltas). Parsed and applied to{" "}
-                <code style={{ fontFamily: "'JetBrains Mono', ui-monospace, monospace" }}>muni_valuation</code>
+                <code style={{ fontFamily: "var(--font-mono)" }}>muni_valuation</code>
                 {" "}so map / Erf Lookup / Property Record show current values.
               </>
             }
@@ -77,7 +77,7 @@ export default async function SettingsPage() {
               href="/admin/valuation-rolls"
               style={{
                 display: "inline-block",
-                fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                fontFamily: "var(--font-mono)",
                 fontSize: 11,
                 letterSpacing: "0.12em",
                 textTransform: "uppercase",
@@ -111,7 +111,7 @@ function SettingsSection({
     <div style={{ marginTop: 8, paddingBottom: 32, borderBottom: "1px solid var(--hairline, #e2e8f5)" }}>
       <h2
         style={{
-          fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+          fontFamily: "var(--font-mono)",
           fontSize: 11,
           letterSpacing: "0.14em",
           textTransform: "uppercase",

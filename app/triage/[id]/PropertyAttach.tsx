@@ -181,7 +181,7 @@ export default function PropertyAttach({
                         style={{
                           fontSize: 11,
                           color: "#6b78a0",
-                          fontFamily: "'JetBrains Mono', monospace",
+                          fontFamily: "var(--font-mono)",
                           marginTop: 2,
                         }}
                       >

@@ -32,7 +32,7 @@ export default function MandateExpiryWindowsField({
     >
       <label
         style={{
-          fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+          fontFamily: "var(--font-mono)",
           fontSize: 10,
           letterSpacing: "0.14em",
           textTransform: "uppercase",
@@ -51,7 +51,7 @@ export default function MandateExpiryWindowsField({
         placeholder={defaultValue.join(", ")}
         disabled={pending}
         style={{
-          fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+          fontFamily: "var(--font-mono)",
           fontSize: 14,
           padding: "8px 10px",
           borderRadius: 3,
@@ -61,16 +61,16 @@ export default function MandateExpiryWindowsField({
       />
       <p style={{ margin: 0, fontSize: 12, color: "var(--paper-mute, #6a7692)", lineHeight: 1.5 }}>
         Comma-separated positive integers. Each creates a watchlist bucket.
-        Example: <code style={{ fontFamily: "'JetBrains Mono', ui-monospace, monospace" }}>14, 30, 60</code>{" "}
+        Example: <code style={{ fontFamily: "var(--font-mono)" }}>14, 30, 60</code>{" "}
         gives three buckets — expiring in 14 days, 15–30 days, 31–60 days.
-        Default: <code style={{ fontFamily: "'JetBrains Mono', ui-monospace, monospace" }}>{defaultValue.join(", ")}</code>.
+        Default: <code style={{ fontFamily: "var(--font-mono)" }}>{defaultValue.join(", ")}</code>.
       </p>
       <div style={{ display: "flex", gap: 12, alignItems: "center", marginTop: 4 }}>
         <button
           type="submit"
           disabled={pending}
           style={{
-            fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+            fontFamily: "var(--font-mono)",
             fontSize: 11,
             letterSpacing: "0.12em",
             textTransform: "uppercase",
@@ -90,7 +90,7 @@ export default function MandateExpiryWindowsField({
               fontSize: 12,
               color: "var(--green, #1F7A4D)",
               fontWeight: 600,
-              fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+              fontFamily: "var(--font-mono)",
             }}
           >
             {msg}
@@ -102,7 +102,7 @@ export default function MandateExpiryWindowsField({
               fontSize: 12,
               color: "var(--amber, #D17E22)",
               fontWeight: 600,
-              fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+              fontFamily: "var(--font-mono)",
             }}
           >
             {err}

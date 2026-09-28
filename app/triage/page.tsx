@@ -71,7 +71,7 @@ export default async function TriagePage({ searchParams }: { searchParams: Searc
           <Link
             href={showAll ? "/triage" : "/triage?show=all"}
             style={{
-              fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+              fontFamily: "var(--font-mono)",
               fontSize: 11,
               letterSpacing: "0.08em",
               textTransform: "uppercase",
@@ -196,8 +196,7 @@ export default async function TriagePage({ searchParams }: { searchParams: Searc
                           background: "rgba(200,160,50,0.10)",
                           border: "1px solid rgba(200,160,50,0.35)",
                           color: "#7A5814",
-                          fontFamily:
-                            "'JetBrains Mono', ui-monospace, monospace",
+                          fontFamily: "var(--font-mono)",
                           fontSize: 10,
                           letterSpacing: "0.08em",
                           textTransform: "uppercase",
@@ -222,7 +221,7 @@ export default async function TriagePage({ searchParams }: { searchParams: Searc
                       <Link
                         href={`/properties/${b.property_id}`}
                         style={{
-                          fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                          fontFamily: "var(--font-mono)",
                           fontSize: 10,
                           letterSpacing: "0.06em",
                           color: "var(--positive, #4B6B4A)",
@@ -234,7 +233,7 @@ export default async function TriagePage({ searchParams }: { searchParams: Searc
                     ) : (
                       <span
                         style={{
-                          fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                          fontFamily: "var(--font-mono)",
                           fontSize: 10,
                           color: "var(--paper-mute, #6a7692)",
                           letterSpacing: "0.06em",

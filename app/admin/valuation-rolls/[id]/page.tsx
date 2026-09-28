@@ -54,7 +54,7 @@ export default async function ValuationRollDetail({ params }: { params: { id: st
           <p className="app-sub">
             <span
               style={{
-                fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                fontFamily: "var(--font-mono)",
                 fontSize: 11,
                 letterSpacing: "0.14em",
                 textTransform: "uppercase",
@@ -87,7 +87,7 @@ export default async function ValuationRollDetail({ params }: { params: { id: st
                 border: "1px solid var(--amber, #D17E22)",
                 background: "#fef5ec",
                 fontSize: 13,
-                fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                fontFamily: "var(--font-mono)",
                 color: "var(--amber, #D17E22)",
                 whiteSpace: "pre-wrap",
               }}
@@ -101,7 +101,7 @@ export default async function ValuationRollDetail({ params }: { params: { id: st
               <div style={{ marginTop: 32 }}>
                 <h2
                   style={{
-                    fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                    fontFamily: "var(--font-mono)",
                     fontSize: 11,
                     letterSpacing: "0.14em",
                     textTransform: "uppercase",
@@ -149,7 +149,7 @@ export default async function ValuationRollDetail({ params }: { params: { id: st
 
                 <MiniHeading>Sample rows (first {sample.length})</MiniHeading>
                 <div style={{ overflowX: "auto", border: "1px solid var(--hairline, #e2e8f5)", borderRadius: 3 }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, fontFamily: "'JetBrains Mono', ui-monospace, monospace" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, fontFamily: "var(--font-mono)" }}>
                     <thead>
                       <tr style={{ background: "var(--paper-bg, #f5f1e8)", textAlign: "left" }}>
                         {u.kind === "full_gv" ? (
@@ -204,7 +204,7 @@ export default async function ValuationRollDetail({ params }: { params: { id: st
 }
 
 const pillStyle: React.CSSProperties = {
-  fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+  fontFamily: "var(--font-mono)",
   fontSize: 11,
   padding: "3px 8px",
   borderRadius: 3,
@@ -225,7 +225,7 @@ function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div>
       <p style={{ margin: 0, fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--paper-mute, #6a7692)" }}>{label}</p>
-      <p style={{ margin: 0, fontSize: 20, fontFamily: "'JetBrains Mono', ui-monospace, monospace", color: "var(--estuary, #132B84)" }}>{value}</p>
+      <p style={{ margin: 0, fontSize: 20, fontFamily: "var(--font-mono)", color: "var(--estuary, #132B84)" }}>{value}</p>
     </div>
   );
 }

@@ -129,7 +129,7 @@ export default function TeamRow({
               fontSize: 10,
               color: "#7a86a8",
               marginTop: 4,
-              fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+              fontFamily: "var(--font-mono)",
               letterSpacing: "0.06em",
               textTransform: "uppercase",
             }}
@@ -144,7 +144,7 @@ export default function TeamRow({
             padding: "2px 8px",
             borderRadius: 999,
             fontSize: 10,
-            fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+            fontFamily: "var(--font-mono)",
             letterSpacing: "0.08em",
             textTransform: "uppercase",
             background: pill.bg,
@@ -162,14 +162,14 @@ export default function TeamRow({
           onChange={(e) => setFfc(e.target.value)}
           placeholder="FFC number"
           disabled={pending}
-          style={{ ...inputStyle, fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 12 }}
+          style={{ ...inputStyle, fontFamily: "var(--font-mono)", fontSize: 12 }}
         />
         <input
           type="date"
           value={ffcExpiry}
           onChange={(e) => setFfcExpiry(e.target.value)}
           disabled={pending}
-          style={{ ...inputStyle, marginTop: 6, fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 12 }}
+          style={{ ...inputStyle, marginTop: 6, fontFamily: "var(--font-mono)", fontSize: 12 }}
           aria-label="FFC expiry date"
         />
         <FfcStatusChip expiry={ffcExpiry} />
@@ -270,7 +270,7 @@ function FfcStatusChip({ expiry }: { expiry: string }) {
         padding: "2px 8px",
         borderRadius: 999,
         fontSize: 10,
-        fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+        fontFamily: "var(--font-mono)",
         letterSpacing: "0.06em",
         textTransform: "uppercase",
         background: bg,

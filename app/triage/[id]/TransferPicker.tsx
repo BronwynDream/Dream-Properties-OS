@@ -116,7 +116,7 @@ export default function TransferPicker({
               {t.transferDate && (
                 <span
                   style={{
-                    fontFamily: "'JetBrains Mono', monospace",
+                    fontFamily: "var(--font-mono)",
                     fontSize: 11,
                     color: "#6b78a0",
                   }}

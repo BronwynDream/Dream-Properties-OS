@@ -119,7 +119,7 @@ function PrintStyles() {
       }
       .doc-letterhead-ffc {
         margin-top: 4px;
-        font-family: "JetBrains Mono", ui-monospace, monospace;
+        font-family: var(--font-mono);
         font-size: 8.5pt;
         letter-spacing: 0.05em;
         color: #6B7A8C;

@@ -70,7 +70,7 @@ export default function AgentPicker({
         onChange={(e) => submit(e.target.value)}
         disabled={pending}
         style={{
-          fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+          fontFamily: "var(--font-mono)",
           fontSize: 12,
           padding: "6px 10px",
           borderRadius: 3,
@@ -113,13 +113,13 @@ const hintStyle: React.CSSProperties = {
   flexWrap: "wrap",
 };
 const labelStyle: React.CSSProperties = {
-  fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+  fontFamily: "var(--font-mono)",
   fontSize: 10,
   letterSpacing: "0.14em",
   textTransform: "uppercase",
   color: "var(--paper-mute, #6a7692)",
 };
 const bodyStyle: React.CSSProperties = {
-  fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+  fontFamily: "var(--font-mono)",
   fontSize: 11,
 };

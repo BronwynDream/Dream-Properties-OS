@@ -86,7 +86,7 @@ export default function ListingStatusPill({ status, size = "md", className, styl
         background: bg,
         color: fg,
         borderRadius: "var(--radius-sm, 4px)",
-        fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, monospace)",
+        fontFamily: "var(--font-mono)",
         fontSize,
         letterSpacing: "0.08em",
         textTransform: "uppercase",

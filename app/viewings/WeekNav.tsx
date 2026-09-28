@@ -45,7 +45,7 @@ export default function WeekNav({
       <span
         style={{
           marginLeft: 8,
-          fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+          fontFamily: "var(--font-mono)",
           fontSize: 12,
           color: "var(--paper-mute, #6a7692)",
         }}
@@ -61,7 +61,7 @@ const btn: React.CSSProperties = {
   border: "1px solid var(--line-strong, #D8CFBE)",
   background: "var(--paper-0, #FBF9F4)",
   color: "var(--estuary, #132B84)",
-  fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+  fontFamily: "var(--font-mono)",
   fontSize: 11,
   letterSpacing: "0.08em",
   textTransform: "uppercase",

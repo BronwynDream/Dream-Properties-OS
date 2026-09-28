@@ -95,7 +95,7 @@ export default function RegeocodeProperty24Button() {
             fontSize: 12,
             color: "var(--estuary)",
             fontWeight: 600,
-            fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+            fontFamily: "var(--font-mono)",
             letterSpacing: "0.02em",
           }}
         >

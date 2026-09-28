@@ -147,7 +147,7 @@ function AccessMap() {
     >
       <p
         style={{
-          fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+          fontFamily: "var(--font-mono)",
           fontSize: 10,
           letterSpacing: "0.14em",
           textTransform: "uppercase",
@@ -200,7 +200,7 @@ function AccessMap() {
                   padding: "3px 10px",
                   borderRadius: 999,
                   fontSize: 11,
-                  fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                  fontFamily: "var(--font-mono)",
                   letterSpacing: "0.08em",
                   textTransform: "uppercase",
                   background: pill.bg,

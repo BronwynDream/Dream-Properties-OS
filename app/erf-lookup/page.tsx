@@ -161,7 +161,7 @@ export default async function ErfLookupPage({
           </h1>
           <p className="app-sub">
             Reads from{" "}
-            <code style={{ fontFamily: "'JetBrains Mono', ui-monospace, monospace" }}>
+            <code style={{ fontFamily: "var(--font-mono)" }}>
               muni_property
             </code>{" "}
             — Knysna Muni's public rateable-property mirror (valuation roll,

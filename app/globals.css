@@ -115,21 +115,39 @@
 html, body {
   margin: 0;
   padding: 0;
-  background: var(--mist);
-  color: var(--ink);
-  font-family: "Inter", -apple-system, sans-serif;
+  background: var(--paper-0);
+  color: var(--ink-900);
+  font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
 }
 
+/* Global :focus-visible (2026-09-28). Gold ring reads on both
+   navy header surfaces and warm paper body. */
+:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Reduced-motion — global (2026-09-28). */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 h1, h2, .display {
-  font-family: "Inter", -apple-system, sans-serif;
+  font-family: var(--font-body);
   color: var(--estuary);
   font-weight: 700;
   letter-spacing: -0.025em;
 }
 h1 { letter-spacing: -0.035em; }
 
-.mono { font-family: "JetBrains Mono", ui-monospace, monospace; }
+.mono { font-family: var(--font-mono); }
 
 /* Gold tideline — the signature Estuary element */
 .tideline {
@@ -161,7 +179,7 @@ h1 { letter-spacing: -0.035em; }
   padding: 28px 28px 22px;
 }
 .card-head .eyebrow {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -184,6 +202,64 @@ input:not([type=checkbox]):not([type=radio]) {
   font-family: inherit;
 }
 input:not([type=checkbox]):not([type=radio]):focus { outline: 2px solid var(--gold); border-color: var(--gold); }
+
+/* Button trio (2026-09-28). Reference: docs/qa/2026-09-28-ux-audit.md #11.
+   Old classes .cta, .ghost-dark, .ghost-link, button.primary stay
+   defined; 018-c migrates callers and deletes them. */
+
+.btn-primary {
+  background: var(--accent-600);
+  color: var(--white);
+  border: 1px solid var(--accent-600);
+  padding: 10px 18px;
+  border-radius: var(--radius-md);
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 120ms ease, box-shadow 120ms ease;
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent-700);
+  box-shadow: var(--shadow-sm);
+}
+.btn-primary:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.btn-secondary {
+  background: transparent;
+  color: var(--accent-600);
+  border: 1px solid var(--accent-600);
+  padding: 9px 17px;
+  border-radius: var(--radius-md);
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+.btn-secondary:hover:not(:disabled) {
+  background: var(--mist);
+}
+
+.btn-quiet {
+  background: transparent;
+  color: var(--ink-700);
+  border: none;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+.btn-quiet:hover:not(:disabled) {
+  background: var(--paper-1);
+  color: var(--ink-900);
+}
 
 button.primary {
   width: 100%;
@@ -256,7 +332,7 @@ button.primary:disabled { opacity: 0.6; cursor: default; }
 }
 .record-head { padding: 14px 28px 12px; }
 .app-head .eyebrow {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--gold); margin: 0;
 }
 .app-head h1 { color: var(--white); margin: 2px 0 0; font-size: 22px; font-weight: 700; letter-spacing: -0.03em; }
@@ -264,7 +340,7 @@ button.primary:disabled { opacity: 0.6; cursor: default; }
 .pill {
   display: inline-block; padding: 3px 10px; border-radius: 999px;
   background: var(--mist); color: var(--estuary); font-size: 12px; font-weight: 600;
-  font-family: "JetBrains Mono", ui-monospace, monospace; text-transform: uppercase; letter-spacing: 0.08em;
+  font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em;
 }
 button.ghost {
   background: transparent; color: var(--white); border: 1px solid rgba(255,255,255,0.5);
@@ -292,13 +368,13 @@ button.ghost:hover { background: rgba(255,255,255,0.12); }
   transition: border-color 0.15s, background 0.15s;
 }
 .dropzone:hover { border-color: var(--gold); background: #fffdf6; }
-.dropzone strong { font-family: "Inter", -apple-system, sans-serif; color: var(--estuary); font-size: 18px; }
+.dropzone strong { font-family: var(--font-body); color: var(--estuary); font-size: 18px; }
 .dropzone span { color: #5b6885; font-size: 13px; }
 .dz-msg { margin-top: 14px; color: var(--estuary); font-weight: 600; font-size: 14px; }
 
 /* Queue table */
 table.queue { width: 100%; border-collapse: collapse; margin-top: 28px; background: var(--white); border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(15,42,99,0.06); }
-table.queue th { text-align: left; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: #6b78a0; padding: 12px 14px; border-bottom: 2px solid var(--mist); font-family: "JetBrains Mono", monospace; }
+table.queue th { text-align: left; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: #6b78a0; padding: 12px 14px; border-bottom: 2px solid var(--mist); font-family: var(--font-mono); }
 table.queue td { padding: 12px 14px; border-bottom: 1px solid var(--mist); font-size: 14px; }
 table.queue td.strong { font-weight: 600; color: var(--estuary); }
 .tier { padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; text-transform: uppercase; }
@@ -319,7 +395,7 @@ table.queue td.strong { font-weight: 600; color: var(--estuary); }
   margin-top: 30px; background: #fffdf6; border: 1px solid #eddfb6;
   border-left: 3px solid var(--gold); border-radius: 10px; padding: 16px 18px;
 }
-.note-box strong { color: var(--estuary); font-family: "Inter", -apple-system, sans-serif; }
+.note-box strong { color: var(--estuary); font-family: var(--font-body); }
 .note-box p { color: #5b6885; font-size: 14px; line-height: 1.6; margin: 8px 0 0; }
 
 .ghost-dark {
@@ -331,7 +407,7 @@ table.queue td.strong { font-weight: 600; color: var(--estuary); }
 
 .extract-groups { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; margin-top: 12px; }
 .extract-card { background: var(--white); border: 1px solid #e2e8f5; border-radius: 12px; padding: 14px 16px; }
-.extract-card h3 { margin: 0 0 8px; font-size: 14px; text-transform: capitalize; color: var(--estuary); font-family: "JetBrains Mono", monospace; letter-spacing: 0.04em; }
+.extract-card h3 { margin: 0 0 8px; font-size: 14px; text-transform: capitalize; color: var(--estuary); font-family: var(--font-mono); letter-spacing: 0.04em; }
 table.kv { width: 100%; border-collapse: collapse; }
 table.kv td { padding: 5px 4px; font-size: 13px; border-bottom: 1px solid var(--mist); vertical-align: top; }
 table.kv td.k { color: #8090b5; width: 45%; font-size: 11px; }
@@ -356,7 +432,7 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
 .record-head-date {
   margin: 8px 0 0; font-size: 11.5px;
   color: rgba(255,255,255,0.66);
-  font-family: "JetBrains Mono", monospace; letter-spacing: 0.05em;
+  font-family: var(--font-mono); letter-spacing: 0.05em;
 }
 .record-head-date b { color: var(--white); font-weight: 600; }
 
@@ -366,7 +442,7 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
   display: inline-flex; align-items: center; gap: 8px;
   padding: 6px 12px 6px 10px;
   border-radius: 999px;
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
   white-space: nowrap;
 }
@@ -400,19 +476,19 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
 .cadastral-item:first-child { border-left: 0; }
 .cadastral-label {
   display: block;
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
   color: #8090b5; margin-bottom: 6px;
 }
 .cadastral-value {
   display: block;
-  font-family: "Inter", -apple-system, sans-serif;
+  font-family: var(--font-body);
   font-size: 18px; font-weight: 700; color: var(--estuary);
   letter-spacing: -0.025em; line-height: 1.15;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .cadastral-value.mono {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 13px; font-weight: 600; letter-spacing: 0.02em;
 }
 .cadastral-item.is-empty .cadastral-value { color: #b3bdd6; opacity: 0.7; }
@@ -444,7 +520,7 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
   gap: 8px;
 }
 .timeline-year {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
   color: var(--estuary);
 }
@@ -456,7 +532,7 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
 }
 .transfer-card { background: var(--white); border: 1px solid #e2e8f5; border-radius: 12px; padding: 14px 16px; margin-top: 16px; box-shadow: 0 4px 20px rgba(15,42,99,0.05); }
 .transfer-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
-.transfer-head b { font-family: "Inter", -apple-system, sans-serif; color: var(--estuary); font-size: 17px; }
+.transfer-head b { font-family: var(--font-body); color: var(--estuary); font-size: 17px; }
 
 /* Action row that sits between transfer-head and transfer-cols. Hosts
    Mark-as-sold + the sold-by provenance line so an agent can see and
@@ -500,7 +576,7 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
   box-shadow: 0 1px 2px rgba(19, 43, 132, 0.05);
 }
 .property-record-deal--empty .eyebrow {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
   color: var(--slate, #6b7789); margin: 0 0 8px; font-weight: 700;
 }
@@ -514,7 +590,7 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
    The record surface reads as paper (vellum wash), not a UI panel. Type
    hierarchy is anchored by the Registry Stamp — a bordered identity block
    (top-left) borrowing the reference-block format of real SA title deeds,
-   set in JetBrains Mono. The Muni valuation is the mid-page headline number.
+   set in var(--font-mono). The Muni valuation is the mid-page headline number.
    Cadastre polygon + Schedule table live in a two-column row below. All
    secondary muni data (bond, sectional scheme, prev deed) folds into the
    schedule — one source per fact.
@@ -600,22 +676,22 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
   min-height: 100%;
 }
 .registry-stamp-eyebrow {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 9px; letter-spacing: 0.22em; text-transform: uppercase;
   color: var(--gold); font-weight: 700; margin: 0 0 12px;
 }
 .registry-stamp-label {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
   color: var(--paper-mute); font-weight: 600; margin: 0 0 2px;
 }
 .registry-stamp-erf {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 38px; font-weight: 700; letter-spacing: 0.02em;
   color: var(--estuary); margin: 0; line-height: 1;
 }
 .registry-stamp-erf-more {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 11px; color: var(--paper-mute); font-weight: 500;
   margin: 4px 0 0; letter-spacing: 0.02em;
 }
@@ -624,17 +700,17 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
   opacity: 0.55;
 }
 .registry-stamp-deed {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 14px; font-weight: 500; color: var(--estuary);
   margin: 0; letter-spacing: -0.005em;
 }
 .registry-stamp-sg {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 10px; color: var(--paper-mute); margin: 4px 0 0;
   letter-spacing: 0.01em; word-break: break-all;
 }
 .registry-stamp-empty {
-  font-family: "Inter", sans-serif;
+  font-family: var(--font-body);
   font-size: 12px; color: var(--paper-mute); font-style: italic;
   margin: 0; line-height: 1.4;
 }
@@ -645,12 +721,12 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
   min-width: 0;
 }
 .record-headline-eyebrow {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
   color: var(--paper-mute); font-weight: 600; margin: 0 0 6px;
 }
 .record-headline-value {
-  font-family: "Inter", -apple-system, sans-serif;
+  font-family: var(--font-body);
   font-size: 34px; font-weight: 700; letter-spacing: -0.02em;
   color: var(--estuary); margin: 0; line-height: 1;
   font-variant-numeric: tabular-nums;
@@ -660,7 +736,7 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
   letter-spacing: 0.01em;
 }
 .record-headline-empty {
-  font-family: "Inter", sans-serif;
+  font-family: var(--font-body);
   font-size: 13px; color: var(--paper-mute); font-style: italic;
   margin: 0; line-height: 1.5;
 }
@@ -672,7 +748,7 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
   font-size: 13px; color: var(--estuary);
 }
 .record-since-eyebrow {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
   color: var(--paper-mute); font-weight: 600; margin: 0 0 4px;
 }
@@ -751,7 +827,7 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
   background: rgba(15, 42, 99, 0.88);
   color: #fff;
   border-radius: 999px;
-  font-family: "Inter", -apple-system, sans-serif;
+  font-family: var(--font-body);
   font-size: 11px; font-weight: 600;
   letter-spacing: 0.02em;
   text-decoration: none;
@@ -767,7 +843,7 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
 }
 .cadastre-coords {
   position: absolute; bottom: 8px; right: 10px;
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 10px; color: rgba(255, 255, 255, 0.92);
   background: rgba(13, 58, 82, 0.7);
   padding: 3px 7px; border-radius: 3px;
@@ -794,7 +870,7 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
   width: 32px; height: 32px;    /* was 56×56 */
 }
 .cadastre-fallback-title {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
   font-weight: 700; color: var(--estuary); margin: 0 0 2px;
 }
@@ -804,7 +880,7 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
   max-width: 300px;
 }
 .cadastre-fallback-coords {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px; color: var(--estuary);
   letter-spacing: 0.03em;
 }
@@ -834,19 +910,19 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
   vertical-align: baseline;
 }
 .schedule td.k {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
   color: var(--paper-mute); font-weight: 600;
   width: 44%;
 }
 .schedule td.v {
-  font-family: "Inter", -apple-system, sans-serif;
+  font-family: var(--font-body);
   font-size: 13.5px; font-weight: 600; color: var(--estuary);
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
 .schedule td.v.mono {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12.5px; font-weight: 500;
 }
 .schedule td.v.dim {
@@ -861,7 +937,7 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
   border-top: 1px dashed var(--paper-line);
 }
 .record-photos-label {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
   color: var(--paper-mute); font-weight: 600; margin: 0 0 10px;
 }
@@ -882,7 +958,7 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
   width: 80px; height: 80px; border-radius: 3px;
   background: var(--paper); color: var(--paper-mute);
   display: flex; align-items: center; justify-content: center;
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px; font-weight: 600;
   border: 1px dashed var(--paper-line);
 }
@@ -910,20 +986,20 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
 .lead-row:last-child { border-bottom: 0; }
 .lead-row:hover { background: rgba(200, 160, 50, 0.06); }
 .lead-row-sender {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   color: var(--paper-mute);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .lead-row-subject {
-  font-family: "Inter", -apple-system, sans-serif;
+  font-family: var(--font-body);
   font-size: 14px;
   font-weight: 600;
   color: var(--estuary);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .lead-row-meta {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.06em;
   color: var(--paper-mute);
@@ -957,20 +1033,20 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
 .contact-row:last-child { border-bottom: 0; }
 .contact-row:hover { background: rgba(200, 160, 50, 0.06); }
 .contact-row-name {
-  font-family: "Inter", -apple-system, sans-serif;
+  font-family: var(--font-body);
   font-size: 14px;
   color: var(--estuary);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .contact-row-meta {
-  font-family: "Inter", -apple-system, sans-serif;
+  font-family: var(--font-body);
   font-size: 12px;
   color: var(--paper-mute);
   display: flex; gap: 12px; flex-wrap: wrap;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .contact-row-roles {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.06em;
   color: var(--paper-mute);
@@ -1004,7 +1080,7 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
   font-size: 13px;
 }
 .contact-dl dt {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -1014,7 +1090,7 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
 }
 .contact-dl dd { margin: 0; color: var(--estuary); }
 .contact-dl dd.mono, .contact-dl .mono {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12.5px;
 }
 
@@ -1024,7 +1100,7 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
   margin-top: 8px;
 }
 .role-table th {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -1072,7 +1148,7 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
   color: var(--paper-mute);
 }
 .record-deal-empty .eyebrow {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
   color: var(--paper-mute); font-weight: 700; margin: 0 0 6px;
 }
@@ -1094,7 +1170,7 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
   border-top: 1px dashed var(--paper-line);
   font-size: 11px;
   color: var(--paper-mute);
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   letter-spacing: 0.02em;
 }
 
@@ -1125,7 +1201,7 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
 .dropzone-collapse summary:hover { background: #ecf0f8; border-color: var(--navy); }
 .dropzone-collapse summary::-webkit-details-marker { display: none; }
 .dropzone-collapse-caret {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   color: #8090b5;
   font-size: 16px;
   line-height: 1;
@@ -1133,13 +1209,13 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
 }
 .dropzone-collapse[open] .dropzone-collapse-caret { transform: rotate(45deg); }
 .transfer-cols { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 18px; }
-.col-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: #8090b5; font-family: "JetBrains Mono", monospace; margin: 0 0 8px; }
+.col-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: #8090b5; font-family: var(--font-mono); margin: 0 0 8px; }
 .party-line { font-size: 14px; margin-bottom: 6px; color: var(--ink); }
 .party-line b { color: var(--estuary); }
 .muted { color: #9aa6c4; font-size: 13px; }
 .member-list { margin: 4px 0 0; padding-left: 16px; font-size: 13px; color: #5b6885; }
 .milestones { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 6px; }
-.ms-chip { background: var(--mist); color: var(--estuary); border-radius: 999px; padding: 3px 10px; font-size: 11px; font-family: "JetBrains Mono", monospace; }
+.ms-chip { background: var(--mist); color: var(--estuary); border-radius: 999px; padding: 3px 10px; font-size: 11px; font-family: var(--font-mono); }
 @media (max-width: 640px) { .transfer-cols { grid-template-columns: 1fr; } }
 .doc-list { margin-top: 14px; border-top: 1px solid var(--mist); padding-top: 12px; }
 .doc-chips { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -1219,7 +1295,7 @@ button.doc-thumb {
   overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
 }
 .lightbox-counter {
-  font-family: "JetBrains Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 10.5px;
   color: var(--gold);
   letter-spacing: 0.08em;
@@ -1295,7 +1371,7 @@ button.doc-thumb {
 .doc-group { margin-top: 14px; }
 .doc-group:first-child { margin-top: 4px; }
 .doc-group-title {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
   color: #6b78a0; margin: 0 0 6px;
   display: flex; align-items: baseline; gap: 8px;
@@ -1308,7 +1384,7 @@ button.doc-thumb {
 .doc-group-count {
   color: var(--estuary);
   font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em;
-  font-family: "JetBrains Mono", monospace;
+  font-family: var(--font-mono);
 }
 /* FICA is protected — subtle red ring across the whole category so the
    reader knows this section is different in kind. */
@@ -1384,13 +1460,13 @@ button.doc-thumb {
   background: linear-gradient(140deg, #E2B458, #B07E22);
   color: var(--estuary);
   display: grid; place-items: center;
-  font-family: "Inter", -apple-system, sans-serif; font-weight: 800; font-size: 16px;
+  font-family: var(--font-body); font-weight: 800; font-size: 16px;
   letter-spacing: -0.04em;
 }
 .topbar-brand-text { display: flex; flex-direction: column; line-height: 1.1; }
-.topbar-brand-name { font-family: "Inter", -apple-system, sans-serif; font-size: 15px; font-weight: 700; letter-spacing: -0.02em; }
+.topbar-brand-name { font-family: var(--font-body); font-size: 15px; font-weight: 700; letter-spacing: -0.02em; }
 .topbar-brand-sub {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
   color: rgba(255,255,255,0.6);
 }
@@ -1457,7 +1533,7 @@ button.doc-thumb {
 }
 a.topbar-who-name:hover { color: var(--white); text-decoration: underline; }
 .topbar-who-role {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
   padding: 3px 8px; border-radius: 4px; font-weight: 700;
 }
@@ -1489,12 +1565,12 @@ a.topbar-who-name:hover { color: var(--white); text-decoration: underline; }
 }
 .page-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; margin-bottom: 20px; }
 .page-head .eyebrow {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
   color: var(--gold); margin: 0 0 6px;
 }
 .page-head h1 {
-  font-family: "Inter", -apple-system, sans-serif;
+  font-family: var(--font-body);
   color: var(--estuary); margin: 0; font-size: 32px; font-weight: 700; letter-spacing: -0.035em;
 }
 .page-head .sub { font-size: 13px; color: #5b6885; margin: 6px 0 0; max-width: 520px; }
@@ -1515,12 +1591,12 @@ a.topbar-who-name:hover { color: var(--white); text-decoration: underline; }
 }
 .dash-hero-body { flex: 1; min-width: 0; }
 .dash-hero-eyebrow {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
   color: var(--gold); margin: 0 0 8px;
 }
 .dash-hero-address {
-  font-family: "Inter", -apple-system, sans-serif;
+  font-family: var(--font-body);
   color: var(--estuary);
   font-size: clamp(30px, 3.8vw, 42px);
   font-weight: 700; letter-spacing: -0.04em; line-height: 1.05;
@@ -1532,18 +1608,18 @@ a.topbar-who-name:hover { color: var(--white); text-decoration: underline; }
   border-radius: 1px;
 }
 .dash-hero-suburb {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px; letter-spacing: 0.08em; color: #6b78a0; margin: 0 0 14px;
 }
 .dash-hero-meta {
   display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
 }
 .dash-hero-payload {
-  font-family: "Inter", sans-serif;
+  font-family: var(--font-body);
   font-size: 14px; color: #6b78a0;
 }
 .dash-hero-payload b {
-  font-family: "Inter", -apple-system, sans-serif;
+  font-family: var(--font-body);
   font-size: 22px; color: var(--estuary); font-weight: 700;
   font-variant-numeric: tabular-nums; letter-spacing: -0.03em;
   margin-right: 3px;
@@ -1571,7 +1647,7 @@ a.topbar-who-name:hover { color: var(--white); text-decoration: underline; }
   box-shadow: 0 4px 20px rgba(15, 42, 99, 0.05);
 }
 .dash-attention-eyebrow {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
   color: var(--gold); margin: 0 0 12px; font-weight: 700;
 }
@@ -1604,17 +1680,17 @@ a.topbar-who-name:hover { color: var(--white); text-decoration: underline; }
   display: flex; flex-direction: column; gap: 2px; min-width: 0;
 }
 .dash-attention-primary {
-  font-family: "Inter", -apple-system, sans-serif;
+  font-family: var(--font-body);
   font-weight: 600; font-size: 14px; color: var(--estuary);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .dash-attention-secondary {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 10.5px; letter-spacing: 0.06em;
   color: var(--slate, #6b78a0);
 }
 .dash-attention-payload {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px; font-weight: 600;
   color: var(--estuary);
   white-space: nowrap;
@@ -1661,7 +1737,7 @@ a.topbar-who-name:hover { color: var(--white); text-decoration: underline; }
 }
 .dash-dupes-body { flex: 1; min-width: 0; }
 .dash-dupes-eyebrow {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -1669,7 +1745,7 @@ a.topbar-who-name:hover { color: var(--white); text-decoration: underline; }
   margin: 0;
 }
 .dash-dupes-headline {
-  font-family: "Inter", -apple-system, sans-serif;
+  font-family: var(--font-body);
   font-size: 20px;
   font-weight: 700;
   letter-spacing: -0.02em;
@@ -1681,12 +1757,12 @@ a.topbar-who-name:hover { color: var(--white); text-decoration: underline; }
   margin: 6px 0 0;
   font-size: 13px;
   color: #5b6885;
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   letter-spacing: 0.02em;
 }
 .dash-dupes-breakdown b { color: var(--estuary); font-weight: 700; }
 .dash-dupes-arrow {
-  font-family: "Inter", -apple-system, sans-serif;
+  font-family: var(--font-body);
   font-size: 22px;
   color: #7A5814;
   font-weight: 600;
@@ -1731,12 +1807,12 @@ a.topbar-who-name:hover { color: var(--white); text-decoration: underline; }
   margin-bottom: 12px;
 }
 .dash-col-head h2 {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
   color: var(--estuary); margin: 0; font-weight: 700;
 }
 .dash-col-count {
-  font-family: "Inter", -apple-system, sans-serif;
+  font-family: var(--font-body);
   font-size: 22px; font-weight: 700; color: var(--estuary);
   letter-spacing: -0.03em; line-height: 1;
   font-variant-numeric: tabular-nums;
@@ -1764,13 +1840,13 @@ a.topbar-who-name:hover { color: var(--white); text-decoration: underline; }
   display: flex; flex-direction: column; gap: 2px;
 }
 .dash-row-primary {
-  font-family: "Inter", -apple-system, sans-serif;
+  font-family: var(--font-body);
   font-size: 14.5px; font-weight: 600; color: var(--estuary);
   letter-spacing: -0.015em; line-height: 1.2;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .dash-row-secondary {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 10.5px; letter-spacing: 0.04em;
   color: #8090b5;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -1778,7 +1854,7 @@ a.topbar-who-name:hover { color: var(--white); text-decoration: underline; }
 .dash-row-right { flex-shrink: 0; }
 
 .dash-days {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px; font-weight: 600; letter-spacing: 0.02em;
   color: var(--estuary);
   padding: 3px 8px; border-radius: 6px;
@@ -1790,7 +1866,7 @@ a.topbar-who-name:hover { color: var(--white); text-decoration: underline; }
 .dash-days.muted { background: transparent; color: #9aa6c4; font-weight: 500; }
 
 .dash-price {
-  font-family: "Inter", -apple-system, sans-serif;
+  font-family: var(--font-body);
   font-size: 14px; font-weight: 700; color: var(--estuary);
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
@@ -1810,7 +1886,7 @@ a.topbar-who-name:hover { color: var(--white); text-decoration: underline; }
   display: flex; align-items: baseline; justify-content: space-between;
   margin: 36px 0 12px;
 }
-.section-head h2 { margin: 0; font-family: "Inter", -apple-system, sans-serif; color: var(--estuary); font-size: 20px; }
+.section-head h2 { margin: 0; font-family: var(--font-body); color: var(--estuary); font-size: 20px; }
 .section-head .link { color: var(--navy); font-size: 13px; font-weight: 600; text-decoration: none; }
 .section-head .link:hover { text-decoration: underline; }
 
@@ -1828,7 +1904,7 @@ a.topbar-who-name:hover { color: var(--white); text-decoration: underline; }
 }
 .activity-row:last-child { border-bottom: 0; }
 .activity-row .when {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 11px; color: #8090b5; letter-spacing: 0.04em;
 }
 .activity-row .what { font-size: 14px; color: var(--ink); }
@@ -1854,7 +1930,7 @@ a.topbar-who-name:hover { color: var(--white); text-decoration: underline; }
 }
 .map-rail section { padding: 14px 16px; border-bottom: 1px solid var(--mist); }
 .map-rail h3 {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em;
   color: #6b78a0; font-weight: 700; margin: 0 0 10px;
 }
@@ -1916,8 +1992,8 @@ a.topbar-who-name:hover { color: var(--white); text-decoration: underline; }
 }
 .listing-item:hover { background: #F6F8FC; }
 .listing-item .bar { background: var(--m-fill); border-radius: 2px; }
-.listing-item .nm { font-family: "Inter", -apple-system, sans-serif; font-size: 14px; color: var(--estuary); font-weight: 600; line-height: 1.2; }
-.listing-item .pr { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 11px; color: #6b78a0; margin-top: 2px; }
+.listing-item .nm { font-family: var(--font-body); font-size: 14px; color: var(--estuary); font-weight: 600; line-height: 1.2; }
+.listing-item .pr { font-family: var(--font-mono); font-size: 11px; color: #6b78a0; margin-top: 2px; }
 .listing-item .meta { font-size: 11px; color: #8090b5; margin-top: 2px; }
 .listing-item.active { background: #EEF0F8; }
 
@@ -1941,7 +2017,7 @@ a.topbar-who-name:hover { color: var(--white); text-decoration: underline; }
 .price-pin .badge {
   background: var(--m-fill);
   color: var(--m-ink);
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 12px; font-weight: 700; letter-spacing: 0.01em; white-space: nowrap;
   padding: 5px 10px 4px;
   border-radius: 999px;
@@ -2006,7 +2082,7 @@ a.topbar-who-name:hover { color: var(--white); text-decoration: underline; }
   max-width: 460px; text-align: center;
   box-shadow: 0 20px 60px rgba(0,0,0,0.35);
 }
-.map-empty-card h2 { font-family: "Inter", -apple-system, sans-serif; color: var(--estuary); font-size: 22px; margin: 0 0 8px; }
+.map-empty-card h2 { font-family: var(--font-body); color: var(--estuary); font-size: 22px; margin: 0 0 8px; }
 .map-empty-card p { color: #5b6885; font-size: 14px; line-height: 1.6; margin: 0 0 16px; }
 
 /* Right slide-in preview card */
@@ -2038,17 +2114,17 @@ a.topbar-who-name:hover { color: var(--white); text-decoration: underline; }
 .map-preview .close:hover { background: #dfe5f2; }
 .map-preview .mandate-line { display: flex; gap: 6px; margin-bottom: 10px; }
 .map-preview .m-chip {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
   padding: 3px 9px; border-radius: 5px;
   background: var(--m-fill); color: var(--m-ink);
 }
-.map-preview .addr { font-family: "Inter", -apple-system, sans-serif; color: var(--estuary); font-size: 22px; margin: 0; line-height: 1.15; letter-spacing: -0.01em; }
-.map-preview .suburb { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 11px; color: #8090b5; margin: 4px 0 0; letter-spacing: 0.04em; }
+.map-preview .addr { font-family: var(--font-body); color: var(--estuary); font-size: 22px; margin: 0; line-height: 1.15; letter-spacing: -0.01em; }
+.map-preview .suburb { font-family: var(--font-mono); font-size: 11px; color: #8090b5; margin: 4px 0 0; letter-spacing: 0.04em; }
 
 .map-preview .body { padding: 16px 22px 22px; }
 .map-preview .price {
-  font-family: "Inter", -apple-system, sans-serif; font-size: 26px; font-weight: 600;
+  font-family: var(--font-body); font-size: 26px; font-weight: 600;
   color: var(--ink); margin: 0; letter-spacing: -0.01em;
   font-variant-numeric: tabular-nums;
   display: inline-block; padding-bottom: 6px;
@@ -2058,11 +2134,11 @@ a.topbar-who-name:hover { color: var(--white); text-decoration: underline; }
   content: ""; position: absolute; left: 0; bottom: 0; width: 34px; height: 2px;
   background: linear-gradient(90deg, var(--gold), transparent);
 }
-.map-preview .price-sub { font-size: 11px; color: #8090b5; margin: 2px 0 0; font-family: "JetBrains Mono", ui-monospace, monospace; }
+.map-preview .price-sub { font-size: 11px; color: #8090b5; margin: 2px 0 0; font-family: var(--font-mono); }
 
 .pv-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 18px; }
 .pv-cell { background: var(--mist); border-radius: 10px; padding: 10px 12px; }
-.pv-cell .lbl { font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: #6b78a0; font-family: "JetBrains Mono", ui-monospace, monospace; }
+.pv-cell .lbl { font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: #6b78a0; font-family: var(--font-mono); }
 .pv-cell .val { font-size: 14px; color: var(--estuary); font-weight: 600; margin-top: 3px; }
 .pv-cta { display: block; margin-top: 20px; background: var(--navy); color: var(--white); text-decoration: none; text-align: center; padding: 11px; border-radius: 9px; font-weight: 600; font-size: 14px; }
 .pv-cta:hover { background: var(--estuary); }
@@ -2094,7 +2170,7 @@ a.topbar-who-name:hover { color: var(--white); text-decoration: underline; }
   padding: 5px 9px 5px 7px;
   border: 1px solid #d7deef; border-radius: 999px;
   background: #fbfcfe; color: #6b78a0;
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 11px; cursor: pointer;
 }
 .source-chip .code {
@@ -2119,7 +2195,7 @@ a.topbar-who-name:hover { color: var(--white); text-decoration: underline; }
 .price-pin .source-dot {
   display: inline-flex; align-items: center; justify-content: center;
   min-width: 20px; height: 14px; padding: 0 4px;
-  border-radius: 3px; font-family: "JetBrains Mono", ui-monospace, monospace;
+  border-radius: 3px; font-family: var(--font-mono);
   font-size: 8.5px; font-weight: 700; letter-spacing: 0.02em;
   color: var(--white); position: relative;
   box-shadow: 0 0 0 1.5px rgba(255,255,255,0.9);
@@ -2291,7 +2367,7 @@ a.topbar-who-name:hover { color: var(--white); text-decoration: underline; }
     padding: 14px 20px;
     color: var(--estuary);
     text-decoration: none;
-    font-family: "Inter", -apple-system, sans-serif;
+    font-family: var(--font-body);
     font-size: 16px;
     font-weight: 600;
     min-height: 44px;
@@ -2309,7 +2385,7 @@ a.topbar-who-name:hover { color: var(--white); text-decoration: underline; }
   /* Section labels between grouped drawer links (Records / Deals / Admin). */
   .topbar-drawer-section {
     padding: 14px 20px 6px;
-    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-family: var(--font-mono);
     font-size: 10px;
     letter-spacing: 0.14em;
     text-transform: uppercase;
@@ -2382,7 +2458,7 @@ a.topbar-who-name:hover { color: var(--white); text-decoration: underline; }
     border-radius: 999px;
   }
   .map-rail-handle-text {
-    font-family: "Inter", -apple-system, sans-serif;
+    font-family: var(--font-body);
     font-size: 13px;
     font-weight: 600;
     color: var(--estuary);
@@ -2457,7 +2533,7 @@ a.topbar-who-name:hover { color: var(--white); text-decoration: underline; }
     display: inline-block;
     min-width: 74px;
     color: #8090b5;
-    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-family: var(--font-mono);
     font-size: 10px;
     letter-spacing: 0.08em;
     text-transform: uppercase;

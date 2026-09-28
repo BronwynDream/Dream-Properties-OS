@@ -84,7 +84,7 @@ export default async function ContactDetail({
           <div className="record-head-status">
             <span
               style={{
-                fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                fontFamily: "var(--font-mono)",
                 fontSize: 10,
                 letterSpacing: "0.14em",
                 textTransform: "uppercase",
@@ -270,7 +270,7 @@ function FicaPanel({
           <p
             style={{
               margin: 0,
-              fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+              fontFamily: "var(--font-mono)",
               fontSize: 10,
               letterSpacing: "0.14em",
               textTransform: "uppercase",
@@ -282,7 +282,7 @@ function FicaPanel({
           <p
             style={{
               margin: "4px 0 0",
-              fontFamily: "'Fraunces', serif",
+              fontFamily: "var(--font-display)",
               fontSize: 18,
               color: "var(--estuary, #132B84)",
               fontWeight: 500,
@@ -331,7 +331,7 @@ function FicaPanel({
                 <td>
                   <span
                     style={{
-                      fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                      fontFamily: "var(--font-mono)",
                       fontSize: 10,
                       letterSpacing: "0.08em",
                       textTransform: "uppercase",

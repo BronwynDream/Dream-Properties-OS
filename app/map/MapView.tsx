@@ -601,7 +601,7 @@ export default function MapView({
       currentPopup?.remove();
       currentPopup = new mapboxgl.Popup({ closeButton: true, maxWidth: "320px" })
         .setLngLat(e.lngLat)
-        .setHTML(`<div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#6a7692;padding:4px 8px">loading muni data…</div>`)
+        .setHTML(`<div style="font-family:var(--font-mono);font-size:11px;color:#6a7692;padding:4px 8px">loading muni data…</div>`)
         .addTo(mapRefLocal);
       try {
         // Primary match: erf number (tag_value) + town (maj_region) — works
@@ -615,22 +615,22 @@ export default function MapView({
         const res = await fetch(path);
         const j = await res.json();
         if (!res.ok || j.error) {
-          currentPopup.setHTML(`<div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#a24700;padding:8px">${j.error ?? "no muni data"}</div>`);
+          currentPopup.setHTML(`<div style="font-family:var(--font-mono);font-size:11px;color:#a24700;padding:8px">${j.error ?? "no muni data"}</div>`);
           return;
         }
         const fmtR = (n: number | null | undefined) => n == null ? "—" : n >= 1_000_000 ? `R ${(n/1_000_000).toFixed(2)}m` : `R ${Math.round(n).toLocaleString("en-ZA")}`;
         const html = `
-<div style="font-family:'Inter',-apple-system,sans-serif;padding:2px 4px;min-width:240px">
-  <div style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:#C8A032;margin-bottom:4px">Muni erf ${j.erfNumber ?? "?"} · ${j.town ?? j.suburb ?? ""}</div>
-  <div style="font-family:'Fraunces',serif;font-size:15px;color:#132B84;font-weight:500;margin-bottom:6px">${j.address ?? "(no address on file)"}</div>
-  <div style="font-family:'JetBrains Mono',monospace;font-size:16px;color:#132B84;font-weight:600;margin-bottom:6px">${fmtR(j.muniValuationTotal)}${j.valuations.length > 1 ? ` <span style="font-size:9px;color:#C8A032">×${j.valuations.length}</span>` : ""}</div>
-  <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#6a7692;line-height:1.6">
+<div style="font-family:var(--font-body);padding:2px 4px;min-width:240px">
+  <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:#C8A032;margin-bottom:4px">Muni erf ${j.erfNumber ?? "?"} · ${j.town ?? j.suburb ?? ""}</div>
+  <div style="font-family:var(--font-display);font-size:15px;color:#132B84;font-weight:500;margin-bottom:6px">${j.address ?? "(no address on file)"}</div>
+  <div style="font-family:var(--font-mono);font-size:16px;color:#132B84;font-weight:600;margin-bottom:6px">${fmtR(j.muniValuationTotal)}${j.valuations.length > 1 ? ` <span style="font-size:9px;color:#C8A032">×${j.valuations.length}</span>` : ""}</div>
+  <div style="font-family:var(--font-mono);font-size:11px;color:#6a7692;line-height:1.6">
     ${j.extentSqm ? `${j.extentSqm} m² · ` : ""}${j.zoning ?? ""}${j.use ? ` · ${j.use}` : ""}<br/>
     ${j.owner ? `Owner: ${j.owner}<br/>` : ""}
     ${j.titleDeed ? `Deed: ${j.titleDeed}<br/>` : ""}
     ${j.purchDate ? `Last sale ${j.purchDate}${j.purchPrice ? ` · ${fmtR(j.purchPrice)}` : ""}` : ""}
   </div>
-  <a href="/erf-lookup?q=${j.erfNumber ?? ""}${j.town ? `&suburb=${encodeURIComponent(j.town)}` : ""}" style="display:inline-block;margin-top:8px;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:#132B84;text-decoration:none;font-weight:600">Full detail →</a>
+  <a href="/erf-lookup?q=${j.erfNumber ?? ""}${j.town ? `&suburb=${encodeURIComponent(j.town)}` : ""}" style="display:inline-block;margin-top:8px;font-family:var(--font-mono);font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:#132B84;text-decoration:none;font-weight:600">Full detail →</a>
 </div>`;
         currentPopup.setHTML(html);
       } catch (err) {
@@ -1207,7 +1207,7 @@ export default function MapView({
             <span
               style={{
                 marginLeft: "auto",
-                fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                fontFamily: "var(--font-mono)",
                 fontSize: 10,
                 color: "#8090b5",
                 letterSpacing: "0.04em",
@@ -1227,7 +1227,7 @@ export default function MapView({
               fontSize: 10,
               lineHeight: 1.45,
               color: "#8090b5",
-              fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+              fontFamily: "var(--font-mono)",
             }}
           >
             Every surveyed erf + muni valuation. Not listings — unaffected by
@@ -1490,7 +1490,7 @@ function SpendMeter({ budget }: { budget: BudgetSummary }) {
             display: "flex",
             alignItems: "baseline",
             gap: 6,
-            fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+            fontFamily: "var(--font-mono)",
             color: palette.fg,
           }}
         >
@@ -1535,7 +1535,7 @@ function SpendMeter({ budget }: { budget: BudgetSummary }) {
             marginTop: 2,
             fontSize: 10,
             color: "#7a86a8",
-            fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+            fontFamily: "var(--font-mono)",
             letterSpacing: "0.04em",
           }}
         >
@@ -1693,7 +1693,7 @@ function PreviewPanel({
           <div style={{ marginTop: 24 }}>
             <p
               style={{
-                fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                fontFamily: "var(--font-mono)",
                 fontSize: 10,
                 letterSpacing: "0.14em",
                 textTransform: "uppercase",
@@ -1734,7 +1734,7 @@ function PreviewPanel({
                   </span>
                   <span
                     style={{
-                      fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                      fontFamily: "var(--font-mono)",
                       fontSize: 12,
                       color: priceMismatch ? "#a24700" : "var(--estuary)",
                       fontWeight: 600,
@@ -1771,7 +1771,7 @@ function PreviewPanel({
                   margin: "8px 0 0",
                   fontSize: 11,
                   color: "#a24700",
-                  fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                  fontFamily: "var(--font-mono)",
                   letterSpacing: "0.04em",
                   textTransform: "uppercase",
                 }}
@@ -1802,7 +1802,7 @@ function PreviewPanel({
             >
               <p
                 style={{
-                  fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                  fontFamily: "var(--font-mono)",
                   fontSize: 10,
                   letterSpacing: "0.14em",
                   textTransform: "uppercase",
@@ -1822,7 +1822,7 @@ function PreviewPanel({
                     padding: "2px 8px",
                     borderRadius: 999,
                     fontSize: 10,
-                    fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                    fontFamily: "var(--font-mono)",
                     letterSpacing: "0.08em",
                     textTransform: "uppercase",
                     background: "rgba(200,160,50,0.14)",

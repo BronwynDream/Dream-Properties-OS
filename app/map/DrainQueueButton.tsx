@@ -164,7 +164,7 @@ export default function DrainQueueButton() {
             margin: "6px 0 0",
             fontSize: 11,
             color: "var(--estuary)",
-            fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+            fontFamily: "var(--font-mono)",
             letterSpacing: "0.02em",
             opacity: 0.7,
           }}
@@ -179,7 +179,7 @@ export default function DrainQueueButton() {
             fontSize: 12,
             color: "var(--estuary)",
             fontWeight: 600,
-            fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+            fontFamily: "var(--font-mono)",
             letterSpacing: "0.02em",
           }}
         >

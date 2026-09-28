@@ -318,7 +318,7 @@ function MandateSection({
       >
         <h2
           style={{
-            fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+            fontFamily: "var(--font-mono)",
             fontSize: 11,
             letterSpacing: "0.14em",
             textTransform: "uppercase",
@@ -362,7 +362,7 @@ function MandateEntry({ row, daysUntil }: { row: MandateRow; daysUntil: number }
         <Link
           href={`/properties/${row.listing.property_id}`}
           style={{
-            fontFamily: "'Fraunces', 'Cormorant Garamond', serif",
+            fontFamily: "var(--font-display)",
             fontSize: 18,
             color: "var(--estuary, #132B84)",
             textDecoration: "none",
@@ -377,7 +377,7 @@ function MandateEntry({ row, daysUntil }: { row: MandateRow; daysUntil: number }
               margin: "2px 0 0",
               fontSize: 12,
               color: "var(--paper-mute, #6a7692)",
-              fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+              fontFamily: "var(--font-mono)",
               letterSpacing: "0.04em",
             }}
           >
@@ -388,7 +388,7 @@ function MandateEntry({ row, daysUntil }: { row: MandateRow; daysUntil: number }
           <span
             className={`m-chip mandate-${row.type}`}
             style={{
-              fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+              fontFamily: "var(--font-mono)",
               fontSize: 10,
               letterSpacing: "0.12em",
               textTransform: "uppercase",
@@ -412,7 +412,7 @@ function MandateEntry({ row, daysUntil }: { row: MandateRow; daysUntil: number }
             style={{
               fontSize: 11,
               color: "var(--paper-mute, #6a7692)",
-              fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+              fontFamily: "var(--font-mono)",
               letterSpacing: "0.04em",
             }}
           >
@@ -425,7 +425,7 @@ function MandateEntry({ row, daysUntil }: { row: MandateRow; daysUntil: number }
           <p
             style={{
               margin: 0,
-              fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+              fontFamily: "var(--font-mono)",
               fontSize: 12,
               color: "var(--paper-mute, #6a7692)",
               letterSpacing: "0.02em",
@@ -438,7 +438,7 @@ function MandateEntry({ row, daysUntil }: { row: MandateRow; daysUntil: number }
             <p
               style={{
                 margin: 0,
-                fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                fontFamily: "var(--font-mono)",
                 fontSize: 13,
                 color: daysUntil < 0 ? "var(--amber, #D17E22)" : "var(--estuary, #132B84)",
                 fontWeight: 600,
@@ -453,7 +453,7 @@ function MandateEntry({ row, daysUntil }: { row: MandateRow; daysUntil: number }
                   margin: "2px 0 0",
                   fontSize: 11,
                   color: "var(--paper-mute, #6a7692)",
-                  fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                  fontFamily: "var(--font-mono)",
                 }}
               >
                 {row.expiry_date}

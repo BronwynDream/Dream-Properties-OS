@@ -48,7 +48,7 @@ export default function TypeFilterChips({
     >
       <span
         style={{
-          fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+          fontFamily: "var(--font-mono)",
           fontSize: 10,
           letterSpacing: "0.14em",
           textTransform: "uppercase",
@@ -66,7 +66,7 @@ export default function TypeFilterChips({
             type="button"
             onClick={() => toggle(t)}
             style={{
-              fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+              fontFamily: "var(--font-mono)",
               fontSize: 11,
               letterSpacing: "0.10em",
               textTransform: "uppercase",

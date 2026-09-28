@@ -78,7 +78,7 @@ export default function FixturesAndMovables({ propertyId, transferId, rows, mova
     <section style={{ marginTop: 20 }}>
       <p style={{ margin: "0 0 8px", fontSize: 13, color: "var(--ink-700, #423B31)" }}>
         <b>Fixtures &amp; movables</b>
-        <span style={{ marginLeft: 10, color: "var(--paper-mute, #6a7692)", fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 11 }}>
+        <span style={{ marginLeft: 10, color: "var(--paper-mute, #6a7692)", fontFamily: "var(--font-mono)", fontSize: 11 }}>
           clause 14 (included with sale) · Annexure A (separate sale)
         </span>
       </p>
@@ -157,10 +157,10 @@ function InventoryColumn({
       }}
     >
       <div style={{ marginBottom: 8 }}>
-        <p style={{ margin: 0, fontFamily: "'Fraunces', serif", fontSize: 15, color: "var(--estuary, #132B84)", fontWeight: 500 }}>
+        <p style={{ margin: 0, fontFamily: "var(--font-display)", fontSize: 15, color: "var(--estuary, #132B84)", fontWeight: 500 }}>
           {title}
         </p>
-        <p style={{ margin: "2px 0 0", fontSize: 11, color: "var(--paper-mute, #6a7692)", fontFamily: "'JetBrains Mono', ui-monospace, monospace" }}>
+        <p style={{ margin: "2px 0 0", fontSize: 11, color: "var(--paper-mute, #6a7692)", fontFamily: "var(--font-mono)" }}>
           {subtitle}
         </p>
       </div>
@@ -468,7 +468,7 @@ function MovablesHeader({
             style={{ ...inputStyle, flex: 1 }}
           />
         </div>
-        <span style={{ fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 10, color: "var(--paper-mute, #6a7692)" }}>
+        <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--paper-mute, #6a7692)" }}>
           {displayPrice}
         </span>
       </label>
@@ -480,7 +480,7 @@ function MovablesHeader({
         Signed
         <input type="date" value={signed} onChange={(e) => setSigned(e.target.value)} onBlur={persist} disabled={pending} style={inputStyle} />
       </label>
-      <div style={{ minWidth: 60, alignSelf: "end", fontSize: 10, fontFamily: "'JetBrains Mono', ui-monospace, monospace", textAlign: "right", color: err ? "var(--critical)" : saved ? "var(--positive)" : "transparent" }}>
+      <div style={{ minWidth: 60, alignSelf: "end", fontSize: 10, fontFamily: "var(--font-mono)", textAlign: "right", color: err ? "var(--critical)" : saved ? "var(--positive)" : "transparent" }}>
         {err ?? (saved ? "Saved" : " ")}
       </div>
     </div>
@@ -493,7 +493,7 @@ const btnPrimary: React.CSSProperties = {
   color: "var(--paper-0, #FBF9F4)",
   border: "none",
   borderRadius: 3,
-  fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+  fontFamily: "var(--font-mono)",
   fontSize: 10,
   letterSpacing: "0.08em",
   textTransform: "uppercase",
@@ -507,7 +507,7 @@ const btnGhost: React.CSSProperties = {
   color: "var(--estuary, #132B84)",
   border: "1px solid var(--estuary, #132B84)",
   borderRadius: 3,
-  fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+  fontFamily: "var(--font-mono)",
   fontSize: 10,
   letterSpacing: "0.08em",
   textTransform: "uppercase",
@@ -519,7 +519,7 @@ const labelStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
   gap: 2,
-  fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+  fontFamily: "var(--font-mono)",
   fontSize: 10,
   letterSpacing: "0.06em",
   textTransform: "uppercase",

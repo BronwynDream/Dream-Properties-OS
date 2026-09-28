@@ -14,7 +14,7 @@ export default function MaskedId({ value }: { value: string | null | undefined }
       onClick={() => setRevealed((v) => !v)}
       title={revealed ? "Hide ID" : "Click to reveal ID"}
       style={{
-        fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+        fontFamily: "var(--font-mono)",
         fontSize: 12.5,
         letterSpacing: "0.02em",
         background: "transparent",

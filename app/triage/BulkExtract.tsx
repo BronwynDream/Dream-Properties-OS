@@ -116,7 +116,7 @@ export default function BulkExtract({
       {running && (
         <div
           style={{
-            fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+            fontFamily: "var(--font-mono)",
             fontSize: 11,
             color: "#6b78a0",
           }}
@@ -138,7 +138,7 @@ export default function BulkExtract({
           {firstError && (
             <div
               style={{
-                fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                fontFamily: "var(--font-mono)",
                 fontSize: 10.5,
                 color: "#a12020",
                 fontWeight: 400,

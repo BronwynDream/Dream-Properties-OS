@@ -238,7 +238,7 @@ export default function NewSellerForm({ suburbs }: { suburbs: SuburbOption[] }) 
                   onChange={(e) => setCoords(e.target.value)}
                   placeholder="-34.0777, 23.0619"
                   disabled={pending}
-                  style={{ ...inputStyle, fontFamily: "'JetBrains Mono', ui-monospace, monospace" }}
+                  style={{ ...inputStyle, fontFamily: "var(--font-mono)" }}
                 />
               </label>
             </div>
@@ -299,7 +299,7 @@ const panelHeaderStyle: React.CSSProperties = {
 };
 
 const eyebrowStyle: React.CSSProperties = {
-  fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+  fontFamily: "var(--font-mono)",
   fontSize: 10,
   letterSpacing: "0.14em",
   textTransform: "uppercase",
@@ -327,7 +327,7 @@ const panelTitleStyle: React.CSSProperties = {
 
 const fieldLabel: React.CSSProperties = {
   display: "block",
-  fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+  fontFamily: "var(--font-mono)",
   fontSize: 10,
   letterSpacing: "0.12em",
   textTransform: "uppercase",

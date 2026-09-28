@@ -86,7 +86,7 @@ export default function StageMover({
 
 const arrowBtn: React.CSSProperties = {
   padding: "4px 8px",
-  fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+  fontFamily: "var(--font-mono)",
   fontSize: 10,
   letterSpacing: "0.06em",
   textTransform: "uppercase",
@@ -100,7 +100,7 @@ const arrowBtn: React.CSSProperties = {
 
 const jumpSelect: React.CSSProperties = {
   padding: "3px 6px",
-  fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+  fontFamily: "var(--font-mono)",
   fontSize: 10,
   border: "1px solid var(--line-strong, #D8CFBE)",
   background: "var(--paper-0, #FBF9F4)",

@@ -64,9 +64,9 @@ export default async function ValuationRollsIndex() {
           <p className="app-sub">
             Upload Knysna Municipality PDFs — Full General Valuation Roll (5-yearly baseline)
             and Supplementary Rolls (deltas between GVs). Data flows into{" "}
-            <code style={{ fontFamily: "'JetBrains Mono', ui-monospace, monospace" }}>muni_property</code>{" "}
+            <code style={{ fontFamily: "var(--font-mono)" }}>muni_property</code>{" "}
             +{" "}
-            <code style={{ fontFamily: "'JetBrains Mono', ui-monospace, monospace" }}>muni_valuation</code>,
+            <code style={{ fontFamily: "var(--font-mono)" }}>muni_valuation</code>,
             visible on the map, in Erf Lookup, and on Property Records.
           </p>
         </header>
@@ -76,7 +76,7 @@ export default async function ValuationRollsIndex() {
           <div style={{ marginBottom: 32 }}>
             <h2
               style={{
-                fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                fontFamily: "var(--font-mono)",
                 fontSize: 11,
                 letterSpacing: "0.14em",
                 textTransform: "uppercase",
@@ -92,7 +92,7 @@ export default async function ValuationRollsIndex() {
           <div>
             <h2
               style={{
-                fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                fontFamily: "var(--font-mono)",
                 fontSize: 11,
                 letterSpacing: "0.14em",
                 textTransform: "uppercase",
@@ -124,7 +124,7 @@ export default async function ValuationRollsIndex() {
                     <div
                       style={{
                         width: 90,
-                        fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                        fontFamily: "var(--font-mono)",
                         fontSize: 10,
                         letterSpacing: "0.10em",
                         textTransform: "uppercase",
@@ -138,7 +138,7 @@ export default async function ValuationRollsIndex() {
                       <Link
                         href={`/admin/valuation-rolls/${u.id}`}
                         style={{
-                          fontFamily: "'Fraunces', 'Cormorant Garamond', serif",
+                          fontFamily: "var(--font-display)",
                           fontSize: 16,
                           color: "var(--estuary, #132B84)",
                           textDecoration: "none",
@@ -154,7 +154,7 @@ export default async function ValuationRollsIndex() {
                           margin: "2px 0 0",
                           fontSize: 11,
                           color: "var(--paper-mute, #6a7692)",
-                          fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                          fontFamily: "var(--font-mono)",
                         }}
                       >
                         {u.file_name} · {fmtBytes(u.file_size_bytes)}
@@ -165,7 +165,7 @@ export default async function ValuationRollsIndex() {
                     </div>
                     <div
                       style={{
-                        fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                        fontFamily: "var(--font-mono)",
                         fontSize: 11,
                         color: "var(--paper-mute, #6a7692)",
                         textAlign: "right",
@@ -176,7 +176,7 @@ export default async function ValuationRollsIndex() {
                     <Link
                       href={`/admin/valuation-rolls/${u.id}`}
                       style={{
-                        fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                        fontFamily: "var(--font-mono)",
                         fontSize: 11,
                         letterSpacing: "0.10em",
                         textTransform: "uppercase",

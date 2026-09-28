@@ -11,7 +11,7 @@ import { Rand } from "@/app/components/format";
 // Design thesis: this page is not a SaaS card, it's a cadastral document.
 // The reference block on a real SA title deed opens with Erf + Deed + SG —
 // that block IS the property's legal identity, more permanent than address
-// or owner. Rendering it faithfully (JetBrains Mono, gold-bordered stamp,
+// or owner. Rendering it faithfully (var(--font-mono), gold-bordered stamp,
 // hairline internal rule) is the one visual move no generic CRM makes,
 // because none understand that ERF + SG + deed is the identity primitive.
 //
@@ -424,8 +424,8 @@ function CompassRose() {
         textAnchor="middle"
         fill="currentColor"
         fontSize="6"
-        fontFamily="JetBrains Mono, monospace"
         fontWeight="700"
+        style={{ fontFamily: "var(--font-mono)" }}
       >
         N
       </text>

@@ -62,7 +62,7 @@ export default function ErfResultsTable({ rows }: { rows: ErfRow[] }) {
           gridTemplateColumns: "80px 1fr 120px 130px 90px 80px 90px 40px",
           gap: 12,
           padding: "8px 12px",
-          fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+          fontFamily: "var(--font-mono)",
           fontSize: 10,
           letterSpacing: "0.12em",
           textTransform: "uppercase",
@@ -111,7 +111,7 @@ export default function ErfResultsTable({ rows }: { rows: ErfRow[] }) {
             >
               <span
                 style={{
-                  fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                  fontFamily: "var(--font-mono)",
                   fontWeight: 600,
                   color: "var(--estuary, #132B84)",
                 }}
@@ -120,7 +120,7 @@ export default function ErfResultsTable({ rows }: { rows: ErfRow[] }) {
               </span>
               <span
                 style={{
-                  fontFamily: "'Fraunces', 'Cormorant Garamond', serif",
+                  fontFamily: "var(--font-display)",
                   fontSize: 15,
                 }}
               >
@@ -128,7 +128,7 @@ export default function ErfResultsTable({ rows }: { rows: ErfRow[] }) {
               </span>
               <span
                 style={{
-                  fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                  fontFamily: "var(--font-mono)",
                   fontSize: 11,
                   color: "var(--paper-mute, #6a7692)",
                   letterSpacing: "0.04em",
@@ -139,7 +139,7 @@ export default function ErfResultsTable({ rows }: { rows: ErfRow[] }) {
               <span
                 style={{
                   textAlign: "right",
-                  fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                  fontFamily: "var(--font-mono)",
                   fontWeight: 600,
                   color: r.muni_valuation_total ? "var(--estuary, #132B84)" : "var(--paper-mute, #6a7692)",
                 }}
@@ -166,7 +166,7 @@ export default function ErfResultsTable({ rows }: { rows: ErfRow[] }) {
               <span
                 style={{
                   textAlign: "right",
-                  fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                  fontFamily: "var(--font-mono)",
                   fontSize: 12,
                   color: "var(--paper-mute, #6a7692)",
                 }}
@@ -175,7 +175,7 @@ export default function ErfResultsTable({ rows }: { rows: ErfRow[] }) {
               </span>
               <span
                 style={{
-                  fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                  fontFamily: "var(--font-mono)",
                   fontSize: 11,
                   color: "var(--paper-mute, #6a7692)",
                 }}
@@ -184,7 +184,7 @@ export default function ErfResultsTable({ rows }: { rows: ErfRow[] }) {
               </span>
               <span
                 style={{
-                  fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                  fontFamily: "var(--font-mono)",
                   fontSize: 11,
                   color: "var(--paper-mute, #6a7692)",
                 }}
@@ -194,7 +194,7 @@ export default function ErfResultsTable({ rows }: { rows: ErfRow[] }) {
               <span
                 aria-hidden
                 style={{
-                  fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                  fontFamily: "var(--font-mono)",
                   fontSize: 14,
                   color: "var(--paper-mute, #6a7692)",
                   textAlign: "right",
@@ -220,7 +220,7 @@ function DetailPanel({ r }: { r: ErfRow }) {
         display: "grid",
         gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
         gap: 20,
-        fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+        fontFamily: "var(--font-mono)",
         fontSize: 12,
       }}
     >
@@ -315,7 +315,7 @@ function Row({ k, v, mono }: { k: string; v: React.ReactNode; mono?: boolean }) 
       <span
         style={{
           color: v ? "var(--estuary, #132B84)" : "var(--paper-mute, #6a7692)",
-          fontFamily: mono ? "'JetBrains Mono', ui-monospace, monospace" : "inherit",
+          fontFamily: mono ? "var(--font-mono)" : "inherit",
           textAlign: "right",
           fontWeight: v ? 500 : 400,
         }}

@@ -94,7 +94,7 @@ export default function MarkSoldButton({
         >
           <div
             style={{
-              fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+              fontFamily: "var(--font-mono)",
               fontSize: 10,
               letterSpacing: "0.12em",
               textTransform: "uppercase",

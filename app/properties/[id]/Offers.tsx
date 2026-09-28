@@ -65,7 +65,7 @@ export default function Offers({ propertyId, transferId, offers, buyerCandidates
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, gap: 12, flexWrap: "wrap" }}>
         <p style={{ margin: 0, fontSize: 13, color: "var(--ink-700, #423B31)" }}>
           <b>Offers</b>
-          <span style={{ marginLeft: 10, color: "var(--paper-mute, #6a7692)", fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 11 }}>
+          <span style={{ marginLeft: 10, color: "var(--paper-mute, #6a7692)", fontFamily: "var(--font-mono)", fontSize: 11 }}>
             {offers.length} on file · {live.length} live
           </span>
         </p>
@@ -141,22 +141,22 @@ function OfferListRow({ offer, propertyId }: { offer: OfferRow; propertyId: stri
       <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "start" }}>
         <div>
           <div style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
-            <span style={{ fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 16, fontWeight: 700, color: "var(--estuary, #132B84)" }}>
+            <span style={{ fontFamily: "var(--font-mono)", fontSize: 16, fontWeight: 700, color: "var(--estuary, #132B84)" }}>
               R {offer.amount != null ? randString(offer.amount) : "—"}
             </span>
             <StatusPill status={offer.status} />
             {offer.bondRequired === false && (
-              <span style={{ fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase", padding: "2px 6px", background: "var(--status-active-bg)", color: "var(--status-active-fg)", borderRadius: 2, fontWeight: 600 }}>
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase", padding: "2px 6px", background: "var(--status-active-bg)", color: "var(--status-active-fg)", borderRadius: 2, fontWeight: 600 }}>
                 Cash
               </span>
             )}
             {offer.bondRequired === true && (
-              <span style={{ fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase", padding: "2px 6px", background: "var(--status-under-offer-bg)", color: "var(--status-under-offer-fg)", borderRadius: 2, fontWeight: 600 }}>
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase", padding: "2px 6px", background: "var(--status-under-offer-bg)", color: "var(--status-under-offer-fg)", borderRadius: 2, fontWeight: 600 }}>
                 Bond{offer.bondDays ? ` · ${offer.bondDays}d` : ""}
               </span>
             )}
             {offer.saleOfPropertyRequired && (
-              <span style={{ fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase", padding: "2px 6px", background: "var(--status-under-offer-bg)", color: "var(--status-under-offer-fg)", borderRadius: 2, fontWeight: 600 }}>
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase", padding: "2px 6px", background: "var(--status-under-offer-bg)", color: "var(--status-under-offer-fg)", borderRadius: 2, fontWeight: 600 }}>
                 Sell property
               </span>
             )}
@@ -169,7 +169,7 @@ function OfferListRow({ offer, propertyId }: { offer: OfferRow; propertyId: stri
             ) : (
               <span>{offer.purchaserName ?? "Purchaser TBD"}</span>
             )}
-            <span style={{ marginLeft: 8, color: "var(--paper-mute, #6a7692)", fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 10, letterSpacing: "0.06em" }}>
+            <span style={{ marginLeft: 8, color: "var(--paper-mute, #6a7692)", fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "0.06em" }}>
               {offer.offerDate ?? "no date"}
               {offer.offerExpiresAt && ` · expires ${offer.offerExpiresAt.slice(0, 10)}`}
             </span>
@@ -222,7 +222,7 @@ function OfferListRow({ offer, propertyId }: { offer: OfferRow; propertyId: stri
 function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <>
-      <dt style={{ fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--paper-mute, #6a7692)" }}>{label}</dt>
+      <dt style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--paper-mute, #6a7692)" }}>{label}</dt>
       <dd style={{ margin: 0, color: "var(--ink-700, #423B31)" }}>{value}</dd>
     </>
   );
@@ -240,7 +240,7 @@ function StatusPill({ status }: { status: OfferRow["status"] }) {
   };
   const t = tone[status];
   return (
-    <span style={{ padding: "2px 8px", background: t.bg, color: t.fg, borderRadius: 3, fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 600 }}>
+    <span style={{ padding: "2px 8px", background: t.bg, color: t.fg, borderRadius: 3, fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 600 }}>
       {t.label}
     </span>
   );
@@ -264,7 +264,7 @@ function CompareView({ offers, propertyId: _propertyId }: { offers: OfferRow[]; 
 
   return (
     <div style={{ marginBottom: 12, padding: "12px 14px", background: "var(--paper-1, #F5F1E8)", border: "1px solid var(--line-soft, #E7E0D2)", borderRadius: 4, overflowX: "auto" }}>
-      <p style={{ margin: "0 0 10px", fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--paper-mute, #6a7692)" }}>
+      <p style={{ margin: "0 0 10px", fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--paper-mute, #6a7692)" }}>
         Side-by-side · {offers.length} live offers
       </p>
       <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 12, minWidth: 500 + offers.length * 160 }}>
@@ -283,7 +283,7 @@ function CompareView({ offers, propertyId: _propertyId }: { offers: OfferRow[]; 
               >
                 {o.purchaserName ?? "Purchaser"}
                 {conditionCount(o) === minConditions && (
-                  <span style={{ display: "block", marginTop: 2, fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 9, color: "var(--positive)", letterSpacing: "0.06em", fontWeight: 600 }}>
+                  <span style={{ display: "block", marginTop: 2, fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--positive)", letterSpacing: "0.06em", fontWeight: 600 }}>
                     ★ Cleanest
                   </span>
                 )}
@@ -293,7 +293,7 @@ function CompareView({ offers, propertyId: _propertyId }: { offers: OfferRow[]; 
         </thead>
         <tbody>
           <CompareRow label="Amount" render={(o) => (
-            <span style={{ fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontWeight: 700, color: o.amount === maxAmount ? "var(--positive)" : "var(--estuary, #132B84)" }}>
+            <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700, color: o.amount === maxAmount ? "var(--positive)" : "var(--estuary, #132B84)" }}>
               R {o.amount != null ? randString(o.amount) : "—"}
             </span>
           )} offers={offers} />
@@ -470,11 +470,11 @@ function OfferForm({
 
 const btnPrimary: React.CSSProperties = {
   padding: "5px 12px", background: "var(--estuary, #132B84)", color: "var(--paper-0, #FBF9F4)", border: "none", borderRadius: 3,
-  fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 600, cursor: "pointer",
+  fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 600, cursor: "pointer",
 };
 const btnGhost: React.CSSProperties = {
   padding: "5px 10px", background: "transparent", color: "var(--estuary, #132B84)", border: "1px solid var(--estuary, #132B84)", borderRadius: 3,
-  fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 600, cursor: "pointer",
+  fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 600, cursor: "pointer",
 };
 const btnDanger: React.CSSProperties = {
   ...btnGhost, color: "var(--critical, #9A3B34)", border: "1px solid var(--critical, #9A3B34)",
@@ -484,18 +484,18 @@ const btnPositive: React.CSSProperties = {
 };
 const labelStyle: React.CSSProperties = {
   display: "flex", flexDirection: "column", gap: 2,
-  fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--paper-mute, #6a7692)",
+  fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--paper-mute, #6a7692)",
 };
 const inputStyle: React.CSSProperties = {
   padding: "5px 8px", border: "1px solid var(--line-strong, #D8CFBE)", borderRadius: 3,
   fontFamily: "inherit", fontSize: 12, background: "var(--paper-0, #FBF9F4)", width: "100%",
 };
 const compareHeader: React.CSSProperties = {
-  padding: "6px 10px", textAlign: "left", fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase",
+  padding: "6px 10px", textAlign: "left", fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase",
   color: "var(--ink-500, #6B6153)", borderBottom: "1px solid var(--line-strong, #D8CFBE)",
 };
 const compareLabel: React.CSSProperties = {
-  padding: "6px 10px", fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase",
+  padding: "6px 10px", fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase",
   color: "var(--paper-mute, #6a7692)", borderBottom: "1px solid var(--line-soft, #E7E0D2)", whiteSpace: "nowrap",
 };
 const compareCell: React.CSSProperties = {

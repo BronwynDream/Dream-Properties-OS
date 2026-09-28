@@ -92,7 +92,7 @@ export default function RegeocodeListingButton({ externalId }: { externalId: str
               marginTop: 6,
               padding: "6px 8px",
               fontSize: 12,
-              fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+              fontFamily: "var(--font-mono)",
               border: "1px solid #D8CFBE",
               borderRadius: 3,
             }}

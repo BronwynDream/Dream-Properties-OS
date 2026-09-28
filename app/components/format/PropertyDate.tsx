@@ -41,7 +41,7 @@ export default function PropertyDate({
     <span
       className={`fmt-date ${className ?? ""}`.trim()}
       style={{
-        fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, monospace)",
+        fontFamily: "var(--font-mono)",
         fontVariantNumeric: "tabular-nums",
         ...style,
       }}
@@ -56,7 +56,7 @@ function LabelSpan({ text }: { text: string }) {
   return (
     <span
       style={{
-        fontFamily: "var(--font-mono, 'JetBrains Mono', ui-monospace, monospace)",
+        fontFamily: "var(--font-mono)",
         fontSize: "0.75em",
         letterSpacing: "0.12em",
         textTransform: "uppercase",

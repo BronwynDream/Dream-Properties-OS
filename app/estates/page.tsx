@@ -88,7 +88,7 @@ export default async function EstatesPage() {
                         <p
                           style={{
                             margin: 0,
-                            fontFamily: "'Fraunces', 'Cormorant Garamond', serif",
+                            fontFamily: "var(--font-display)",
                             fontSize: 18,
                             color: "var(--estuary, #132B84)",
                             fontWeight: 500,
@@ -99,7 +99,7 @@ export default async function EstatesPage() {
                         <p
                           style={{
                             margin: "3px 0 0",
-                            fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                            fontFamily: "var(--font-mono)",
                             fontSize: 10,
                             letterSpacing: "0.08em",
                             textTransform: "uppercase",
@@ -117,7 +117,7 @@ export default async function EstatesPage() {
                       <div
                         style={{
                           textAlign: "right",
-                          fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                          fontFamily: "var(--font-mono)",
                           fontSize: 11,
                           color: "var(--ink-700, #423B31)",
                           alignSelf: "center",

@@ -139,7 +139,7 @@ export default async function ViewingsPage({ searchParams }: { searchParams: Sea
                 <span
                   style={{
                     marginLeft: 12,
-                    fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                    fontFamily: "var(--font-mono)",
                     fontSize: 14,
                     color: "var(--paper-mute, #6a7692)",
                     fontWeight: 400,
@@ -193,7 +193,7 @@ function DayColumn({ day, viewings }: { day: Date; viewings: ViewingRow[] }) {
       <p
         style={{
           margin: 0,
-          fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+          fontFamily: "var(--font-mono)",
           fontSize: 10,
           letterSpacing: "0.12em",
           textTransform: "uppercase",
@@ -202,7 +202,7 @@ function DayColumn({ day, viewings }: { day: Date; viewings: ViewingRow[] }) {
       >
         {day.toLocaleDateString("en-ZA", { weekday: "short" })}
       </p>
-      <p style={{ margin: "2px 0 8px", fontFamily: "'Fraunces', serif", fontSize: 18, color: "var(--estuary, #132B84)", fontWeight: 500 }}>
+      <p style={{ margin: "2px 0 8px", fontFamily: "var(--font-display)", fontSize: 18, color: "var(--estuary, #132B84)", fontWeight: 500 }}>
         {day.toLocaleDateString("en-ZA", { day: "2-digit", month: "short" })}
       </p>
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -236,7 +236,7 @@ function ViewingCard({ v }: { v: ViewingRow }) {
       <div style={{ display: "flex", justifyContent: "space-between", gap: 6, alignItems: "baseline" }}>
         <span
           style={{
-            fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+            fontFamily: "var(--font-mono)",
             fontSize: 12,
             color: "var(--estuary, #132B84)",
             fontWeight: 700,
@@ -247,7 +247,7 @@ function ViewingCard({ v }: { v: ViewingRow }) {
         </span>
         <span
           style={{
-            fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+            fontFamily: "var(--font-mono)",
             fontSize: 9,
             letterSpacing: "0.06em",
             textTransform: "uppercase",
@@ -264,7 +264,7 @@ function ViewingCard({ v }: { v: ViewingRow }) {
           style={{
             display: "block",
             marginTop: 2,
-            fontFamily: "'Fraunces', serif",
+            fontFamily: "var(--font-display)",
             fontSize: 12,
             color: "var(--estuary, #132B84)",
             fontWeight: 500,
@@ -281,7 +281,7 @@ function ViewingCard({ v }: { v: ViewingRow }) {
         {v.agentName && (
           <span
             style={{
-              fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+              fontFamily: "var(--font-mono)",
               fontSize: 9,
               letterSpacing: "0.06em",
               textTransform: "uppercase",
@@ -294,7 +294,7 @@ function ViewingCard({ v }: { v: ViewingRow }) {
         {v.attendeeCount > 0 && (
           <span
             style={{
-              fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+              fontFamily: "var(--font-mono)",
               fontSize: 10,
               padding: "1px 6px",
               background: "var(--paper-2, #ECE6D8)",

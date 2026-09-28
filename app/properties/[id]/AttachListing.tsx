@@ -117,7 +117,7 @@ export default function AttachListing({ propertyId, seedQuery }: Props) {
           <p
             style={{
               margin: 0,
-              fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+              fontFamily: "var(--font-mono)",
               fontSize: 10,
               letterSpacing: "0.14em",
               textTransform: "uppercase",
@@ -150,7 +150,7 @@ export default function AttachListing({ propertyId, seedQuery }: Props) {
             background: "var(--paper-0, #FBF9F4)",
           }}
         />
-        <p style={{ margin: "6px 0 0", fontSize: 11, color: "var(--paper-mute, #6a7692)", fontFamily: "'JetBrains Mono', ui-monospace, monospace" }}>
+        <p style={{ margin: "6px 0 0", fontSize: 11, color: "var(--paper-mute, #6a7692)", fontFamily: "var(--font-mono)" }}>
           Only shows listings not yet matched to any property. {searching && "Searching…"}
         </p>
 
@@ -192,7 +192,7 @@ export default function AttachListing({ propertyId, seedQuery }: Props) {
                 <p style={{ margin: 0, fontSize: 12, color: "var(--estuary, #132B84)", fontWeight: 500 }}>
                   {r.headline ?? r.addressRaw ?? "(no headline)"}
                 </p>
-                <p style={{ margin: "2px 0 0", fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 10, color: "var(--paper-mute, #6a7692)", letterSpacing: "0.02em" }}>
+                <p style={{ margin: "2px 0 0", fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--paper-mute, #6a7692)", letterSpacing: "0.02em" }}>
                   {r.source.toUpperCase()}
                   {r.agencyName && ` · ${r.agencyName}`}
                   {r.addressRaw && r.headline && r.addressRaw !== r.headline && ` · ${r.addressRaw}`}
@@ -200,7 +200,7 @@ export default function AttachListing({ propertyId, seedQuery }: Props) {
               </div>
               <span
                 style={{
-                  fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                  fontFamily: "var(--font-mono)",
                   fontSize: 12,
                   color: "var(--estuary, #132B84)",
                   fontWeight: 600,
@@ -224,7 +224,7 @@ export default function AttachListing({ propertyId, seedQuery }: Props) {
 
 const openBtn: React.CSSProperties = {
   padding: "6px 12px",
-  fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+  fontFamily: "var(--font-mono)",
   fontSize: 11,
   letterSpacing: "0.08em",
   textTransform: "uppercase",
