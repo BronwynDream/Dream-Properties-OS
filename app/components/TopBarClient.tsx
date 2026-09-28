@@ -236,6 +236,11 @@ export default function TopBarClient({
             >
               Change password
             </Link>
+            <form action="/auth/signout" method="post">
+              <button className="topbar-signout-drawer topbar-drawer-tab" type="submit">
+                Sign out
+              </button>
+            </form>
           </div>
         </nav>
       </div>

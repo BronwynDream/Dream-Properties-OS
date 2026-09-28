@@ -121,6 +121,13 @@ html, body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* Form controls don't inherit fonts by default. Without this,
+   <button> renders as Arial on macOS/Chrome even after next/font
+   loads Inter globally (Simon, 2026-09-28 — verified live). */
+button, input, select, textarea {
+  font: inherit;
+}
+
 /* Global :focus-visible (2026-09-28). Gold ring reads on both
    navy header surfaces and warm paper body. */
 :focus-visible {
@@ -650,6 +657,54 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
     opacity: 0.65;
   }
 }
+/* PR 018-b, Simon's #3 (2026-09-28): the ≤700px block leaves the
+   stamp overhanging at 375px because the SVG's rendered text width
+   exceeds the shrunk container. Belt-and-braces at ≤480px:
+   - Shrink further (128×54)
+   - Add explicit contain rule so the parent clips harder
+   - Reposition so the right edge sits fully inside the plate's
+     content box */
+@media (max-width: 480px) {
+  .registered-stamp {
+    width: 128px;
+    height: 54px;
+    top: 10px;
+    right: 12px;
+    opacity: 0.55;
+  }
+  .record-plate {
+    contain: layout paint;
+  }
+
+  /* Dashboard Attention row: stack address above status/payload so
+     the payload doesn't push the address into ellipsis at 375px.
+     .dash-attention-list li rows use a 4-col grid; reflow to 3-col
+     2-row so the payload drops under the body text. */
+  .dash-attention-list li {
+    display: block; /* normalise — row itself is a grid link */
+  }
+  .dash-attention-row {
+    grid-template-columns: 20px 1fr 18px;
+    grid-template-rows: auto auto;
+  }
+  .dash-attention-payload {
+    grid-column: 2;
+    grid-row: 2;
+    align-self: start;
+    font-size: 11px;
+  }
+  .dash-attention-arrow {
+    grid-column: 3;
+    grid-row: 1;
+  }
+
+  /* Sign out crowds 375px per audit #17 (2026-09-28). Hide on phones;
+     the drawer's own Sign out item covers phone use. */
+  .topbar-signout {
+    display: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   /* Nothing animated yet; kept as a note for when we add a page-load
      fade-in on the stamp. */
@@ -1547,6 +1602,17 @@ a.topbar-who-name:hover { color: var(--white); text-decoration: underline; }
   font-family: inherit;
 }
 .topbar-signout:hover { background: rgba(255,255,255,0.1); color: var(--white); }
+
+/* Drawer variant — button reset so the <button> renders like a Link
+   drawer tab. background, border, and padding all come from the shared
+   .topbar-drawer-tab class applied alongside this one. */
+.topbar-signout-drawer {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+}
 
 @media (max-width: 720px) {
   .topbar-brand-text { display: none; }
@@ -2548,8 +2614,19 @@ a.topbar-who-name:hover { color: var(--white); text-decoration: underline; }
     max-width: 100%;
   }
   .app-head {
+    /* Full-bleed on phones so the navy band and its gold tideline
+       reach the viewport edges (Simon, 2026-09-28). Uses the
+       100vw / calc trick because .app-head lives inside <main> which
+       has its own padding at this breakpoint. */
+    margin-left:  calc(50% - 50vw);
+    margin-right: calc(50% - 50vw);
     padding-left: 16px;
     padding-right: 16px;
+  }
+  .tideline {
+    /* Same treatment when tideline sits directly under .app-head. */
+    margin-left:  calc(50% - 50vw);
+    margin-right: calc(50% - 50vw);
   }
   .app-head h1 { font-size: 20px; line-height: 1.15; }
   .app-head .eyebrow { font-size: 10px; }

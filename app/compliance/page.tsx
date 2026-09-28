@@ -181,12 +181,12 @@ export default async function CompliancePage() {
           </h1>
           <p className="app-sub">
             FFC windows configured at{" "}
-            <Link href="/settings" style={{ color: "var(--navy)", fontWeight: 600 }}>
+            <Link href="/settings" style={{ color: "var(--gold)", fontWeight: 600 }}>
               Settings
             </Link>
             : {sortedThresholds.join(" / ")} days · FICA validity {ficaValidityDays} days.
             Edit an agent&apos;s FFC on{" "}
-            <Link href="/team" style={{ color: "var(--navy)", fontWeight: 600 }}>
+            <Link href="/team" style={{ color: "var(--gold)", fontWeight: 600 }}>
               Team
             </Link>
             .
