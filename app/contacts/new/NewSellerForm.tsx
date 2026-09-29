@@ -133,7 +133,7 @@ export default function NewSellerForm({ suburbs }: { suburbs: SuburbOption[] }) 
           <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
             <button
               type="button"
-              className="ghost-dark"
+              className="btn-secondary"
               onClick={() => setPropertyOpen(true)}
               disabled={pending}
               style={{ padding: "8px 12px", fontSize: 13 }}
@@ -249,7 +249,7 @@ export default function NewSellerForm({ suburbs }: { suburbs: SuburbOption[] }) 
       <div style={{ display: "flex", gap: 8, marginTop: 24, justifyContent: "flex-end" }}>
         <button
           type="submit"
-          className="cta"
+          className="btn-primary"
           disabled={pending}
           style={{ padding: "9px 14px", fontSize: 13, whiteSpace: "nowrap" }}
         >
@@ -257,7 +257,7 @@ export default function NewSellerForm({ suburbs }: { suburbs: SuburbOption[] }) 
         </button>
         <button
           type="button"
-          className="ghost-dark"
+          className="btn-secondary"
           onClick={() => router.push("/contacts")}
           disabled={pending}
           style={{ padding: "9px 12px", fontSize: 13 }}

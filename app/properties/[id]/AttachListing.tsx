@@ -83,7 +83,7 @@ export default function AttachListing({ propertyId, seedQuery }: Props) {
         style={openBtn}
         title="Search P24 / Dream website listings and attach one to bring in photos"
       >
-        Attach P24 listing
+        Link Property24 listing
       </button>
     );
   }

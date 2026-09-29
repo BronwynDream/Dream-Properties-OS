@@ -72,7 +72,7 @@ export default function RefreshDreamButton() {
     <div style={{ marginTop: 12 }}>
       <button
         type="button"
-        className="ghost-dark"
+        className="btn-secondary"
         onClick={run}
         disabled={pending}
         style={{

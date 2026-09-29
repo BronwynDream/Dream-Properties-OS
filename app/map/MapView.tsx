@@ -621,7 +621,7 @@ export default function MapView({
         const fmtR = (n: number | null | undefined) => n == null ? "—" : n >= 1_000_000 ? `R ${(n/1_000_000).toFixed(2)}m` : `R ${Math.round(n).toLocaleString("en-ZA")}`;
         const html = `
 <div style="font-family:var(--font-body);padding:2px 4px;min-width:240px">
-  <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:#C8A032;margin-bottom:4px">Muni erf ${j.erfNumber ?? "?"} · ${j.town ?? j.suburb ?? ""}</div>
+  <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:#C8A032;margin-bottom:4px">Municipal erf ${j.erfNumber ?? "?"} · ${j.town ?? j.suburb ?? ""}</div>
   <div style="font-family:var(--font-display);font-size:15px;color:#132B84;font-weight:500;margin-bottom:6px">${j.address ?? "(no address on file)"}</div>
   <div style="font-family:var(--font-mono);font-size:16px;color:#132B84;font-weight:600;margin-bottom:6px">${fmtR(j.muniValuationTotal)}${j.valuations.length > 1 ? ` <span style="font-size:9px;color:#C8A032">×${j.valuations.length}</span>` : ""}</div>
   <div style="font-family:var(--font-mono);font-size:11px;color:#6a7692;line-height:1.6">
@@ -1405,7 +1405,7 @@ export default function MapView({
                 Commit a batch from Triage, or wait for tonight's scraper run to
                 surface market listings.
               </p>
-              <Link href="/triage" className="cta" style={{ display: "inline-block" }}>
+              <Link href="/triage" className="btn-primary" style={{ display: "inline-block" }}>
                 Open Triage →
               </Link>
             </div>
@@ -1862,7 +1862,7 @@ function PreviewPanel({
                 </p>
                 <button
                   type="button"
-                  className="ghost-dark"
+                  className="btn-secondary"
                   onClick={onCancelDrag}
                   disabled={pinPending}
                   style={{ padding: "10px 16px", fontSize: 13, minHeight: 40 }}
@@ -1886,7 +1886,7 @@ function PreviewPanel({
                 </p>
                 <button
                   type="button"
-                  className="cta"
+                  className="btn-primary"
                   onClick={onStartDrag}
                   disabled={pinPending}
                   style={{

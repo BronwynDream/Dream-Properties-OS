@@ -164,7 +164,7 @@ export default function PairCard({ pair }: { pair: Pair }) {
           }}
         />
         <button
-          className="ghost-dark"
+          className="btn-secondary"
           disabled={pending}
           onClick={() => doMerge(pair.a_id, pair.b_id)}
           title="Keep A, fold B in"
@@ -172,14 +172,14 @@ export default function PairCard({ pair }: { pair: Pair }) {
           Keep A → merge B
         </button>
         <button
-          className="ghost-dark"
+          className="btn-secondary"
           disabled={pending}
           onClick={() => doMerge(pair.b_id, pair.a_id)}
           title="Keep B, fold A in"
         >
           Keep B → merge A
         </button>
-        <button className="ghost-dark" disabled={pending} onClick={doDismiss}>
+        <button className="btn-secondary" disabled={pending} onClick={doDismiss}>
           Not a duplicate
         </button>
       </div>

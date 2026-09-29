@@ -133,7 +133,7 @@ export default function ErfLookup({
     <>
       <button
         type="button"
-        className="ghost-dark"
+        className="btn-secondary"
         onClick={() => setOpen(true)}
         style={{ padding: "6px 12px", fontSize: 12 }}
       >
@@ -162,7 +162,7 @@ export default function ErfLookup({
               </div>
               <button
                 type="button"
-                className="ghost-dark"
+                className="btn-secondary"
                 onClick={() => setOpen(false)}
                 aria-label="Close"
                 style={{ padding: "6px 10px" }}
@@ -202,7 +202,7 @@ export default function ErfLookup({
                 />
                 <button
                   type="button"
-                  className="cta"
+                  className="btn-primary"
                   onClick={search}
                   disabled={busy || !query.trim()}
                   style={{ padding: "10px 16px", fontSize: 13 }}
@@ -347,7 +347,7 @@ export default function ErfLookup({
                   />
                   <button
                     type="button"
-                    className="ghost-dark"
+                    className="btn-secondary"
                     onClick={() => manualErf.trim() && attachErf(manualErf.trim())}
                     disabled={busy || !manualErf.trim()}
                     style={{ padding: "10px 16px", fontSize: 13 }}

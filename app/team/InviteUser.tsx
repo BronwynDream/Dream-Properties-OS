@@ -64,7 +64,7 @@ export default function InviteUser() {
       <div style={{ display: "flex", justifyContent: "flex-end" }}>
         <button
           type="button"
-          className="cta"
+          className="btn-primary"
           onClick={() => setOpen(true)}
           style={{ padding: "9px 14px", fontSize: 13 }}
         >
@@ -185,7 +185,7 @@ export default function InviteUser() {
       <div style={{ display: "flex", gap: 8 }}>
         <button
           type="submit"
-          className="cta"
+          className="btn-primary"
           disabled={pending}
           style={{ padding: "9px 14px", fontSize: 13, whiteSpace: "nowrap" }}
         >
@@ -193,7 +193,7 @@ export default function InviteUser() {
         </button>
         <button
           type="button"
-          className="ghost-dark"
+          className="btn-secondary"
           onClick={() => {
             reset();
             setOpen(false);

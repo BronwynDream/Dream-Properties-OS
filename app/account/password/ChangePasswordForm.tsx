@@ -74,7 +74,7 @@ export default function ChangePasswordForm() {
           }}
         />
       </div>
-      <button className="primary" type="submit" disabled={loading}>
+      <button className="btn-primary" type="submit" disabled={loading}>
         {loading ? "Updating…" : "Update password"}
       </button>
     </form>

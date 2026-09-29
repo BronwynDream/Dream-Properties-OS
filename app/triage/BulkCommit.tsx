@@ -85,7 +85,7 @@ export default function BulkCommit({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
       <button
-        className="cta"
+        className="btn-primary"
         onClick={run}
         disabled={running}
         style={{ padding: "9px 14px", fontSize: 13 }}

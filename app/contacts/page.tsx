@@ -118,7 +118,7 @@ export default async function ContactsPage({
             </div>
             <Link
               href="/contacts/new"
-              className="cta"
+              className="btn-primary"
               style={{
                 padding: "10px 16px",
                 fontSize: 13,

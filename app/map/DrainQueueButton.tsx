@@ -145,7 +145,7 @@ export default function DrainQueueButton() {
     <div style={{ marginTop: 8 }}>
       <button
         type="button"
-        className="ghost-dark"
+        className="btn-secondary"
         onClick={running ? stop : drain}
         style={{
           width: "100%",

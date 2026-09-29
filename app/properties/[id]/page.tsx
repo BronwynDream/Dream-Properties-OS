@@ -1122,9 +1122,11 @@ export default async function PropertyRecord({
             <div className="record-deal-empty">
               <p className="eyebrow">Active deal</p>
               <p>
-                No live transfer yet. Drop a folder in the Take-on section below
-                (or via Triage) to bring in ownership history and start a deal.
+                No live transfer yet. Bring in ownership history and start a deal.
               </p>
+              <Link href="/triage" className="btn-primary" style={{ marginTop: 12, display: "inline-block" }}>
+                Start a deal (via triage)
+              </Link>
             </div>
           )}
         </section>

@@ -57,7 +57,7 @@ export default function MergeTransfer({
       {!open ? (
         <button
           type="button"
-          className="ghost-dark"
+          className="btn-secondary"
           style={{ padding: "5px 11px", fontSize: 12 }}
           onClick={() => setOpen(true)}
         >
@@ -145,7 +145,7 @@ export default function MergeTransfer({
           <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
             <button
               type="button"
-              className="ghost-dark"
+              className="btn-secondary"
               style={{ padding: "5px 11px", fontSize: 12 }}
               onClick={() => {
                 setOpen(false);

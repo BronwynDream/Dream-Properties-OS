@@ -168,7 +168,7 @@ export default function MandateEditor({
           </label>
           <button
             type="button"
-            className="ghost-dark"
+            className="btn-secondary"
             onClick={handlePrint}
             style={{ padding: "9px 14px", fontSize: 13, whiteSpace: "nowrap" }}
           >
@@ -176,7 +176,7 @@ export default function MandateEditor({
           </button>
           <button
             type="button"
-            className="cta"
+            className="btn-primary"
             onClick={handleSave}
             disabled={!canSave}
             style={{ padding: "9px 14px", fontSize: 13, whiteSpace: "nowrap" }}

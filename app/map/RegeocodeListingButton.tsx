@@ -70,7 +70,7 @@ export default function RegeocodeListingButton({ externalId }: { externalId: str
         type="button"
         onClick={run}
         disabled={pending}
-        className="ghost-dark"
+        className="btn-secondary"
         style={{ width: "100%", padding: "8px 12px", fontSize: 12 }}
         title="Re-run Mapbox geocode on this listing's address (biased to Knysna)"
       >
@@ -99,10 +99,10 @@ export default function RegeocodeListingButton({ externalId }: { externalId: str
             autoFocus
           />
           <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-            <button type="button" onClick={saveManual} disabled={pending || !coordInput.trim()} className="cta" style={{ padding: "6px 10px", fontSize: 11 }}>
+            <button type="button" onClick={saveManual} disabled={pending || !coordInput.trim()} className="btn-primary" style={{ padding: "6px 10px", fontSize: 11 }}>
               {pending ? "Saving…" : "Move pin"}
             </button>
-            <button type="button" onClick={() => { setManualOpen(false); setMsg(null); }} className="ghost-dark" style={{ padding: "6px 10px", fontSize: 11 }}>
+            <button type="button" onClick={() => { setManualOpen(false); setMsg(null); }} className="btn-secondary" style={{ padding: "6px 10px", fontSize: 11 }}>
               Cancel
             </button>
           </div>
@@ -111,7 +111,7 @@ export default function RegeocodeListingButton({ externalId }: { externalId: str
         <button
           type="button"
           onClick={() => setManualOpen(true)}
-          className="ghost-dark"
+          className="btn-secondary"
           style={{ width: "100%", padding: "6px 12px", fontSize: 11, marginTop: 6 }}
           title="Paste correct coords from Google Maps"
         >

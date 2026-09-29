@@ -87,14 +87,14 @@ export default async function DupesPage({ searchParams }: { searchParams: Search
               <div style={{ display: "flex", gap: 8 }}>
                 <Link
                   href={`/dupes?kind=property&threshold=${threshold}`}
-                  className={kind === "property" ? "cta" : "ghost-dark"}
+                  className={kind === "property" ? "btn-primary" : "btn-secondary"}
                   style={{ textDecoration: "none" }}
                 >
                   Properties
                 </Link>
                 <Link
                   href={`/dupes?kind=party&threshold=${threshold}`}
-                  className={kind === "party" ? "cta" : "ghost-dark"}
+                  className={kind === "party" ? "btn-primary" : "btn-secondary"}
                   style={{ textDecoration: "none" }}
                 >
                   Parties
@@ -122,7 +122,7 @@ export default async function DupesPage({ searchParams }: { searchParams: Search
                     fontSize: 13,
                   }}
                 />
-                <button className="ghost-dark" type="submit">
+                <button className="btn-secondary" type="submit">
                   Rescan
                 </button>
               </form>

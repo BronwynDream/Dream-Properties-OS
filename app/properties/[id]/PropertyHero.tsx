@@ -196,7 +196,7 @@ export default function PropertyHero({
 
         <div className="record-headline">
           <div>
-            <p className="record-headline-eyebrow">Muni valuation</p>
+            <p className="record-headline-eyebrow">Municipal valuation</p>
             {muniValuation != null ? (
               <>
                 <p className="record-headline-value">
@@ -208,7 +208,7 @@ export default function PropertyHero({
               </>
             ) : (
               <p className="record-headline-empty">
-                No muni valuation on record. Try Find ERF from Muni to link a
+                No municipal valuation on record. Try Find ERF from Muni to link a
                 valuation-roll entry.
               </p>
             )}

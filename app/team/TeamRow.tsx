@@ -207,7 +207,7 @@ export default function TeamRow({
         <form onSubmit={submit} style={{ margin: 0 }}>
           <button
             type="submit"
-            className={dirty ? "cta" : "ghost-dark"}
+            className={dirty ? "btn-primary" : "btn-secondary"}
             disabled={pending || !dirty}
             style={{ padding: "6px 12px", fontSize: 12 }}
           >

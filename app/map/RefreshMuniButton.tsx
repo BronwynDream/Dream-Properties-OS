@@ -50,7 +50,7 @@ export default function RefreshMuniButton() {
     <div style={{ marginTop: 12 }}>
       <button
         type="button"
-        className="ghost-dark"
+        className="btn-secondary"
         onClick={run}
         disabled={pending}
         style={{

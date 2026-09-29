@@ -62,7 +62,7 @@ export default function LoginPage() {
                 onChange={(e) => setPassword(e.target.value)}
               />
             </div>
-            <button className="primary" type="submit" disabled={loading}>
+            <button className="btn-primary" type="submit" disabled={loading}>
               {loading ? "Signing in…" : "Sign in"}
             </button>
             <p className="auth-alt">

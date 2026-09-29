@@ -86,7 +86,7 @@ export default function LightstoneFetch({
     return (
       <button
         type="button"
-        className="ghost-dark"
+        className="btn-secondary"
         onClick={() => setOpen(true)}
         style={{ padding: "8px 14px", fontSize: 13 }}
         title="Opens the Lightstone product picker. The Lightstone API is not connected (declined 2026-07-22 at R5k/mo); this button records that a product is being ordered manually via the portal and attaches placeholder documents to this property."
@@ -193,7 +193,7 @@ export default function LightstoneFetch({
       <div style={{ display: "flex", gap: 8 }}>
         <button
           type="button"
-          className="cta"
+          className="btn-primary"
           onClick={submit}
           disabled={running || checked.size === 0}
           style={{ padding: "9px 14px", fontSize: 13 }}
@@ -202,7 +202,7 @@ export default function LightstoneFetch({
         </button>
         <button
           type="button"
-          className="ghost-dark"
+          className="btn-secondary"
           onClick={() => {
             setOpen(false);
             setErr(null);

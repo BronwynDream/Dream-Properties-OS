@@ -268,19 +268,6 @@ input:not([type=checkbox]):not([type=radio]):focus { outline: 2px solid var(--go
   color: var(--ink-900);
 }
 
-button.primary {
-  width: 100%;
-  padding: 12px;
-  background: var(--navy);
-  color: var(--white);
-  border: 0;
-  border-radius: 9px;
-  font-size: 15px;
-  font-weight: 600;
-  cursor: pointer;
-}
-button.primary:hover { background: var(--estuary); }
-button.primary:disabled { opacity: 0.6; cursor: default; }
 
 .error {
   background: #fdecec;
@@ -355,17 +342,6 @@ button.ghost {
 }
 button.ghost:hover { background: rgba(255,255,255,0.12); }
 
-.ghost-link {
-  color: var(--white); text-decoration: none; font-size: 14px;
-  border: 1px solid rgba(255,255,255,0.5); border-radius: 8px; padding: 7px 12px;
-}
-.ghost-link:hover { background: rgba(255,255,255,0.12); }
-
-.cta {
-  display: inline-block; background: var(--navy); color: var(--white);
-  text-decoration: none; padding: 12px 18px; border-radius: 9px; font-weight: 600;
-}
-.cta:hover { background: var(--estuary); }
 
 /* Drop zone */
 .dropzone {
@@ -405,12 +381,6 @@ table.queue td.strong { font-weight: 600; color: var(--estuary); }
 .note-box strong { color: var(--estuary); font-family: var(--font-body); }
 .note-box p { color: #5b6885; font-size: 14px; line-height: 1.6; margin: 8px 0 0; }
 
-.ghost-dark {
-  background: transparent; color: var(--navy); border: 1px solid var(--navy);
-  border-radius: 9px; padding: 11px 16px; font-size: 15px; font-weight: 600; cursor: pointer;
-}
-.ghost-dark:hover { background: var(--mist); }
-.ghost-dark:disabled { opacity: 0.5; cursor: default; }
 
 .extract-groups { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; margin-top: 12px; }
 .extract-card { background: var(--white); border: 1px solid #e2e8f5; border-radius: 12px; padding: 14px 16px; }
@@ -666,11 +636,16 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
      content box */
 @media (max-width: 480px) {
   .registered-stamp {
-    width: 128px;
-    height: 54px;
+    /* 018-c (Simon, 2026-09-29): 018-b's 128×54 at right:12 still
+       overhangs by ~10px at 375. Shrink further AND hard-cap the
+       width against the plate content-box so it can never exceed
+       the visible plate area. */
+    width: 108px;
+    height: 46px;
     top: 10px;
-    right: 12px;
+    right: 16px;
     opacity: 0.55;
+    max-width: calc(100% - 32px);
   }
   .record-plate {
     contain: layout paint;
@@ -816,7 +791,7 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
   display: flex; gap: 8px; margin-top: 20px;
   flex-wrap: wrap;
 }
-.record-actions button, .record-actions .ghost-dark {
+.record-actions button, .record-actions .btn-secondary, .record-actions .btn-primary {
   background: transparent;
   border: 1px solid var(--paper-line);
   color: var(--estuary);
@@ -827,7 +802,7 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
   transition: background 0.12s, border-color 0.12s;
   font-family: inherit;
 }
-.record-actions button:hover, .record-actions .ghost-dark:hover {
+.record-actions button:hover, .record-actions .btn-secondary:hover, .record-actions .btn-primary:hover {
   background: var(--white);
   border-color: var(--gold);
 }
@@ -2421,7 +2396,7 @@ a.topbar-who-name:hover { color: var(--white); text-decoration: underline; }
     pointer-events: auto;
   }
   .topbar-drawer-nav {
-    background: var(--white);
+    background: var(--paper-0);
     padding: 6px 0 10px;
     box-shadow: 0 12px 30px rgba(15,22,52,0.28);
     display: flex;

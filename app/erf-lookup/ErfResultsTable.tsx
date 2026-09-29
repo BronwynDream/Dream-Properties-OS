@@ -73,7 +73,7 @@ export default function ErfResultsTable({ rows }: { rows: ErfRow[] }) {
         <span>Erf</span>
         <span>Address</span>
         <span>Suburb</span>
-        <span style={{ textAlign: "right" }}>Muni value</span>
+        <span style={{ textAlign: "right" }}>Municipal valuation</span>
         <span style={{ textAlign: "right" }}>Extent</span>
         <span>Zoning</span>
         <span>Use</span>
@@ -225,15 +225,15 @@ function DetailPanel({ r }: { r: ErfRow }) {
       }}
     >
       <Group label="Cadastre">
-        <Row k="SG number" v={r.sg_number} mono />
-        <Row k="Muni erf code" v={r.muni_erf_code} mono />
+        <Row k="Surveyor-General code" v={r.sg_number} mono />
+        <Row k="Municipal erf code" v={r.muni_erf_code} mono />
         <Row k="Ward" v={r.ward_no} />
         {r.valuations.length === 1 && (
           <Row k="Tariff" v={r.valuations[0].tariff} />
         )}
       </Group>
       <Group label="Valuation">
-        <Row k="Muni valuation (total)" v={<Rand value={r.muni_valuation_total} fallback="—" mutedPrefix={false} />} />
+        <Row k="Municipal valuation (total)" v={<Rand value={r.muni_valuation_total} fallback="—" mutedPrefix={false} />} />
         <Row k="Extent (deed)" v={<Area value={r.extent_sqm} />} />
         <Row k="Extent (roll)" v={<Area value={r.area_sqm_valroll} />} />
         <Row k="Property type" v={r.property_type} />

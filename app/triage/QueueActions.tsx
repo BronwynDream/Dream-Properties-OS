@@ -12,7 +12,7 @@ export default function QueueActions({ hasUnnamed }: { hasUnnamed: boolean }) {
 
   return (
     <button
-      className="ghost-dark"
+      className="btn-secondary"
       disabled={pending}
       onClick={() =>
         startTransition(async () => {

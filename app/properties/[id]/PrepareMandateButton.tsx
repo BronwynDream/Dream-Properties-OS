@@ -50,7 +50,7 @@ export default function PrepareMandateButton({
     <div ref={ref} style={{ position: "relative" }}>
       <button
         type="button"
-        className="ghost-dark"
+        className="btn-secondary"
         onClick={() => setOpen((v) => !v)}
         style={{ padding: "8px 12px", fontSize: 13 }}
       >

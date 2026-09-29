@@ -177,7 +177,7 @@ export default function MarkSoldButton({
             </button>
             <button
               type="button"
-              className="ghost-dark"
+              className="btn-secondary"
               style={{ padding: "5px 11px", fontSize: 12 }}
               onClick={() => {
                 setOpen(false);

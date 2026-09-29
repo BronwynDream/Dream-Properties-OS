@@ -72,7 +72,7 @@ export default function PropertyAttach({
       {!open ? (
         <button
           type="button"
-          className="ghost-dark"
+          className="btn-secondary"
           style={{ padding: "6px 12px", fontSize: 12, fontWeight: 600 }}
           onClick={() => setOpen(true)}
         >
@@ -107,7 +107,7 @@ export default function PropertyAttach({
             />
             <button
               type="button"
-              className="ghost-dark"
+              className="btn-secondary"
               style={{ padding: "6px 10px", fontSize: 12 }}
               onClick={() => {
                 setOpen(false);

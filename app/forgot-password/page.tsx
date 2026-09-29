@@ -62,7 +62,7 @@ export default function ForgotPasswordPage() {
                   onChange={(e) => setEmail(e.target.value)}
                 />
               </div>
-              <button className="primary" type="submit" disabled={loading}>
+              <button className="btn-primary" type="submit" disabled={loading}>
                 {loading ? "Sending…" : "Send recovery email"}
               </button>
               <p className="auth-alt">

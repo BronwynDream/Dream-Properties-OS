@@ -419,7 +419,7 @@ export default function ReviewClient({
           <p className="eyebrow">Dream Knysna · Batch review</p>
           <h1>{batch.label}</h1>
         </div>
-        <Link href="/triage" className="ghost-link">
+        <Link href="/triage" className="btn-quiet" style={{ color: "var(--gold)" }}>
           ← Queue
         </Link>
       </header>
@@ -434,16 +434,16 @@ export default function ReviewClient({
           </span>
           <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
             {hasEml && (
-              <button className="ghost-dark" onClick={runUnpack} disabled={extractBusy}>
+              <button className="btn-secondary" onClick={runUnpack} disabled={extractBusy}>
                 Unpack emails
               </button>
             )}
-            <button className="ghost-dark" onClick={runClassify} disabled={pending}>
+            <button className="btn-secondary" onClick={runClassify} disabled={pending}>
               {pending ? "Working…" : "Classify"}
             </button>
             {unknownCount > 0 && (
               <button
-                className="ghost-dark"
+                className="btn-secondary"
                 onClick={runReclassify}
                 disabled={extractBusy}
                 title="Read each unknown file (OCR if scanned) and classify by content"
@@ -452,13 +452,13 @@ export default function ReviewClient({
               </button>
             )}
             {hasExtractable && !committed && (
-              <button className="cta" onClick={runExtract} disabled={extractBusy || classified === 0}>
+              <button className="btn-primary" onClick={runExtract} disabled={extractBusy || classified === 0}>
                 {extractBusy ? "Reading…" : "Extract fields (AI)"}
               </button>
             )}
             {hasExtractable && committed && (
               <button
-                className="cta"
+                className="btn-primary"
                 onClick={runReextract}
                 disabled={extractBusy || classified === 0}
                 title="Re-read the documents and refresh the property record. Use when fields (ERF, extent, price…) are missing or wrong on the property page."
@@ -468,7 +468,7 @@ export default function ReviewClient({
             )}
             {batch.property_id && !committed && !hasExtractable && (
               <button
-                className="cta"
+                className="btn-primary"
                 onClick={runFileAgainstProperty}
                 disabled={extractBusy || classified === 0}
                 title="Promote the classified files to the property's document folder and close the batch."
@@ -539,7 +539,7 @@ export default function ReviewClient({
                     : `${undecidedTargets.length} target(s) awaiting a call`}
               </span>
               <button
-                className="ghost-dark"
+                className="btn-secondary"
                 style={{ marginLeft: "auto" }}
                 onClick={rerunMatches}
                 disabled={matchBusy}
@@ -561,7 +561,7 @@ export default function ReviewClient({
                     </span>
                     {decided && (
                       <button
-                        className="ghost-dark"
+                        className="btn-secondary"
                         style={{ marginLeft: "auto", padding: "4px 10px", fontSize: 12 }}
                         onClick={() => resetTarget(ref)}
                         disabled={pending}
@@ -600,7 +600,7 @@ export default function ReviewClient({
                             <span className="tier tier-green">linked</span>
                           ) : (
                             <button
-                              className="ghost-dark"
+                              className="btn-secondary"
                               onClick={() => r.candidate_id && pickLink(ref, r.id)}
                               disabled={pending || !r.candidate_id}
                             >
@@ -612,7 +612,7 @@ export default function ReviewClient({
                     })}
                     <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                       <button
-                        className={allCreate ? "cta" : "ghost-dark"}
+                        className={allCreate ? "btn-primary" : "btn-secondary"}
                         onClick={() => pickCreate(ref)}
                         disabled={pending || allCreate}
                       >
@@ -673,7 +673,7 @@ export default function ReviewClient({
           <h2 style={{ fontSize: 20, margin: 0 }}>Proposed fields</h2>
           {extractions.length > 0 && !committed && (
             <button
-              className="cta"
+              className="btn-primary"
               style={{ marginLeft: "auto" }}
               onClick={runCommit}
               disabled={committing || undecidedTargets.length > 0}

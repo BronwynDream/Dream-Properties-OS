@@ -93,7 +93,7 @@ export default function AddSellerFields({
       <div style={rowStyle}>
         <button
           type="button"
-          className="ghost-dark"
+          className="btn-secondary"
           onClick={() => onOpenChange(true)}
           disabled={disabled}
           style={{ padding: "8px 12px", fontSize: 13 }}

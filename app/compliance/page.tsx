@@ -553,6 +553,55 @@ async function loadLiveDealFicaGaps(
   return out;
 }
 
+function FicaGapsBySide({ gaps }: { gaps: PartyGap[] }) {
+  const sellers = gaps.filter((g) => g.side === "seller");
+  const purchasers = gaps.filter((g) => g.side === "purchaser");
+  const other = gaps.filter((g) => g.side !== "seller" && g.side !== "purchaser");
+
+  function PartyRow({ g }: { g: PartyGap }) {
+    return (
+      <li style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "4px 0" }}>
+        <Link
+          href={`/contacts/${g.partyId}`}
+          style={{ fontSize: 13, color: "var(--estuary, #132B84)", fontWeight: 500 }}
+        >
+          {g.displayName}
+        </Link>
+        <FicaStatusBadge derived={g.derived} size="sm" />
+      </li>
+    );
+  }
+
+  function SideGroup({ label, items }: { label: string; items: PartyGap[] }) {
+    if (items.length === 0) return null;
+    return (
+      <div style={{ marginTop: 8 }}>
+        <p style={{
+          margin: "0 0 4px",
+          fontFamily: "var(--font-mono)",
+          fontSize: 10,
+          letterSpacing: "0.10em",
+          textTransform: "uppercase",
+          color: "var(--ink-500, #6B6153)",
+        }}>
+          {label}
+        </p>
+        <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column" }}>
+          {items.map((g) => <PartyRow key={g.partyId} g={g} />)}
+        </ul>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <SideGroup label="Sellers" items={sellers} />
+      <SideGroup label="Purchasers" items={purchasers} />
+      <SideGroup label="Other" items={other} />
+    </div>
+  );
+}
+
 function LiveDealFicaGaps({ rows }: { rows: LiveDealGap[] }) {
   return (
     <div>
@@ -621,33 +670,7 @@ function LiveDealFicaGaps({ rows }: { rows: LiveDealGap[] }) {
                 >
                   {r.status.replace(/_/g, " ")}
                 </p>
-                <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 6 }}>
-                  {r.gaps.map((g) => (
-                    <li key={g.partyId} style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                      <Link
-                        href={`/contacts/${g.partyId}`}
-                        style={{ fontSize: 13, color: "var(--estuary, #132B84)", fontWeight: 500 }}
-                      >
-                        {g.displayName}
-                      </Link>
-                      <span
-                        style={{
-                          fontFamily: "var(--font-mono)",
-                          fontSize: 10,
-                          letterSpacing: "0.08em",
-                          textTransform: "uppercase",
-                          color: "var(--paper-mute, #6a7692)",
-                        }}
-                      >
-                        {g.side === "purchaser" ? "Buyer" : g.side === "seller" ? "Seller" : g.side}
-                      </span>
-                      <FicaStatusBadge derived={g.derived} size="sm" />
-                      <span style={{ fontSize: 11, color: "var(--paper-mute, #6a7692)" }}>
-                        {ficaLabel(g.derived)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
+                <FicaGapsBySide gaps={r.gaps} />
               </div>
               <div style={{ textAlign: "right", minWidth: 100 }}>
                 <p

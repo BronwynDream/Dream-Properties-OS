@@ -83,7 +83,7 @@ export default function MarketListingAttach({
       <div style={{ marginTop: 16 }}>
         <button
           type="button"
-          className="ghost-dark"
+          className="btn-secondary"
           onClick={() => setOpen(true)}
           style={{ width: "100%", padding: "10px 14px", fontSize: 13 }}
         >
@@ -146,7 +146,7 @@ export default function MarketListingAttach({
       <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
         <button
           type="button"
-          className="cta"
+          className="btn-primary"
           onClick={createFresh}
           disabled={linking}
           title="Create a fresh OS property record from this market listing and navigate to it"
@@ -156,7 +156,7 @@ export default function MarketListingAttach({
         </button>
         <button
           type="button"
-          className="ghost-dark"
+          className="btn-secondary"
           onClick={() => {
             setOpen(false);
             setQ("");

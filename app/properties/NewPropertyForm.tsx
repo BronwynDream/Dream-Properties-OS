@@ -204,7 +204,7 @@ export default function NewPropertyForm({
       <div style={{ display: "flex", justifyContent: "flex-end", width: "100%" }}>
         <button
           type="button"
-          className="cta"
+          className="btn-primary"
           onClick={() => setOpen(true)}
           style={{ padding: "9px 14px", fontSize: 13 }}
         >
@@ -291,7 +291,7 @@ export default function NewPropertyForm({
           />
           <button
             type="submit"
-            className="ghost-dark"
+            className="btn-secondary"
             disabled={searching || pending || query.trim().length < 3}
             style={{ padding: "8px 14px", fontSize: 13, whiteSpace: "nowrap" }}
           >
@@ -488,7 +488,7 @@ export default function NewPropertyForm({
         <div style={{ display: "flex", gap: 8, gridColumn: "1 / -1", justifyContent: "flex-end" }}>
           <button
             type="submit"
-            className="cta"
+            className="btn-primary"
             disabled={pending}
             style={{ padding: "9px 14px", fontSize: 13, whiteSpace: "nowrap" }}
           >
@@ -496,7 +496,7 @@ export default function NewPropertyForm({
           </button>
           <button
             type="button"
-            className="ghost-dark"
+            className="btn-secondary"
             onClick={() => {
               reset();
               setOpen(false);

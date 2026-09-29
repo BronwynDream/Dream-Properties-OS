@@ -74,7 +74,7 @@ export default function RegeocodeProperty24Button() {
     <div style={{ marginTop: 12 }}>
       <button
         type="button"
-        className="ghost-dark"
+        className="btn-secondary"
         onClick={run}
         disabled={pending}
         style={{
