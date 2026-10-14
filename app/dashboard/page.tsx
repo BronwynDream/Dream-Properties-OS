@@ -42,8 +42,8 @@ export default async function Dashboard() {
   // Agent-scoped path: pre-fetch listings assigned to me so subsequent
   // queries can filter transfers + mandates by property_id in that set.
   // Admins skip this and fall through to global queries below.
-  let myListingIds: string[] = [];
-  let myPropertyIds: string[] = [];
+  const myListingIds: string[] = [];
+  const myPropertyIds: string[] = [];
   if (isAgent) {
     const { data: myListingRows } = await supabase
       .from("listing")

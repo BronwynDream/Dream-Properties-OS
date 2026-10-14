@@ -21,7 +21,7 @@ function normaliseMandate(t: string | null | undefined): string {
   const s = t.toLowerCase();
   if (s.includes("exclusive")) return "exclusive";
   if (s.includes("joint")) return "joint";
-  if (s.includes("sole")) return "sole";
+  if (s.includes("sole")) return "exclusive"; // legacy alias, see migration 0067
   if (s.includes("open")) return "open";
   return "none";
 }

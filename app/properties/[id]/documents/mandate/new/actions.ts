@@ -16,7 +16,7 @@ import { createClient } from "@/lib/supabase/server";
 
 export async function saveMandate(input: {
   listingId: string;
-  type: "sole" | "joint";
+  type: "exclusive" | "joint";
   signedDate: string;
   expiryDate: string;
   askingPrice: number | null;

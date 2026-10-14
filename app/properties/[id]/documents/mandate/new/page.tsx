@@ -12,7 +12,9 @@ import MandateEditor from "./MandateEditor";
 
 export const dynamic = "force-dynamic";
 
-type Search = { type?: "sole" | "joint"; listing?: string };
+// "sole" is accepted on the URL as a legacy alias for "exclusive" (they are
+// the same mandate at Dream — see migration 0067) but is never written.
+type Search = { type?: "exclusive" | "joint" | "sole"; listing?: string };
 
 export default async function PrepareMandatePage({
   params,
@@ -27,8 +29,8 @@ export default async function PrepareMandatePage({
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const type: "sole" | "joint" =
-    searchParams.type === "joint" ? "joint" : "sole";
+  const type: "exclusive" | "joint" =
+    searchParams.type === "joint" ? "joint" : "exclusive";
 
   const { data: prop } = await supabase
     .from("property")

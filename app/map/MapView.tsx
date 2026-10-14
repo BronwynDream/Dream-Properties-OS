@@ -126,7 +126,7 @@ const INITIAL_BOUNDS: [[number, number], [number, number]] = [
   [23.16, -33.99], // NE: past Noetzie / Pezula
 ];
 
-const MANDATE_ORDER = ["exclusive", "sole", "joint", "under_offer", "open", "none"] as const;
+const MANDATE_ORDER = ["exclusive", "joint", "under_offer", "open", "none"] as const;
 
 const SOURCE_ORDER: SourceKey[] = [
   "dream_os",
@@ -418,7 +418,7 @@ export default function MapView({
         map.flyTo({ center: [lng, lat], zoom: 17, essential: true });
       }
       // Match a mergedPin either by explicit property id or by nearest coord.
-      let matched = propId ? mergedPins.find((p) => p.matchedPropertyId === propId || p.our?.id === propId) : null;
+      const matched = propId ? mergedPins.find((p) => p.matchedPropertyId === propId || p.our?.id === propId) : null;
       if (matched) setSelectedKey(matched.key);
       didUrlTargetRef.current = true;
     };
@@ -1402,7 +1402,7 @@ export default function MapView({
             <div className="map-empty-card">
               <h2>No properties or market listings yet</h2>
               <p>
-                Commit a batch from Triage, or wait for tonight's scraper run to
+                Commit a batch from Triage, or wait for tonight&apos;s scraper run to
                 surface market listings.
               </p>
               <Link href="/triage" className="btn-primary" style={{ display: "inline-block" }}>

@@ -104,7 +104,7 @@ export default async function ValuationRollsIndex() {
             </h2>
             {uploads.length === 0 ? (
               <p style={{ color: "var(--paper-mute, #6a7692)", fontStyle: "italic", padding: "24px 0" }}>
-                No uploads yet. Upload the Full GV first as the baseline, then add supplements as they're issued.
+                No uploads yet. Upload the Full GV first as the baseline, then add supplements as they&apos;re issued.
               </p>
             ) : (
               <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 6 }}>

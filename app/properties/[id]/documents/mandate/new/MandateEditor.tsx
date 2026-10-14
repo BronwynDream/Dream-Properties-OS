@@ -36,7 +36,7 @@ export default function MandateEditor({
   property,
   jointAgencyOptions,
 }: {
-  type: "sole" | "joint";
+  type: "exclusive" | "joint";
   listingId: string | null;
   agency: AgencyIdentity;
   seller: SellerViewModel | null;

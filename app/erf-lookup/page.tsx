@@ -164,8 +164,8 @@ export default async function ErfLookupPage({
             <code style={{ fontFamily: "var(--font-mono)" }}>
               muni_property
             </code>{" "}
-            — Knysna Muni's public rateable-property mirror (valuation roll,
-            finance system, deeds). Refreshed weekly via the map's{" "}
+            — Knysna Muni&apos;s public rateable-property mirror (valuation roll,
+            finance system, deeds). Refreshed weekly via the map&apos;s{" "}
             <Link href="/map" style={{ color: "var(--navy)", fontWeight: 600 }}>
               Refresh Muni data
             </Link>{" "}

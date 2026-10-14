@@ -13,7 +13,7 @@ import { formatRand, formatDate } from "../format";
 // letterhead via Letterhead.tsx from a single source of truth.
 
 export type MandateSoleProps = {
-  type: "sole" | "joint";
+  type: "exclusive" | "joint";
   agency: AgencyIdentity;
   jointAgencyName: string | null;
   seller: {
@@ -47,7 +47,7 @@ export default function MandateSole({
   property,
   terms,
 }: MandateSoleProps) {
-  const title = type === "sole" ? "SOLE MANDATE" : "JOINT MANDATE";
+  const title = type === "exclusive" ? "EXCLUSIVE MANDATE" : "JOINT MANDATE";
 
   const propertyDesc = [
     property.primaryAddress,
@@ -68,7 +68,7 @@ export default function MandateSole({
     : `${terms.commissionPct}% (exclusive of VAT — VAT at the prevailing rate will be added and paid by the Seller)`;
 
   const secondPartyClause =
-    type === "sole"
+    type === "exclusive"
       ? `${agency.name} an EXCLUSIVE MANDATE`
       : jointAgencyName
         ? `${agency.name} and ${jointAgencyName} a JOINT MANDATE`

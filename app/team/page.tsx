@@ -93,7 +93,7 @@ export default async function TeamPage() {
         <header className="app-head">
           <div>
             <p className="eyebrow">Dream Knysna · Team &amp; access</p>
-            <h1>Who's in the room, and what they can see</h1>
+            <h1>Who&apos;s in the room, and what they can see</h1>
           </div>
         </header>
         <hr className="tideline" />

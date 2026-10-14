@@ -35,7 +35,7 @@ export default function PrepareMandateButton({
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
-  function go(type: "sole" | "joint") {
+  function go(type: "exclusive" | "joint") {
     setOpen(false);
     // Include listingId when we have one — the render page can otherwise fall
     // back to looking one up, but passing it makes the URL self-documenting.
@@ -73,8 +73,8 @@ export default function PrepareMandateButton({
           }}
         >
           <MenuButton
-            onClick={() => go("sole")}
-            title="Sole mandate"
+            onClick={() => go("exclusive")}
+            title="Exclusive mandate"
             hint="Dream is the only agency marketing this property."
           />
           <MenuButton

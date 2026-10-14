@@ -112,6 +112,11 @@ Build is verified: `npm run typecheck` and `npm run build` both pass.
 
 ## Status
 
-Schema v0.1 — first migration. RLS is a safe baseline (admin full; agents scoped to
-transfers they lead; FICA bucket admin-only). Conveyancer magic-link rooms and the
-client portal get scoped policies in a later migration. See `../project.state.md`.
+Schema at migration **0069** (2026-10-14). Live on Vercel at `dreamproperties.app`,
+database "Bon Bon's Database" (Supabase, EU). Built: property spine, transfers and
+parties, FICA store with RLS, cadastral map with municipal valuation roll, triage /
+AI intake, contact CRM v2, mandates as records, document-engine data layer (clause
+library seeded for mandates, movables, addenda, condition-report appendix). Not yet:
+document generation/storage, knowledge-base search, outbound comms, commission.
+The live roadmap is `plans/019-revamp-roadmap.md`; the running log is `project.state.md`.
+Conveyancer magic-link rooms and the client portal are still unscoped in RLS.
