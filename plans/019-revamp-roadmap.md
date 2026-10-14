@@ -99,10 +99,26 @@ Wireframe 07 made real. The Phase-5 promise in PROJECT.md.
 | D5 | "View as agent" for admins, with a visible banner | audit D1 |
 | D6 | Split `MapView.tsx` (1,953 LOC) and `properties/[id]/page.tsx` (1,280 LOC) as each is touched; retire inline styles file by file | plan 012 intent |
 
+### Slice H — Data Health page (pulled forward; runs before A2)
+
+Added 2026-10-14 after Simon saw the live map rail: *"not sure all these
+left-hand buttons will go down well with the agents … we need a dashboard
+that has green lights for each section."* Agreed.
+
+| Step | Delivers |
+|---|---|
+| H1 | `feed_run` table: one row per scheduled/manual run (feed, started, finished, status, items, error). Each cron/refresh route writes one. |
+| H2 | `/admin/health` page: one row per feed with a green / amber / red light, last run, count, queue depth, and that feed's refresh button. Feeds: Dream website, Property24 (index + Firecrawl + drain queue), Private Property (red until built), municipal valuation roll, geocoding (pinned / missing), inbound email webhook, enquiry intake. |
+| H3 | Map rail slimmed to basemap, sources, cadastral outlines, mandate filter. Every refresh / drain / re-geocode button and the "n / m processed" counters move to H2. Source chips get a small dot mirroring the health light (read-only for agents). Legend label "Sole / Open / None" → "Open / None". |
+
+Half a session. H3 is a map change, so it is loaded in a browser before
+merge (house rule).
+
 ## Ordering and why
 
-A → B → C → D, with D2–D3 allowed to interleave once A5 lands (the
-document register changes what the property record should show first).
+A1 → **H** → A2 … → B → C → D, with D2–D3 allowed to interleave once A5
+lands (the document register changes what the property record should show
+first).
 
 A first because the templates are ready, it closes the "documents vanish"
 hole, and it is the most visible change for Bronwyn. B depends on A storing
@@ -134,8 +150,9 @@ content it frames exists.
 
 | Session | Slice | Est. |
 |---|---|---|
-| 1 | A1 | this session |
-| 2 | A2 + A3 | 1 |
+| 1 | A1 | done 2026-10-14 |
+| 2 | H + start A2 | 1 |
+| 2–3 | A2 + A3 | 1 |
 | 3–4 | A4 | 2 |
 | 5 | A5 | 1 |
 | 6 | A6 | 1 |
