@@ -46,8 +46,9 @@ function fmtAgo(iso: string | null | undefined): string {
 
 function fmtDate(iso: string | null | undefined): string {
   if (!iso) return "—";
+  // Server renders in UTC on Vercel; Dream's day is SAST.
   return new Date(iso).toLocaleString("en-ZA", {
-    day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit",
+    day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Africa/Johannesburg",
   });
 }
 
@@ -77,8 +78,8 @@ export default async function DataHealthPage() {
     svc.from("external_listing").select("last_seen", { count: "exact" }).eq("source", "private_property").eq("active", true).order("last_seen", { ascending: false }).limit(1),
     svc.from("external_listing").select("id", { count: "exact", head: true }).eq("source", "dream_website").eq("active", true).is("lat", null),
     svc.from("external_listing").select("id", { count: "exact", head: true }).eq("source", "property24").eq("active", true).is("lat", null),
-    svc.from("property24_url_queue").select("id", { count: "exact", head: true }).is("processed_at", null),
-    svc.from("property24_url_queue").select("id", { count: "exact", head: true }),
+    svc.from("property24_url_queue").select("url", { count: "exact", head: true }).is("processed_at", null),
+    svc.from("property24_url_queue").select("url", { count: "exact", head: true }),
     svc.from("muni_property").select("sg_number", { count: "exact", head: true }),
     svc.from("valuation_roll_upload").select("kind, status, uploaded_at, applied_row_count").eq("status", "applied").order("uploaded_at", { ascending: false }).limit(1),
     svc.from("property").select("id", { count: "exact", head: true }),

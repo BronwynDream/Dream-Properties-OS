@@ -62,6 +62,14 @@ forward ahead of A2 as plan 019 slice H.
   Mapbox layer change, but check anyway: after deploy, open `/map` and
   confirm the rail shows only Basemap / Sources / Cadastral / Mandate,
   and `/admin/health` renders with lights (all grey until a feed runs).
+- Browser check done (built-in browser, 20:25 SAST): `/admin/health`
+  renders with live counts; `/map` rail shows Basemap / Sources /
+  Cadastral / Mandate only, legend "Open / None", satellite + pins fine,
+  no console errors. Pressed Refresh Dream listings on the health page:
+  row went grey → HEALTHY · manual · ok · 49 items, and the DW chip on
+  the map got its green dot. Logging proven end to end.
+- Two fixes after the check: queue count used `select("id")` on a table
+  keyed by `url` (showed 0/0); times now render in Africa/Johannesburg.
 - `feedLight()` thresholds untested against real data; tune once a week
   of runs exists.
 
