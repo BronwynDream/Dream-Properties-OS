@@ -2,19 +2,30 @@ import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getDreamAgency } from "@/lib/agency";
-import { maritalRegimeLabel } from "@/app/documents/format";
+import { loadTemplate } from "@/lib/documents/resolve";
+import type { MandateRecordInputs } from "@/lib/documents/context";
 import MandateEditor from "./MandateEditor";
 
-// Prepare-Mandate render page. Loads property + seller + agency for the
-// merge fields, then hands off to <MandateEditor> for the live preview and
-// print/save controls. Deliberately NOT wrapped in <TopBar> — a printable
-// document surface should read as its own thing, not part of the app chrome.
+// Prepare-Mandate page (plan 019 Arc A2). Loads the mandate template from
+// the clause library, gathers what the record already knows (sellers, erf,
+// address, extent, joint agency), and hands both to <MandateEditor>, which
+// interviews the agent for the rest and renders the document live.
+//
+// Deliberately NOT wrapped in <TopBar> — a printable document surface
+// should read as its own thing, not part of the app chrome.
 
 export const dynamic = "force-dynamic";
 
+type MandateType = "exclusive" | "joint" | "open";
 // "sole" is accepted on the URL as a legacy alias for "exclusive" (they are
 // the same mandate at Dream — see migration 0067) but is never written.
-type Search = { type?: "exclusive" | "joint" | "sole"; listing?: string };
+type Search = { type?: MandateType | "sole"; listing?: string };
+
+const TEMPLATE_BY_TYPE: Record<MandateType, string> = {
+  exclusive: "mandate_exclusive",
+  joint: "mandate_joint",
+  open: "mandate_open",
+};
 
 export default async function PrepareMandatePage({
   params,
@@ -29,8 +40,8 @@ export default async function PrepareMandatePage({
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const type: "exclusive" | "joint" =
-    searchParams.type === "joint" ? "joint" : "exclusive";
+  const type: MandateType =
+    searchParams.type === "joint" ? "joint" : searchParams.type === "open" ? "open" : "exclusive";
 
   const { data: prop } = await supabase
     .from("property")
@@ -38,6 +49,18 @@ export default async function PrepareMandatePage({
     .eq("id", params.id)
     .maybeSingle();
   if (!prop) notFound();
+
+  const model = await loadTemplate(supabase, TEMPLATE_BY_TYPE[type]);
+  if (!model || model.slots.length === 0) {
+    return (
+      <main style={{ padding: 40 }}>
+        <p>
+          Template <code>{TEMPLATE_BY_TYPE[type]}</code> has no clauses in the library. Apply
+          migrations 0068 and 0071 to the database.
+        </p>
+      </main>
+    );
+  }
 
   const { data: erfRow } = await supabase
     .from("erf")
@@ -48,9 +71,9 @@ export default async function PrepareMandatePage({
     .maybeSingle();
 
   // Resolve the listing this mandate should attach to. Prefer the id passed
-  // in the URL (self-documenting), fall back to the most-recent listing for
-  // the property. Null is fine — the editor renders anyway and shows a
-  // warning that save is blocked.
+  // in the URL, fall back to the most-recent listing for the property. Null
+  // is fine — the editor renders anyway and shows a warning that save is
+  // blocked.
   let listingId: string | null = searchParams.listing ?? null;
   if (!listingId) {
     const { data: latest } = await supabase
@@ -63,18 +86,11 @@ export default async function PrepareMandatePage({
     listingId = latest?.id ?? null;
   }
 
-  // Seller: walk listing → transfer → transfer_party(side='seller') → party.
-  // Falls back to null when no listing / no transfer / no seller_party.
-  // The template renders blank underscored lines for the missing fields so
-  // the printed doc is still hand-fillable.
-  let seller: {
-    displayName: string;
-    idOrRegistration: string | null;
-    maritalRegimeLabel: string | null;
-    addressLine: string | null;
-    phone: string | null;
-    email: string | null;
-  } | null = null;
+  // Sellers: listing → transfer → transfer_party(side='seller') → party.
+  // All sellers, primary first, so "John and Jane Smith" comes out right.
+  let sellerNames: string | null = null;
+  let sellerIdLine: string | null = null;
+  let sellerIsJuristic = false;
   if (listingId) {
     const { data: listingRow } = await supabase
       .from("listing")
@@ -83,45 +99,32 @@ export default async function PrepareMandatePage({
       .maybeSingle();
     const transferId = (listingRow as { transfer_id: string | null } | null)?.transfer_id ?? null;
     if (transferId) {
-      const { data: tpRow } = await supabase
+      const { data: tpRows } = await supabase
         .from("transfer_party")
-        .select(
-          "party:party_id(display_name, party_type, id_number, passport_no, registration_no, matrimonial_regime, physical_address, postal_address, domicilium_address, phone, email)",
-        )
+        .select("is_primary, party:party_id(display_name, party_type, id_number, passport_no, registration_no)")
         .eq("transfer_id", transferId)
         .eq("side", "seller")
-        .eq("is_primary", true)
-        .maybeSingle();
-      const p = Array.isArray((tpRow as any)?.party)
-        ? (tpRow as any).party[0]
-        : (tpRow as any)?.party;
-      if (p) {
-        const idOrReg =
-          p.party_type === "individual"
-            ? p.id_number ?? (p.passport_no ? `Passport ${p.passport_no}` : null)
-            : p.registration_no
-              ? `Reg no. ${p.registration_no}`
-              : null;
-        seller = {
-          displayName: p.display_name ?? "",
-          idOrRegistration: idOrReg
-            ? p.party_type === "individual" && p.id_number
-              ? `ID ${idOrReg}`
-              : idOrReg
-            : null,
-          maritalRegimeLabel:
-            p.party_type === "individual" ? maritalRegimeLabel(p.matrimonial_regime) : null,
-          addressLine:
-            p.physical_address ?? p.domicilium_address ?? p.postal_address ?? null,
-          phone: p.phone,
-          email: p.email,
-        };
+        .order("is_primary", { ascending: false });
+      type P = { display_name: string; party_type: string; id_number: string | null; passport_no: string | null; registration_no: string | null };
+      const parties = ((tpRows ?? []) as unknown as { party: P | P[] }[])
+        .map((r) => (Array.isArray(r.party) ? r.party[0] : r.party))
+        .filter(Boolean) as P[];
+      if (parties.length) {
+        sellerNames = joinNames(parties.map((p) => p.display_name));
+        const primary = parties[0];
+        sellerIsJuristic = primary.party_type !== "individual";
+        sellerIdLine = sellerIsJuristic
+          ? primary.registration_no ? `(Reg. No. ${primary.registration_no})` : null
+          : parties.length === 1
+          ? primary.id_number ? `I.D. ${primary.id_number}` : primary.passport_no ? `Passport ${primary.passport_no}` : null
+          : parties.every((p) => p.id_number)
+          ? `I.D. ${parties.map((p) => p.id_number).join(" / ")}`
+          : null;
       }
     }
   }
 
-  // Joint-agency options (for the joint-mandate dropdown). Filter out Dream
-  // itself — a mandate joint-with-yourself doesn't parse.
+  // Joint-agency options. Filter out Dream itself.
   const { data: agencies } = await supabase
     .from("agency")
     .select("id, name, is_dream")
@@ -131,6 +134,17 @@ export default async function PrepareMandatePage({
     .map(({ id, name }) => ({ id, name }));
 
   const agency = await getDreamAgency();
+
+  const record: MandateRecordInputs = {
+    mandateType: type,
+    sellerNames,
+    sellerIdLine,
+    sellerRepresentative: null,
+    erfNumber: (erfRow as { erf_number: string } | null)?.erf_number ?? null,
+    propertyKnownAs: knownAs(prop.primary_address),
+    extentSqm: (prop as { extent_sqm: number | null }).extent_sqm,
+    jointAgencyName: null,
+  };
 
   return (
     <main style={{ background: "#F5F1E8", minHeight: "100vh", padding: "20px 20px 60px" }}>
@@ -144,18 +158,28 @@ export default async function PrepareMandatePage({
       </div>
       <MandateEditor
         type={type}
+        model={model}
+        record={record}
+        sellerIsJuristic={sellerIsJuristic}
         listingId={listingId}
+        propertyId={prop.id}
+        propertyAddress={prop.primary_address}
         agency={agency}
-        seller={seller}
-        property={{
-          id: prop.id,
-          primaryAddress: prop.primary_address,
-          erfNumber: (erfRow as { erf_number: string } | null)?.erf_number ?? null,
-          titleDeed: prop.title_deed_no,
-          extentSqm: (prop as { extent_sqm: number | null }).extent_sqm,
-        }}
         jointAgencyOptions={jointAgencyOptions}
       />
     </main>
   );
+}
+
+function joinNames(names: string[]): string {
+  const n = names.filter(Boolean);
+  if (n.length <= 1) return n[0] ?? "";
+  return `${n.slice(0, -1).join(", ")} and ${n[n.length - 1]}`;
+}
+
+/** "12 Eagles Way, The Heads, Knysna" → "12 Eagles Way, The Heads" — the
+ *  master already prints ", KNYSNA" after the known-as blank. */
+function knownAs(address: string | null): string | null {
+  if (!address) return null;
+  return address.replace(/,?\s*knysna\s*(,.*)?$/i, "").trim() || address;
 }

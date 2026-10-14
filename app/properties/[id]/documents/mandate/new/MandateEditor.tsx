@@ -1,79 +1,88 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { DocumentPage } from "@/app/documents/DocumentPage";
-import MandateSole from "@/app/documents/templates/MandateSole";
+import ClauseDocument from "@/app/documents/ClauseDocument";
 import type { AgencyIdentity } from "@/lib/agency";
+import { resolveDocument, type TemplateModel } from "@/lib/documents/resolve";
+import { buildMandateContext, TOKEN_LABELS, type MandateRecordInputs } from "@/lib/documents/context";
 import { saveMandate } from "./actions";
 
-// Client-side editor: form controls at the top (hidden in print via .no-print)
-// drive the live preview below. Print → browser print dialog. Save → server
-// action creates the mandate row.
-
-type SellerViewModel = {
-  displayName: string;
-  idOrRegistration: string | null;
-  maritalRegimeLabel: string | null;
-  addressLine: string | null;
-  phone: string | null;
-  email: string | null;
-};
-
-type PropertyViewModel = {
-  id: string;
-  primaryAddress: string;
-  erfNumber: string | null;
-  titleDeed: string | null;
-  extentSqm: number | null;
-};
+// Mandate editor (plan 019 Arc A2). The interview bar at the top asks only
+// for what the record cannot supply — price, commission, term, and for a
+// juristic or represented seller, who signs. Everything else is filled from
+// the property and parties. The preview below is the clause-library
+// document, re-resolved on every change; gaps are highlighted on screen
+// and listed under "Still needed", and print plain.
+//
+// Commission is always "plus VAT thereon" (decided 2026-09-28 with
+// Bronwyn). The rare VAT-inclusive mandate is a per-document edit of the
+// commission clause in the draft editor (A4), not a toggle here.
 
 export default function MandateEditor({
   type,
+  model,
+  record,
+  sellerIsJuristic,
   listingId,
+  propertyId,
+  propertyAddress,
   agency,
-  seller,
-  property,
   jointAgencyOptions,
 }: {
-  type: "exclusive" | "joint";
+  type: "exclusive" | "joint" | "open";
+  model: TemplateModel;
+  record: MandateRecordInputs;
+  sellerIsJuristic: boolean;
   listingId: string | null;
+  propertyId: string;
+  propertyAddress: string;
   agency: AgencyIdentity;
-  seller: SellerViewModel | null;
-  property: PropertyViewModel;
   jointAgencyOptions: { id: string; name: string }[];
 }) {
   const router = useRouter();
   const today = new Date().toISOString().slice(0, 10);
-  const sixMonths = (() => {
-    const d = new Date();
-    d.setMonth(d.getMonth() + 6);
-    return d.toISOString().slice(0, 10);
-  })();
 
   const [signedDate, setSignedDate] = useState(today);
-  const [expiryDate, setExpiryDate] = useState(sixMonths);
+  const [termMonths, setTermMonths] = useState<string>("");
   const [askingPrice, setAskingPrice] = useState<string>("");
-  const [commissionPct, setCommissionPct] = useState<string>("5");
-  const [commissionInclVat, setCommissionInclVat] = useState(true);
+  const [commissionPct, setCommissionPct] = useState<string>("");
+  const [representative, setRepresentative] = useState<string>("");
   const [jointAgencyId, setJointAgencyId] = useState<string>(
-    // Pre-select Pam Golding when a joint mandate is being prepared and PG
-    // exists in the option list — the most common joint-agency partner per
-    // the project memory (Dream ↔ Pam Golding Knysna).
+    // Pre-select Pam Golding for a joint mandate — Dream's usual partner.
     type === "joint"
       ? jointAgencyOptions.find((a) => a.name.toLowerCase().includes("pam golding"))?.id ?? ""
       : "",
   );
   const [saving, startSaving] = useTransition();
   const [saveErr, setSaveErr] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
+  const [savedId, setSavedId] = useState<string | null>(null);
 
   const askingPriceNum = parsePrice(askingPrice);
-  const commissionPctNum = Number(commissionPct) || 0;
-  const jointAgencyName =
-    jointAgencyOptions.find((a) => a.id === jointAgencyId)?.name ?? null;
+  const commissionPctNum = parseNum(commissionPct);
+  const termMonthsNum = parseNum(termMonths);
+  const jointAgencyName = jointAgencyOptions.find((a) => a.id === jointAgencyId)?.name ?? null;
+  const expiryDate = useMemo(() => addMonths(signedDate, termMonthsNum), [signedDate, termMonthsNum]);
 
-  const canSave = listingId != null && !saving && !saved;
+  const ctx = useMemo(
+    () =>
+      buildMandateContext(
+        {
+          ...record,
+          jointAgencyName,
+          sellerRepresentative: representative.trim() || record.sellerRepresentative,
+        },
+        { askingPrice: askingPriceNum, commissionPct: commissionPctNum, termMonths: termMonthsNum },
+      ),
+    [record, jointAgencyName, representative, askingPriceNum, commissionPctNum, termMonthsNum],
+  );
+  const doc = useMemo(() => resolveDocument(model, ctx), [model, ctx]);
+
+  const stillNeeded = Array.from(new Set(doc.unresolved.map((t) => TOKEN_LABELS[t] ?? t)));
+  const asksRepresentative = type !== "exclusive" || sellerIsJuristic;
+
+  const canSave = listingId != null && !saving && !savedId && termMonthsNum != null && commissionPctNum != null;
   const missingListingWarning =
     listingId == null
       ? "This property has no listing yet. Save is disabled — capture a seller on the property first, or add a listing manually before preparing a mandate."
@@ -84,25 +93,31 @@ export default function MandateEditor({
   }
 
   function handleSave() {
-    if (!listingId) return;
+    if (!listingId || termMonthsNum == null || commissionPctNum == null) return;
     setSaveErr(null);
     startSaving(async () => {
       const res = await saveMandate({
         listingId,
+        propertyId,
+        templateId: model.id,
         type,
         signedDate,
         expiryDate,
+        termMonths: termMonthsNum,
         askingPrice: askingPriceNum,
         commissionPct: commissionPctNum,
-        commissionInclVat,
         jointAgencyName,
-        propertyId: property.id,
+        title: `${model.label} — ${propertyAddress}`,
+        fieldValues: ctx,
+        clauseSelections: Object.fromEntries(
+          doc.sections.filter((s) => s.variantId).map((s) => [s.clauseId, s.variantId as string]),
+        ),
       });
       if (!res.ok) {
         setSaveErr(res.error);
         return;
       }
-      setSaved(true);
+      setSavedId(res.mandateId);
       router.refresh();
     });
   }
@@ -110,29 +125,9 @@ export default function MandateEditor({
   return (
     <>
       <div className="no-print" style={editorBarStyle}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr)) auto auto", gap: 12, alignItems: "end" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, alignItems: "end" }}>
           <label style={fieldWrap}>
-            <span style={fieldLabel}>Signed on</span>
-            <input
-              type="date"
-              value={signedDate}
-              onChange={(e) => setSignedDate(e.target.value)}
-              disabled={saving}
-              style={inputStyle}
-            />
-          </label>
-          <label style={fieldWrap}>
-            <span style={fieldLabel}>Expires</span>
-            <input
-              type="date"
-              value={expiryDate}
-              onChange={(e) => setExpiryDate(e.target.value)}
-              disabled={saving}
-              style={inputStyle}
-            />
-          </label>
-          <label style={fieldWrap}>
-            <span style={fieldLabel}>Asking price (ZAR)</span>
+            <span style={fieldLabel}>Marketing price (ZAR)</span>
             <input
               type="text"
               value={askingPrice}
@@ -144,115 +139,140 @@ export default function MandateEditor({
             />
           </label>
           <label style={fieldWrap}>
-            <span style={fieldLabel}>Commission %</span>
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <input
-                type="number"
-                min={0}
-                step={0.25}
-                value={commissionPct}
-                onChange={(e) => setCommissionPct(e.target.value)}
-                disabled={saving}
-                style={{ ...inputStyle, width: 80 }}
-              />
-              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--paper-mute)" }}>
-                <input
-                  type="checkbox"
-                  checked={commissionInclVat}
-                  onChange={(e) => setCommissionInclVat(e.target.checked)}
-                  disabled={saving}
-                />
-                incl VAT
-              </label>
-            </div>
+            <span style={fieldLabel}>Commission % (plus VAT)</span>
+            <input
+              type="number"
+              min={0}
+              step={0.25}
+              value={commissionPct}
+              onChange={(e) => setCommissionPct(e.target.value)}
+              placeholder="e.g. 5"
+              disabled={saving}
+              style={inputStyle}
+            />
           </label>
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={handlePrint}
-            style={{ padding: "9px 14px", fontSize: 13, whiteSpace: "nowrap" }}
-          >
-            Print
-          </button>
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={handleSave}
-            disabled={!canSave}
-            style={{ padding: "9px 14px", fontSize: 13, whiteSpace: "nowrap" }}
-          >
-            {saved ? "Saved ✓" : saving ? "Saving…" : "Save mandate"}
-          </button>
+          <label style={fieldWrap}>
+            <span style={fieldLabel}>Term (months)</span>
+            <input
+              type="number"
+              min={1}
+              step={1}
+              value={termMonths}
+              onChange={(e) => setTermMonths(e.target.value)}
+              placeholder="e.g. 6"
+              disabled={saving}
+              style={inputStyle}
+            />
+          </label>
+          <label style={fieldWrap}>
+            <span style={fieldLabel}>Signed on</span>
+            <input
+              type="date"
+              value={signedDate}
+              onChange={(e) => setSignedDate(e.target.value)}
+              disabled={saving}
+              style={inputStyle}
+            />
+          </label>
+          <div style={fieldWrap}>
+            <span style={fieldLabel}>Expires</span>
+            <div style={{ ...inputStyle, background: "transparent", border: "1px dashed #d7deef", fontFamily: "var(--font-mono)", fontSize: 13 }}>
+              {expiryDate ?? "— set the term"}
+            </div>
+          </div>
         </div>
 
-        {type === "joint" && jointAgencyOptions.length > 0 && (
-          <div style={{ marginTop: 12 }}>
-            <label style={fieldWrap}>
-              <span style={fieldLabel}>Joint agency</span>
-              <select
-                value={jointAgencyId}
-                onChange={(e) => setJointAgencyId(e.target.value)}
-                disabled={saving}
-                style={{ ...inputStyle, maxWidth: 420 }}
-              >
-                <option value="">—</option>
-                {jointAgencyOptions.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+        {(type === "joint" || asksRepresentative) && (
+          <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12 }}>
+            {type === "joint" && (
+              <label style={fieldWrap}>
+                <span style={fieldLabel}>Joint agency</span>
+                <select
+                  value={jointAgencyId}
+                  onChange={(e) => setJointAgencyId(e.target.value)}
+                  disabled={saving}
+                  style={inputStyle}
+                >
+                  <option value="">—</option>
+                  {jointAgencyOptions.map((a) => (
+                    <option key={a.id} value={a.id}>{a.name}</option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {asksRepresentative && (
+              <label style={fieldWrap}>
+                <span style={fieldLabel}>
+                  {sellerIsJuristic ? "Signing for the seller (name)" : "Represented by (leave blank if the seller signs)"}
+                </span>
+                <input
+                  type="text"
+                  value={representative}
+                  onChange={(e) => setRepresentative(e.target.value)}
+                  disabled={saving}
+                  style={inputStyle}
+                />
+              </label>
+            )}
           </div>
         )}
+
+        <div style={{ marginTop: 12, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <button type="button" className="btn-secondary" onClick={handlePrint} style={{ padding: "9px 14px", fontSize: 13 }}>
+            Print
+          </button>
+          <button type="button" className="btn-primary" onClick={handleSave} disabled={!canSave} style={{ padding: "9px 14px", fontSize: 13 }}>
+            {savedId ? "Saved ✓" : saving ? "Saving…" : "Save mandate"}
+          </button>
+          {stillNeeded.length > 0 ? (
+            <span style={{ fontSize: 12, color: "#9c6b1a" }}>
+              Still needed: {stillNeeded.join(" · ")}
+            </span>
+          ) : (
+            <span style={{ fontSize: 12, color: "#1F7A4D" }}>All fields filled.</span>
+          )}
+        </div>
 
         {missingListingWarning && (
           <p style={{ marginTop: 12, color: "#9c6b1a", fontSize: 13 }}>{missingListingWarning}</p>
         )}
         {saveErr && (
-          <p style={{ marginTop: 12, color: "#B8434B", fontSize: 13 }}>
-            Save failed: {saveErr}
-          </p>
+          <p style={{ marginTop: 12, color: "#B8434B", fontSize: 13 }}>Save failed: {saveErr}</p>
         )}
-        {saved && (
+        {savedId && (
           <p style={{ marginTop: 12, color: "#1F7A4D", fontSize: 13 }}>
-            Mandate saved. Return to the property record to see it under this listing.
+            Mandate saved, and a draft of this document is on file. Return to the property record to see it.
           </p>
         )}
       </div>
 
       <DocumentPage agency={agency}>
-        <MandateSole
-          type={type}
-          agency={agency}
-          jointAgencyName={jointAgencyName}
-          seller={seller}
-          property={{
-            primaryAddress: property.primaryAddress,
-            erfNumber: property.erfNumber,
-            titleDeed: property.titleDeed,
-            extentSqm: property.extentSqm,
-          }}
-          terms={{
-            askingPrice: askingPriceNum,
-            commissionPct: commissionPctNum,
-            commissionInclVat,
-            signedDate,
-            expiryDate,
-          }}
-        />
+        <ClauseDocument doc={doc} showGaps />
       </DocumentPage>
     </>
   );
 }
 
-// Accept prices typed with spaces, commas, and a leading "R". Returns null
-// for empty input so the template falls back to a blank line.
+// Accept prices typed with spaces, commas, and a leading "R".
 function parsePrice(raw: string): number | null {
   const cleaned = raw.replace(/[R\s,]/gi, "");
   if (cleaned === "") return null;
   const n = Number(cleaned);
   return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function parseNum(raw: string): number | null {
+  if (raw.trim() === "") return null;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function addMonths(iso: string, months: number | null): string | null {
+  if (!months) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  d.setMonth(d.getMonth() + Math.round(months));
+  return d.toISOString().slice(0, 10);
 }
 
 const editorBarStyle: React.CSSProperties = {

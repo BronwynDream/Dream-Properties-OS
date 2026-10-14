@@ -35,7 +35,7 @@ export default function PrepareMandateButton({
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
-  function go(type: "exclusive" | "joint") {
+  function go(type: "exclusive" | "joint" | "open") {
     setOpen(false);
     // Include listingId when we have one — the render page can otherwise fall
     // back to looking one up, but passing it makes the URL self-documenting.
@@ -81,6 +81,11 @@ export default function PrepareMandateButton({
             onClick={() => go("joint")}
             title="Joint mandate"
             hint="Marketed with a co-mandated agency (e.g. Pam Golding)."
+          />
+          <MenuButton
+            onClick={() => go("open")}
+            title="Open mandate"
+            hint="Non-exclusive; the seller may use any number of agents."
           />
         </div>
       )}

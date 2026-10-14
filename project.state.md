@@ -8,6 +8,94 @@ _Last updated: 2026-10-14_
 
 ---
 
+## ARC A2 — RESOLVER + CLAUSE-LIBRARY RENDERER (2026-10-14, late)
+
+The document engine's data layer (0065/0068/0069) finally has code on top
+of it. Mandates now render from the clause library, not from a hard-coded
+React template, and saving one keeps a `document_draft`.
+
+### Shipped
+- **Migration 0071 `mandate_slots`** — the parts of the three mandate
+  masters 0068 did not seed: `mandate.title`, `mandate.parties_property`
+  (the "We/I … being the registered owner … Erf … hereby irrevocably
+  instruct" paragraph), `mandate.signatures`, and the joint mandate's
+  `mandate.joint_agency_signature` (it sits after the FFC warrant in
+  Bronwyn's master). Sets `applies_when = {"mandate_type": …}` on every
+  "Exclusive/Joint/Open master" variant from 0068 (they had none, so no
+  resolver could pick between them). Tokenises the marketing-price blanks
+  (`ZAR {{asking_price}} ({{asking_price_words}} RAND)`). Seeds
+  `doc_template_slot` order for all three mandates (11 / 13 / 10 slots).
+  Open mandate has no juristic warrant — matches the master. **NOT YET
+  APPLIED to Bon Bon.** Verify after: `select t.code, count(*) from
+  doc_template_slot s join doc_template t on t.id=s.template_id group by
+  1;` → mandate_exclusive 11, mandate_joint 13, mandate_open 10 (plus the
+  0069 four).
+- **`lib/documents/resolve.ts`** — `loadTemplate()` (one query for
+  template → slots → clause → approved variants) and pure
+  `resolveDocument(model, ctx, overrides)`. Variant choice: draft
+  selection → first variant whose `applies_when` matches → unconditional
+  default → first unconditional. **A variant whose predicate did not match
+  is never a fallback** (a Joint body must not print on an Exclusive
+  mandate just because it was flagged default) — tested. Predicates:
+  equality, `in` via arrays, `_gt/_gte/_lt/_lte`, `_set`. Unfilled tokens
+  print as `________________` and are listed in `unresolved`. Includes
+  `numberToWords` (SA contract style: "Twenty Nine Million Nine Hundred
+  and Fifty Thousand"), `percentToWords` ("Three Point Five"),
+  `formatZar` (explicit thin-space-free grouping — ICU's en-ZA uses a
+  narrow no-break space that copies badly out of PDFs).
+- **`lib/documents/context.ts`** — `buildMandateContext(record,
+  interview)`: record first, interview second, nothing defaulted;
+  commission and term are only ever interviewed (Simon, 2026-08-05).
+  `TOKEN_LABELS` for the "Still needed" list.
+- **`app/documents/ClauseDocument.tsx`** — generic renderer inside
+  `DocumentPage`. Paragraphs from blank lines; ALL-CAPS first line as
+  title; tab/underscore lines pre-wrapped so signature rows keep their
+  columns; gaps highlighted on screen (`showGaps`), plain in print.
+- **Mandate page + editor rewritten.** `page.tsx` loads the template,
+  all sellers (primary first, "John and Jane Smith"), ID line, erf, "known
+  as" address (Knysna suffix stripped — the master prints it), extent.
+  Editor interviews for price, commission % (plus VAT — no inclusive
+  toggle, per the 2026-09-28 decision), term in months (expiry derived),
+  signed date, joint agency, and "represented by" for juristic sellers /
+  joint / open. Live preview re-resolves on every keystroke. Save is
+  blocked until commission and term are given.
+- **`saveMandate`** writes the 0065 typed columns (`asking_price`,
+  `commission_pct`, `term_months`, `commission_incl_vat=false`) and inserts
+  a **`document_draft`** (template, field values, clause selections) —
+  the first generated document the OS keeps. Draft failure is logged, not
+  fatal.
+- `MandateSole.tsx` deleted (it was the Business-mandate placeholder, see
+  2026-08-06). Prepare-mandate menu gains "Open mandate".
+- `npm run test:documents` — 7 groups of assertions on the resolver,
+  predicates, number words and context builder.
+
+### Verification
+- typecheck, lint (0 errors), `test:documents`, `next build` all green in
+  the cloud container.
+- **Not loaded in a browser.** After 0071 is applied and this deploys,
+  open a property → Prepare mandate → Exclusive: expect the title line,
+  the seller paragraph filled from the record, highlighted gaps for price /
+  commission / term, "Still needed" listing them, and the gaps closing as
+  you type. Then Joint and Open. Print preview should show no highlights.
+- Not tested: a seller with a passport only; a listing with no transfer
+  (renders blanks — by design).
+
+### Loose ends
+- Apply 0071 to Bon Bon **before** pushing, or Prepare mandate shows the
+  "no clauses in the library" message.
+- A3 next: `/documents` hub + nav entry, listing `document_draft` rows
+  per property/transfer, Prepare… for the four short templates seeded in
+  0069 (they need their own context builders — movables and addenda need
+  purchaser + agreement details, so they depend on transfer data).
+- A4: open a saved draft back into the editor (clause_overrides,
+  omitted_clauses — the resolver already honours them).
+- Sale agreements still unseeded (A2b): slot-map the freehold-house
+  master's ~40 numbered clauses. Biggest remaining seeding job.
+- The pre-0065 `mandate.notes` strings on old rows are not back-filled
+  into the typed columns. Test data anyway (purge pending).
+
+---
+
 ## SLICE H — DATA HEALTH PAGE (2026-10-14, evening)
 
 Simon, looking at the live map after A1 deployed: *"not sure all these

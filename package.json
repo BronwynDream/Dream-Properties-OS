@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "test:dedup": "npx --yes tsx lib/external-listings/__tests__/dedup.collision.ts"
+    "test:dedup": "npx --yes tsx lib/external-listings/__tests__/dedup.collision.ts",
+    "test:documents": "npx --yes tsx lib/documents/__tests__/resolve.test.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",
