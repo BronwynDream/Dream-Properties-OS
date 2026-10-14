@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { recordFeedRun } from "@/lib/feeds/run";
 import { Webhook } from "svix";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServiceClient } from "@/lib/supabase/service";
@@ -84,6 +85,10 @@ type ResendInboundEvent = {
 type Intent = "property" | "client";
 
 export async function POST(request: Request) {
+  return recordFeedRun("intake_email", request, () => handlePost(request));
+}
+
+async function handlePost(request: Request) {
   // 1. Svix signature verification.
   const secret = (process.env.RESEND_WEBHOOK_SECRET ?? "").trim();
   if (!secret) {

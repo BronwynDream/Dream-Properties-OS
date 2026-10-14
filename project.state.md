@@ -8,6 +8,75 @@ _Last updated: 2026-10-14_
 
 ---
 
+## SLICE H — DATA HEALTH PAGE (2026-10-14, evening)
+
+Simon, looking at the live map after A1 deployed: *"not sure all these
+left-hand buttons will go down well with the agents. looks too complicated
+for them. i think we need a dashboard that has green lights for each
+section to make sure it's up to date with the web hooks and the properties
+from the various websites are being rendered properly."* Agreed, pulled
+forward ahead of A2 as plan 019 slice H.
+
+### Shipped
+- **Migration 0070 `feed_run`** — one row per run of a feed (feed, trigger
+  cron/manual/webhook, status running/ok/partial/error, started/finished,
+  items, summary jsonb, error). View `v_feed_latest` (security_invoker)
+  gives the latest row per feed. **Staff-readable** so the map can show
+  agents a dot; only the service role writes. **NOT YET APPLIED to Bon
+  Bon.**
+- **`lib/feeds/registry.ts`** — the list of feeds (dream_website,
+  property24, private_property [planned], muni_roll, geocode,
+  intake_email), each with cadence and the map source it backs, plus
+  `feedLight()`: a pure function turning the latest run into
+  green/amber/red/grey against the cadence (daily → amber after 36h, red
+  after 72h; weekly 8d/15d; on-demand 30d/90d; event 14d/45d). Grey =
+  never run; red is reserved for failed / never finished / not built.
+- **`lib/feeds/run.ts`** — `recordFeedRun(feed, request, handler)` wraps
+  an existing route handler, infers the trigger from headers (bearer →
+  cron, svix → webhook, else manual), reads the cloned JSON response to
+  derive status and an item count, and never throws into the feed.
+  Wrapped: `sources/dream/refresh`, `sources/property24/refresh`,
+  `muni/import`, `sources/property24/regeocode{,-jsonld,-erf}`,
+  `intake/email`. Each route change is three lines; internals untouched.
+- **`/admin/health`** (Admin → Data health in the nav). One row per feed:
+  light, last run (when / trigger / status / items / error), live counts
+  (active listings per source, last seen, missing coords, P24 queue
+  pending/total, erven on file, last roll applied, properties pinned,
+  email batches), and that feed's buttons. The five map-rail buttons moved
+  here (`git mv` from `app/map/`); the map's "Geocode + snap" bar became
+  `GeocodeButton.tsx` here, calling the same server action. Rows stack
+  below 760px.
+- **Map rail slimmed** — `MapView.tsx` loses the five admin buttons, the
+  geocode bar, `useTransition`, `geocodeMsg` and `runGeocode`. Keeps
+  basemap, sources, cadastral outlines, mandate filter. Source chips get a
+  7px read-only dot (`.source-health-*`) from `sourceHealth`, which
+  `map/page.tsx` computes from `v_feed_latest` via the same `feedLight()`.
+  Legend "Sole / Open / None" → "Open / None". Empty-state copy points
+  admins at Data health.
+
+### Verification
+- `npm run typecheck`, `npm run lint` (0 errors), `npm run build` green
+  in the cloud container; `/admin/health` in the route table.
+- **NOT loaded in a browser yet.** House rule: the MapView change must be
+  seen before merge. The rail change is JSX removal plus one dot, not a
+  Mapbox layer change, but check anyway: after deploy, open `/map` and
+  confirm the rail shows only Basemap / Sources / Cadastral / Mandate,
+  and `/admin/health` renders with lights (all grey until a feed runs).
+- `feedLight()` thresholds untested against real data; tune once a week
+  of runs exists.
+
+### Loose ends
+- Apply 0070 to Bon Bon before deploy lands, or `/admin/health` and `/map`
+  will error on the missing view.
+- Every feed shows grey until its next run. Pressing "Refresh Dream
+  listings" on the health page is the fastest way to light one up.
+- Health page uses the service client for counts; fine while admin-gated,
+  but if the page ever opens to agents, switch to the user client.
+- Audit #2 (parcels hover-handler leak) and #3 (unfiltered PPRA scan) still
+  queued for the first Arc B PR.
+
+---
+
 ## REVAMP KICK-OFF — PLAN 019 + ARC A1 (2026-10-14)
 
 Simon returned after two weeks, ran an `/improve` audit, and said the OS

@@ -2637,3 +2637,19 @@ a.topbar-who-name:hover { color: var(--white); text-decoration: underline; }
   /* Section-head elements shouldn't shove content offscreen. */
   .section-head { flex-wrap: wrap; row-gap: 6px; }
 }
+
+/* /admin/health rows stack on phones (plan 019 slice H) */
+@media (max-width: 760px) {
+  .health-row { grid-template-columns: 1fr !important; }
+  .health-row > div:last-child { margin-top: 0 !important; }
+}
+
+/* Feed-health dot on the map's source chips (plan 019 slice H). Read-only:
+   the triggers live on /admin/health. */
+.source-health {
+  display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+  margin-left: 2px; flex: 0 0 auto;
+}
+.source-health-green { background: var(--positive); }
+.source-health-amber { background: var(--caution); }
+.source-health-red   { background: var(--critical); }

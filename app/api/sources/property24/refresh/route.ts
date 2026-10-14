@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { recordFeedRun } from "@/lib/feeds/run";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import {
@@ -96,10 +97,10 @@ async function authorised(
 }
 
 export async function GET(request: Request) {
-  return run(request);
+  return recordFeedRun("property24", request, () => run(request));
 }
 export async function POST(request: Request) {
-  return run(request);
+  return recordFeedRun("property24", request, () => run(request));
 }
 
 async function run(request: Request) {

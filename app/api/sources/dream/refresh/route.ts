@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { recordFeedRun } from "@/lib/feeds/run";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { rebuildDedupAndMatch } from "@/lib/external-listings/dedup";
@@ -84,10 +85,10 @@ async function authorised(request: Request): Promise<
 }
 
 export async function GET(request: Request) {
-  return run(request);
+  return recordFeedRun("dream_website", request, () => run(request));
 }
 export async function POST(request: Request) {
-  return run(request);
+  return recordFeedRun("dream_website", request, () => run(request));
 }
 
 async function run(request: Request) {

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { recordFeedRun } from "@/lib/feeds/run";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 
@@ -278,10 +279,10 @@ async function runImport(request: Request) {
 // (Vercel Cron only issues GET). Both go through the same authorised()
 // path; cron auths via CRON_SECRET bearer, admin via session cookie.
 export async function POST(request: Request) {
-  return runImport(request);
+  return recordFeedRun("muni_roll", request, () => runImport(request));
 }
 export async function GET(request: Request) {
-  return runImport(request);
+  return recordFeedRun("muni_roll", request, () => runImport(request));
 }
 
 function* chunks<T>(arr: T[], size: number): Generator<T[]> {

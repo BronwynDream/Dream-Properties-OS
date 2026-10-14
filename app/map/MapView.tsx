@@ -1,16 +1,12 @@
 "use client";
 
 import "mapbox-gl/dist/mapbox-gl.css";
+import type { Light } from "@/lib/feeds/registry";
 import mapboxgl from "mapbox-gl";
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { geocodeMissingProperties, savePropertyPin } from "./actions";
-import RefreshDreamButton from "./RefreshDreamButton";
-import RefreshMuniButton from "./RefreshMuniButton";
-import RefreshProperty24Button from "./RefreshProperty24Button";
-import DrainQueueButton from "./DrainQueueButton";
-import RegeocodeProperty24Button from "./RegeocodeProperty24Button";
+import { savePropertyPin } from "./actions";
 import MarketListingAttach from "./MarketListingAttach";
 import RegeocodeListingButton from "./RegeocodeListingButton";
 
@@ -196,6 +192,7 @@ export default function MapView({
   mapboxToken,
   stats,
   externalCounts,
+  sourceHealth,
   budget,
 }: {
   properties: MapProperty[];
@@ -214,6 +211,8 @@ export default function MapView({
     property24: number;
     private_property: number;
   };
+  /** Feed light per source, from /admin/health's registry. Read-only here. */
+  sourceHealth?: Partial<Record<SourceKey, Light>>;
   budget?: BudgetSummary | null;
 }) {
   const router = useRouter();
@@ -266,7 +265,6 @@ export default function MapView({
   // (the rail is always visible at ≥901px), but it's cheap to keep both
   // branches driven from one flag.
   const [mobileRailOpen, setMobileRailOpen] = useState(false);
-  const [pending, startTransition] = useTransition();
 
   // Admin-only manual pin move. dragKey is the mergedKey of the pin currently
   // in drag mode. Ref mirror lets marker-level dragend read it without a
@@ -276,7 +274,6 @@ export default function MapView({
   const [pinMsg, setPinMsg] = useState<string | null>(null);
   const [pinErr, setPinErr] = useState<string | null>(null);
   useEffect(() => { dragKeyRef.current = dragKey; }, [dragKey]);
-  const [geocodeMsg, setGeocodeMsg] = useState<string | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
 
   const cleanToken = (mapboxToken ?? "").trim();
@@ -1072,27 +1069,7 @@ export default function MapView({
     });
   }
 
-  function runGeocode() {
-    setGeocodeMsg(null);
-    startTransition(async () => {
-      try {
-        const res = await geocodeMissingProperties();
-        if (!res.ok) setGeocodeMsg(res.error ?? "geocode failed");
-        else {
-          const snapTotal =
-            (res.erfSnapped ?? 0) + (res.propertiesSnapped ?? 0) + (res.listingsSnapped ?? 0);
-          const snapPart = snapTotal > 0
-            ? ` · snapped ${res.erfSnapped ?? 0} by erf + ${res.propertiesSnapped ?? 0} properties + ${res.listingsSnapped ?? 0} externals to cadastre`
-            : "";
-          setGeocodeMsg(
-            `Geocoded ${res.geocoded ?? 0} · ${res.failed ?? 0} failed${snapPart}. Reload to see pins.`,
-          );
-        }
-      } catch (e) {
-        setGeocodeMsg(`Geocode threw: ${(e as Error).message}`);
-      }
-    });
-  }
+
 
   return (
     <div className="map-shell">
@@ -1158,6 +1135,19 @@ export default function MapView({
                   <span className="code">{SOURCE_META[s].code}</span>
                   <span>{SOURCE_META[s].label}</span>
                   <span style={{ color: "#8090b5", marginLeft: 2 }}>{count}</span>
+                  {sourceHealth?.[s] && sourceHealth[s] !== "grey" && (
+                    <span
+                      className={`source-health source-health-${sourceHealth[s]}`}
+                      title={
+                        sourceHealth[s] === "green"
+                          ? "Feed up to date"
+                          : sourceHealth[s] === "amber"
+                          ? "Feed late or finished with warnings"
+                          : "Feed failed or not built"
+                      }
+                      aria-label="feed health"
+                    />
+                  )}
                 </button>
               );
             })}
@@ -1234,11 +1224,6 @@ export default function MapView({
             the Sources filter.
           </p>
 
-          {isAdmin && <RefreshDreamButton />}
-          {isAdmin && <RefreshMuniButton />}
-          {isAdmin && <RefreshProperty24Button />}
-          {isAdmin && <DrainQueueButton />}
-          {isAdmin && <RegeocodeProperty24Button />}
         </section>
 
         <section>
@@ -1298,35 +1283,6 @@ export default function MapView({
       <div className="map-stage">
         <div ref={containerRef} className="map-canvas" />
 
-        {isAdmin && (
-          <div className="geocode-bar">
-            <span>
-              <b>{stats.geocoded}</b> / {stats.total} pinned
-              {stats.missing > 0 ? ` · ${stats.missing} missing coords` : ""}
-            </span>
-            <button type="button" onClick={runGeocode} disabled={pending}>
-              {pending
-                ? "Working…"
-                : stats.missing > 0
-                ? "Geocode + snap"
-                : "Snap to cadastre"}
-            </button>
-          </div>
-        )}
-        {geocodeMsg && (
-          <div
-            style={{
-              position: "absolute", top: 60, right: 14, zIndex: 30,
-              background: "var(--white)", color: "var(--ink)",
-              border: "2px solid var(--gold)", borderRadius: 12,
-              padding: "14px 18px", fontSize: 14, fontWeight: 600,
-              maxWidth: 420,
-              boxShadow: "0 10px 30px rgba(15,22,52,0.25)",
-            }}
-          >
-            {geocodeMsg}
-          </div>
-        )}
 
         {renderPins.length > 0 && (
           <div className="map-legend">
@@ -1349,7 +1305,7 @@ export default function MapView({
             </div>
             <div className="row" style={{ "--m-fill": STATE_COLORS.os_other } as React.CSSProperties}>
               <span className="sw" style={{ background: STATE_COLORS.os_other, borderRadius: 3 }} />
-              <span>Sole / Open / None</span>
+              <span>Open / None</span>
             </div>
             <div className="row" style={{ "--m-fill": STATE_COLORS.market } as React.CSSProperties}>
               <span className="sw" style={{ background: STATE_COLORS.market, borderRadius: 3 }} />
@@ -1416,8 +1372,8 @@ export default function MapView({
             <div className="map-empty-card">
               <h2>No coordinates on file</h2>
               <p>
-                {stats.total} properties in the database, none geocoded yet. Run the Geocode
-                button in the top-right corner{isAdmin ? "" : " (admin only)"} to plot them.
+                {stats.total} properties in the database, none geocoded yet.
+                {isAdmin ? " Run Geocode + snap on Admin → Data health to plot them." : ""}
               </p>
               {!isAdmin && (
                 <p style={{ fontSize: 12, color: "#8090b5" }}>

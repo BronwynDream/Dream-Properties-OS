@@ -45,6 +45,7 @@ const NAV: NavItem[] = [
     label: "Admin",
     adminOnly: true,
     children: [
+      { kind: "leaf", href: "/admin/health", label: "Data health" },
       { kind: "leaf", href: "/triage", label: "Triage" },
       { kind: "leaf", href: "/dupes", label: "Dupes" },
       { kind: "leaf", href: "/team", label: "Team" },

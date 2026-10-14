@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { FEEDS, feedLight, type FeedKey, type FeedLatest, type Light } from "@/lib/feeds/registry";
 import { createClient } from "@/lib/supabase/server";
 import TopBar from "@/app/components/TopBar";
 import { getBudgetSummary, type BudgetSummary } from "@/lib/lightstone/gateway";
@@ -377,6 +378,20 @@ export default async function MapPage() {
   // Directors get a compact Lightstone spend meter in the rail. Read via the
   // gateway helper (service-role) — the same read RLS would allow admin anyway,
   // but this keeps the count consistent with what the gateway sees.
+  // Feed health per map source (plan 019 slice H). Read-only dots on the
+  // source chips; the triggers live on /admin/health. v_feed_latest is
+  // staff-readable, so agents see the same dots admins do.
+  const { data: feedRows } = await supabase
+    .from("v_feed_latest")
+    .select("feed, status, trigger, started_at, finished_at, items, error");
+  const latestByFeed = new Map<FeedKey, FeedLatest>();
+  for (const r of (feedRows ?? []) as FeedLatest[]) latestByFeed.set(r.feed, r);
+  const sourceHealth: Partial<Record<SourceKey, Light>> = {};
+  for (const f of FEEDS) {
+    if (!f.mapSource) continue;
+    sourceHealth[f.mapSource] = feedLight(f, latestByFeed.get(f.key));
+  }
+
   let budget: BudgetSummary | null = null;
   if (isAdmin) {
     try {
@@ -398,6 +413,7 @@ export default async function MapPage() {
         mapboxToken={mapboxToken}
         stats={{ total: totalCount, geocoded: geoCount, missing: missingCount }}
         externalCounts={externalCounts}
+        sourceHealth={sourceHealth}
         budget={budget}
       />
     </>

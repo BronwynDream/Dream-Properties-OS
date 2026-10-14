@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { recordFeedRun } from "@/lib/feeds/run";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { findErfCentroidByAddress } from "@/lib/external-listings/erfLookup";
@@ -57,6 +58,10 @@ async function authorised(request: Request) {
 }
 
 export async function POST(request: Request) {
+  return recordFeedRun("geocode", request, () => handlePost(request));
+}
+
+async function handlePost(request: Request) {
   const gate = await authorised(request);
   if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status });
 

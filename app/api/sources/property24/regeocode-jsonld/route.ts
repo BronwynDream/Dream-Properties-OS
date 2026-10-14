@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { recordFeedRun } from "@/lib/feeds/run";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { scrapeListingDetail } from "@/lib/external-listings/property24";
@@ -68,6 +69,10 @@ const DEFAULT_LIMIT = 15;
 const SCRAPE_DELAY_MS = 1000;
 
 export async function POST(request: Request) {
+  return recordFeedRun("geocode", request, () => handlePost(request));
+}
+
+async function handlePost(request: Request) {
   const gate = await authorised(request);
   if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status });
 
