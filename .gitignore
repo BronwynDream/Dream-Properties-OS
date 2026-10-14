@@ -38,3 +38,6 @@ _to_delete/
 
 # Raw email drops (source material, not code)
 *.eml
+
+# bridge-session scratch (stale git locks, tarballs)
+.gitjunk/

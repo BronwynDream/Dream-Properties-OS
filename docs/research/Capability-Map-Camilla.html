@@ -1,0 +1,1370 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dream OS Capability Map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Spectral:wght@500;600&display=swap">
+<style id="app-style">
+*, *::before, *::after { box-sizing: border-box; }
+
+:root {
+  color-scheme: light;
+  --paper:      #F4F6F3;
+  --surface:    #FFFFFF;
+  --surface-2:  #EDF1EE;
+  --line:       #D9DFDA;
+  --line-soft:  #E8ECE8;
+  --ink:        #14201E;
+  --muted:      #596763;
+  --faint:      #8D9995;
+  --accent:     #0E6E63;
+  --accent-ink: #0A544B;
+  --accent-soft:#DCEBE7;
+  --amber:      #96661A;
+  --amber-soft: #F3E7D2;
+  --slate:      #5D6E79;
+  --slate-soft: #E3E9EC;
+  --shadow:     0 1px 2px rgba(20,32,30,.06), 0 8px 24px rgba(20,32,30,.06);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --paper:      #0E1517;
+    --surface:    #151D20;
+    --surface-2:  #1B2529;
+    --line:       #2A363A;
+    --line-soft:  #212B2F;
+    --ink:        #E7EDEA;
+    --muted:      #9BA9A5;
+    --faint:      #6D7B78;
+    --accent:     #43B5A5;
+    --accent-ink: #6FCFC1;
+    --accent-soft:#14322E;
+    --amber:      #D6A44E;
+    --amber-soft: #33291A;
+    --slate:      #93A5B0;
+    --slate-soft: #202C32;
+    --shadow:     0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --paper:      #0E1517;
+  --surface:    #151D20;
+  --surface-2:  #1B2529;
+  --line:       #2A363A;
+  --line-soft:  #212B2F;
+  --ink:        #E7EDEA;
+  --muted:      #9BA9A5;
+  --faint:      #6D7B78;
+  --accent:     #43B5A5;
+  --accent-ink: #6FCFC1;
+  --accent-soft:#14322E;
+  --amber:      #D6A44E;
+  --amber-soft: #33291A;
+  --slate:      #93A5B0;
+  --slate-soft: #202C32;
+  --shadow:     0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+
+.wrap { max-width: 1440px; margin: 0 auto; padding: 0 24px 96px; }
+
+/* ---------- masthead ---------- */
+.masthead { padding: 40px 0 24px; border-bottom: 1px solid var(--line); }
+.eyebrow {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 11px; letter-spacing: .14em; text-transform: uppercase;
+  color: var(--accent); margin: 0 0 10px;
+}
+h1 {
+  font-family: Spectral, Georgia, serif;
+  font-weight: 600; font-size: clamp(30px, 4.2vw, 44px);
+  line-height: 1.08; letter-spacing: -.015em;
+  margin: 0 0 12px; text-wrap: balance;
+}
+.standfirst { max-width: 66ch; color: var(--muted); font-size: 15px; margin: 0; }
+.standfirst strong { color: var(--ink); font-weight: 600; }
+
+/* ---------- summary ---------- */
+.summary {
+  display: grid; gap: 12px; margin: 24px 0 0;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+.stat {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: 3px; padding: 12px 14px;
+}
+.stat .k {
+  font-family: "IBM Plex Mono", monospace; font-size: 10px;
+  letter-spacing: .12em; text-transform: uppercase; color: var(--faint);
+  display: block; margin-bottom: 4px;
+}
+.stat .v {
+  font-family: Spectral, Georgia, serif; font-size: 26px; font-weight: 600;
+  font-variant-numeric: tabular-nums; line-height: 1;
+}
+.stat.is-must .v { color: var(--accent); }
+.stat.is-nice .v { color: var(--amber); }
+.stat.is-no .v   { color: var(--faint); }
+
+.progress { margin-top: 14px; }
+.progress .bar {
+  height: 5px; border-radius: 3px; background: var(--surface-2);
+  overflow: hidden; display: flex;
+}
+.progress .bar i { display: block; height: 100%; }
+.progress .bar .p-must { background: var(--accent); }
+.progress .bar .p-nice { background: var(--amber); }
+.progress .bar .p-no   { background: var(--faint); }
+.progress .cap {
+  margin-top: 7px; font-size: 12px; color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- toolbar ---------- */
+.toolbar {
+  position: sticky; top: 0; z-index: 30;
+  display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+  padding: 14px 0; margin-top: 24px;
+  background: var(--paper);
+  border-bottom: 1px solid var(--line);
+}
+.field {
+  display: flex; align-items: center; gap: 7px;
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: 3px; padding: 0 10px; height: 34px;
+}
+.field label {
+  font-family: "IBM Plex Mono", monospace; font-size: 10px;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--faint);
+}
+.field input, .field select {
+  border: 0; background: transparent; color: var(--ink);
+  font: inherit; font-size: 13px; outline: none; height: 32px;
+  min-width: 0;
+}
+.field input { width: 210px; }
+.field select { cursor: pointer; }
+.spacer { flex: 1 1 auto; }
+
+button {
+  font: inherit; cursor: pointer; color: var(--ink);
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: 3px; height: 34px; padding: 0 13px; font-size: 13px;
+}
+button:hover { border-color: var(--accent); }
+button:focus-visible, .field:focus-within,
+.seg button:focus-visible, .note:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 1px;
+}
+
+.savechip {
+  font-family: "IBM Plex Mono", monospace; font-size: 11px;
+  color: var(--faint); letter-spacing: .04em; white-space: nowrap;
+  min-width: 120px; text-align: right;
+}
+.savechip.is-on { color: var(--accent); }
+.savechip.is-warn { color: var(--amber); }
+
+/* ---------- table ---------- */
+.tablewrap {
+  margin-top: 18px;
+  max-height: calc(100vh - 96px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--line); border-radius: 3px;
+  background: var(--surface);
+}
+table { border-collapse: separate; border-spacing: 0; width: 100%; min-width: 1080px; }
+
+thead th {
+  position: sticky; top: 0; z-index: 20;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line);
+  text-align: left; vertical-align: bottom;
+  padding: 11px 10px; font-weight: 600; font-size: 12px;
+}
+thead th .sub {
+  display: block; font-family: "IBM Plex Mono", monospace;
+  font-size: 10px; font-weight: 400; color: var(--faint);
+  letter-spacing: .04em; margin-top: 3px;
+}
+thead th.vend, thead th.dream { text-align: center; width: 108px; }
+thead th.dream { width: 122px; }
+thead th.dec { width: 190px; }
+thead th.note-h { width: 150px; }
+
+th.cap-h, td.cap {
+  position: sticky; left: 0; z-index: 10;
+  background: var(--surface); min-width: 330px; width: 330px;
+}
+thead th.cap-h { z-index: 25; background: var(--surface-2); }
+td.cap { border-right: 1px solid var(--line-soft); }
+
+tbody tr:hover td { background: var(--surface-2); }
+tbody tr.decided td.cap { box-shadow: inset 3px 0 0 var(--accent); }
+tbody tr.decided-nice td.cap { box-shadow: inset 3px 0 0 var(--amber); }
+tbody tr.decided-no td.cap { box-shadow: inset 3px 0 0 var(--faint); }
+
+td { padding: 10px; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+td.vend, td.dreamc { text-align: center; }
+
+.cap .name { font-weight: 500; }
+.cap .why { color: var(--muted); font-size: 12.5px; margin-top: 2px; max-width: 46ch; }
+.rowid {
+  font-family: "IBM Plex Mono", monospace; font-size: 10px;
+  color: var(--faint); margin-right: 7px;
+}
+
+/* group headers */
+tr.group td {
+  background: var(--paper); border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line); padding: 9px 10px;
+  position: sticky; left: 0;
+}
+tr.group .gname {
+  font-family: "IBM Plex Mono", monospace; font-size: 11px;
+  letter-spacing: .14em; text-transform: uppercase; color: var(--accent);
+  font-weight: 500;
+}
+tr.group .gcount { color: var(--faint); font-family: "IBM Plex Mono", monospace; font-size: 11px; }
+
+/* coverage marks */
+.cov { font-size: 15px; line-height: 1; display: inline-block; }
+.cov-2 { color: var(--accent); }
+.cov-1 { color: var(--accent); opacity: .62; }
+.cov-0 { color: var(--faint); opacity: .5; }
+.cov-u { color: var(--faint); font-family: "IBM Plex Mono", monospace; font-size: 12px; }
+
+/* dream chip */
+.chip {
+  display: inline-block; font-family: "IBM Plex Mono", monospace;
+  font-size: 10px; letter-spacing: .06em; text-transform: uppercase;
+  padding: 3px 7px; border-radius: 2px; border: 1px solid transparent;
+  white-space: nowrap;
+}
+.chip-built   { background: var(--accent-soft); color: var(--accent-ink); }
+.chip-partial { background: var(--amber-soft); color: var(--amber); }
+.chip-planned { background: var(--slate-soft); color: var(--slate); }
+.chip-absent  { border-color: var(--line); color: var(--faint); border-style: dashed; }
+.chip-na      { color: var(--faint); }
+
+/* decision control */
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 3px; overflow: hidden; }
+.seg button {
+  border: 0; border-radius: 0; height: 27px; padding: 0 9px;
+  font-size: 11.5px; background: var(--surface); color: var(--muted);
+  border-right: 1px solid var(--line);
+}
+.seg button:last-child { border-right: 0; }
+.seg button:hover { background: var(--surface-2); color: var(--ink); }
+.seg button[aria-pressed="true"] { color: #fff; }
+.seg button.must[aria-pressed="true"] { background: var(--accent); }
+.seg button.nice[aria-pressed="true"] { background: var(--amber); }
+.seg button.no[aria-pressed="true"]   { background: var(--faint); }
+
+.note {
+  width: 100%; border: 0; border-bottom: 1px dashed var(--line);
+  background: transparent; color: var(--ink); font: inherit; font-size: 12.5px;
+  padding: 3px 0; outline: none;
+}
+.note::placeholder { color: var(--faint); }
+.note:focus { border-bottom-color: var(--accent); }
+
+.empty { padding: 40px; text-align: center; color: var(--muted); }
+
+/* ---------- legend + footer ---------- */
+.legend {
+  display: flex; flex-wrap: wrap; gap: 22px; margin-top: 16px;
+  font-size: 12px; color: var(--muted);
+}
+.legend .grp { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.legend .lbl {
+  font-family: "IBM Plex Mono", monospace; font-size: 10px;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--faint);
+}
+.legend .item { display: inline-flex; align-items: center; gap: 5px; }
+
+.notes {
+  margin-top: 40px; padding-top: 22px; border-top: 1px solid var(--line);
+  display: grid; gap: 22px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+.notes h2 {
+  font-family: "IBM Plex Mono", monospace; font-size: 11px; font-weight: 500;
+  letter-spacing: .14em; text-transform: uppercase; color: var(--accent);
+  margin: 0 0 8px;
+}
+.notes p { margin: 0 0 9px; color: var(--muted); max-width: 60ch; }
+.notes strong { color: var(--ink); font-weight: 600; }
+
+.readonly-note {
+  margin-top: 14px; padding: 10px 13px; border-left: 3px solid var(--amber);
+  background: var(--amber-soft); color: var(--ink); font-size: 13px; border-radius: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+
+
+/* ---------- three-way review additions ---------- */
+.chooser {
+  margin-top: 16px; padding: 16px 18px; border-radius: 3px;
+  background: var(--surface); border: 1px solid var(--accent);
+  box-shadow: var(--shadow);
+}
+.chooser p { margin: 0 0 11px; font-size: 14px; }
+.chooser .who { display: flex; gap: 9px; flex-wrap: wrap; }
+.chooser button { height: 36px; padding: 0 18px; font-size: 14px; }
+.chooser button:hover { background: var(--accent-soft); }
+
+.me-field { border-color: var(--accent); }
+.me-field select { color: var(--accent); font-weight: 600; }
+
+.dcell { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.peers {
+  display: flex; gap: 9px; font-family: "IBM Plex Mono", monospace;
+  font-size: 10px; color: var(--faint); letter-spacing: .04em;
+}
+.peers span { display: inline-flex; align-items: center; gap: 3px; }
+.peers b { font-weight: 500; }
+.peers i { font-style: normal; font-size: 11px; line-height: 1; }
+.peers .v-must { color: var(--accent); }
+.peers .v-nice { color: var(--amber); }
+.peers .v-no   { color: var(--faint); }
+.peers .v-none { color: var(--line); }
+.peers .self { color: var(--ink); }
+
+.status {
+  display: inline-block; font-family: "IBM Plex Mono", monospace;
+  font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase;
+  padding: 2px 6px; border-radius: 2px; white-space: nowrap;
+}
+.st-agreed  { background: var(--accent-soft); color: var(--accent-ink); }
+.st-split   { background: var(--amber-soft); color: var(--amber); }
+.st-waiting { color: var(--faint); }
+
+tbody tr.is-split td { background: var(--amber-soft); }
+tbody tr.is-split:hover td { background: var(--amber-soft); filter: brightness(.985); }
+tbody tr.is-split td.cap { box-shadow: inset 3px 0 0 var(--amber); }
+tbody tr.is-agreed td.cap { box-shadow: inset 3px 0 0 var(--accent); }
+
+.final { margin-top: 5px; }
+.final .lbl {
+  font-family: "IBM Plex Mono", monospace; font-size: 9.5px;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--amber);
+  display: block; margin-bottom: 3px;
+}
+
+button.primary {
+  background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600;
+}
+button.primary:hover { background: var(--accent-ink); border-color: var(--accent-ink); }
+
+.chain {
+  margin-top: 10px; font-family: "IBM Plex Mono", monospace;
+  font-size: 11px; color: var(--faint);
+}
+.chain b { color: var(--muted); font-weight: 500; }
+
+.peernote {
+  margin-top: 5px; font-size: 11.5px; color: var(--muted);
+  border-left: 2px solid var(--line); padding-left: 7px;
+}
+.peernote b { color: var(--faint); font-weight: 500; font-size: 10px;
+  font-family: "IBM Plex Mono", monospace; letter-spacing: .06em; }
+
+.mergepanel {
+  position: relative; margin-top: 14px; padding: 14px 40px 14px 16px;
+  border: 1px solid var(--accent); border-left-width: 3px; border-radius: 3px;
+  background: var(--surface); box-shadow: var(--shadow);
+}
+.mergepanel h3 {
+  margin: 0 0 8px; font-family: "IBM Plex Mono", monospace; font-size: 11px;
+  font-weight: 500; letter-spacing: .14em; text-transform: uppercase; color: var(--accent);
+}
+.mergepanel ul { margin: 0 0 9px; padding-left: 18px; }
+.mergepanel li { font-size: 13px; margin-bottom: 3px; }
+.mergepanel p { margin: 0; font-size: 13px; color: var(--muted); }
+.mergepanel .x {
+  position: absolute; top: 8px; right: 8px; width: 26px; height: 26px;
+  padding: 0; line-height: 1; border-color: transparent; background: transparent;
+  color: var(--faint); font-size: 17px;
+}
+.mergepanel .x:hover { color: var(--ink); border-color: var(--line); }
+
+</style>
+</head>
+<body>
+<div class="wrap"><div id="root"></div></div>
+<script id="app-data" type="application/json">
+{
+  "vendors": [
+    { "key": "bt", "name": "BoldTrail",     "sub": "US · ex-kvCORE · ~400k agents" },
+    { "key": "rp", "name": "Reapit",        "sub": "UK · 15k branches · 78k agents" },
+    { "key": "st", "name": "Street.co.uk",  "sub": "UK · modern challenger" },
+    { "key": "en", "name": "Entegral Base", "sub": "SA · R949/mo · 50 users" }
+  ],
+  "groups": [
+    { "id": "contacts", "name": "Contacts & leads" },
+    { "id": "listings", "name": "Listings & property data" },
+    { "id": "mandates", "name": "Mandates" },
+    { "id": "viewings", "name": "Viewings & vendor care" },
+    { "id": "deals",    "name": "Offers & deal progression" },
+    { "id": "money",    "name": "Money — commission & trust" },
+    { "id": "docs",     "name": "Documents & signature" },
+    { "id": "comply",   "name": "Compliance — FICA, POPIA, PPRA" },
+    { "id": "comms",    "name": "Communication" },
+    { "id": "market",   "name": "Marketing, portals & web presence" },
+    { "id": "ai",       "name": "AI" },
+    { "id": "report",   "name": "Reporting" },
+    { "id": "platform", "name": "Platform" }
+  ],
+  "rows": [
+    { "id": "C01", "g": "contacts", "n": "Contact record with multiple roles", "w": "One person who is a seller here and a buyer there, without duplicate records", "bt": 2, "rp": 2, "st": 2, "en": 2, "d": "built", "dn": "party table + role timeline on /contacts" },
+    { "id": "C02", "g": "contacts", "n": "Buyer requirement profile", "w": "Area, price band, beds, must-haves — stored, not in the agent's head", "bt": 2, "rp": 2, "st": 2, "en": 2, "d": "planned", "dn": "party_interest in migration 0066, no UI" },
+    { "id": "C03", "g": "contacts", "n": "Buyer-to-listing matching", "w": "Show me everything on our books this buyer should see", "bt": 2, "rp": 2, "st": 2, "en": 2, "d": "absent", "dn": "" },
+    { "id": "C04", "g": "contacts", "n": "Reverse matching on new stock", "w": "New listing lands, system names the buyers to ring first", "bt": 1, "rp": 2, "st": 2, "en": 2, "d": "absent", "dn": "" },
+    { "id": "C05", "g": "contacts", "n": "Portal enquiry straight into the CRM", "w": "P24 / Private Property leads arrive as records, not inbox clutter", "bt": 2, "rp": 2, "st": 2, "en": 2, "d": "partial", "dn": "email intake parses enquiries; no portal feed" },
+    { "id": "C06", "g": "contacts", "n": "Lead source attribution", "w": "Which portal, campaign or board brought this buyer", "bt": 2, "rp": 1, "st": 2, "en": 2, "d": "planned", "dn": "contact_source enum, unwired" },
+    { "id": "C07", "g": "contacts", "n": "Automatic lead routing", "w": "Round-robin, by suburb, by price band — assigned without a human", "bt": 2, "rp": 1, "st": 2, "en": 1, "d": "absent", "dn": "" },
+    { "id": "C08", "g": "contacts", "n": "Lead scoring", "w": "Rank who is actually close to transacting", "bt": 2, "rp": -1, "st": 1, "en": 0, "d": "absent", "dn": "" },
+    { "id": "C09", "g": "contacts", "n": "Duplicate detection & merge", "w": "The same seller entered three ways, caught before it spreads", "bt": 1, "rp": 1, "st": 1, "en": -1, "d": "built", "dn": "match_candidate dedup pipeline" },
+    { "id": "C10", "g": "contacts", "n": "Full interaction timeline", "w": "Every call, mail, viewing and document on one record", "bt": 2, "rp": 2, "st": 2, "en": 2, "d": "built", "dn": "" },
+
+    { "id": "L01", "g": "listings", "n": "Listing record with status pipeline", "w": "Preparing → listed → under offer → sold, as states not labels", "bt": 2, "rp": 2, "st": 2, "en": 2, "d": "built", "dn": "" },
+    { "id": "L02", "g": "listings", "n": "Freehold vs sectional title as structure", "w": "Drives which clearance certificate and which third party — not a tag", "bt": 0, "rp": 1, "st": 1, "en": 1, "d": "built", "dn": "ownership_type × property_type seeded" },
+    { "id": "L03", "g": "listings", "n": "Erf / cadastral parcel data", "w": "The stand itself as a record, with its diagram and boundaries", "bt": 0, "rp": 0, "st": 0, "en": 0, "d": "built", "dn": "cadastral_parcel + erf, /erf-lookup, tile server" },
+    { "id": "L04", "g": "listings", "n": "Map with cadastral polygons", "w": "Shaded erven, not pins floating on a basemap", "bt": 1, "rp": 1, "st": 1, "en": 1, "d": "built", "dn": "MapView.tsx, plan 005 shipped" },
+    { "id": "L05", "g": "listings", "n": "Municipal valuation roll", "w": "What the municipality thinks it's worth, next to what we're asking", "bt": 0, "rp": 0, "st": 0, "en": 0, "d": "built", "dn": "muni_valuation + upload/parse/apply" },
+    { "id": "L06", "g": "listings", "n": "Deeds / title enrichment", "w": "Registered owner, purchase date and price pulled automatically", "bt": 1, "rp": 1, "st": 1, "en": 1, "d": "built", "dn": "Lightstone, budget-capped" },
+    { "id": "L07", "g": "listings", "n": "Competitor stock ingest", "w": "Everything on the market in Knysna, not only our own mandates", "bt": 1, "rp": 0, "st": 0, "en": 0, "d": "built", "dn": "P24 scraper; geocoding still unreliable" },
+    { "id": "L08", "g": "listings", "n": "Photo & media library", "w": "Ordered, captioned, reusable across marketing", "bt": 2, "rp": 2, "st": 2, "en": 2, "d": "built", "dn": "media bucket + lightbox" },
+    { "id": "L09", "g": "listings", "n": "Floorplans", "w": "Drawn or uploaded, shown on the listing", "bt": 2, "rp": 2, "st": 2, "en": -1, "d": "absent", "dn": "" },
+    { "id": "L10", "g": "listings", "n": "Virtual tours & video", "w": "360° or walkthrough attached to the listing", "bt": 2, "rp": 1, "st": 2, "en": 2, "d": "absent", "dn": "" },
+    { "id": "L11", "g": "listings", "n": "Brochure & window card generation", "w": "Branded PDF off the listing data, no designer in the loop", "bt": 2, "rp": 2, "st": 2, "en": 2, "d": "absent", "dn": "" },
+    { "id": "L12", "g": "listings", "n": "Price history", "w": "Every reduction, dated, for the CMA conversation", "bt": 2, "rp": 2, "st": 2, "en": 1, "d": "built", "dn": "listing_price_history" },
+
+    { "id": "M01", "g": "mandates", "n": "Mandate as a first-class record", "w": "The instruction to market, not just a listing with a date on it", "bt": 0, "rp": 2, "st": 2, "en": 1, "d": "built", "dn": "mandate table + /mandates" },
+    { "id": "M02", "g": "mandates", "n": "Mandate types modelled properly", "w": "Sole, open, joint, multi-listing — each with its own rules", "bt": 0, "rp": 2, "st": 2, "en": -1, "d": "partial", "dn": "sole and exclusive are two enum values for one thing — consolidate" },
+    { "id": "M03", "g": "mandates", "n": "Expiry tracking with auto-expire", "w": "Lapsed mandates stop counting as live stock on their own", "bt": 0, "rp": 2, "st": 2, "en": 2, "d": "built", "dn": "threshold watchlist on /mandates" },
+    { "id": "M04", "g": "mandates", "n": "Renewal reminders before expiry", "w": "Prompted to re-sign in time, not after the seller has gone", "bt": 0, "rp": 2, "st": 2, "en": 2, "d": "built", "dn": "mandate.expiry_window_days setting" },
+    { "id": "M05", "g": "mandates", "n": "Mandate generated from a template", "w": "The real master document, filled from the record", "bt": 1, "rp": 1, "st": 1, "en": 0, "d": "partial", "dn": "MandateSole.tsx built from the wrong master — replace wholesale" },
+    { "id": "M06", "g": "mandates", "n": "Clause library with variants", "w": "One clause, several approved wordings, chosen per deal", "bt": 0, "rp": 0, "st": 0, "en": 0, "d": "planned", "dn": "0065_document_engine.sql written, not applied" },
+    { "id": "M07", "g": "mandates", "n": "E-signature on the mandate", "w": "Signed on Bronwyn's iPad at the kitchen table", "bt": 2, "rp": 1, "st": 1, "en": 0, "d": "absent", "dn": "" },
+    { "id": "M08", "g": "mandates", "n": "Signed mandate stored and findable", "w": "\"What did we send the Wilsons in March\" has an answer", "bt": 2, "rp": 2, "st": 2, "en": 1, "d": "absent", "dn": "generated mandates write no document row today" },
+    { "id": "M09", "g": "mandates", "n": "Joint-mandate counterparty agency", "w": "Pam Golding on the other side, and the split that follows", "bt": 0, "rp": 2, "st": 1, "en": -1, "d": "built", "dn": "agency table exists for exactly this" },
+    { "id": "M10", "g": "mandates", "n": "CPA duration & notice rules enforced", "w": "24-month cap, 20-day cancellation, pre-expiry notice — in the software", "bt": 0, "rp": 0, "st": 0, "en": 0, "d": "absent", "dn": "nobody does this; verify sections before coding" },
+    { "id": "M11", "g": "mandates", "n": "Mandatory disclosure form", "w": "Signed by the seller before we take the mandate, annexed to the sale", "bt": 0, "rp": 0, "st": 1, "en": 0, "d": "absent", "dn": "no signed form, no valid mandate — and the agreement then reads as defect-free" },
+
+    { "id": "V01", "g": "viewings", "n": "Viewing scheduling", "w": "Diary of who sees what, when, with which agent", "bt": 1, "rp": 2, "st": 2, "en": 1, "d": "built", "dn": "viewing table + weekly /viewings calendar" },
+    { "id": "V02", "g": "viewings", "n": "Buyer books their own viewing", "w": "Self-service slots, 24/7, no phone tag", "bt": 1, "rp": 1, "st": 2, "en": 0, "d": "absent", "dn": "" },
+    { "id": "V03", "g": "viewings", "n": "Show day management", "w": "Open house with attendee capture, walk-ins included", "bt": 2, "rp": 2, "st": 2, "en": 1, "d": "built", "dn": "walk-in names captured without a party record" },
+    { "id": "V04", "g": "viewings", "n": "Structured viewing feedback", "w": "Interested / not / why — as data, not a note", "bt": 0, "rp": 2, "st": 2, "en": 1, "d": "built", "dn": "viewing_attendee.is_interested tri-state" },
+    { "id": "V05", "g": "viewings", "n": "Automated feedback request", "w": "The buyer gets asked without anyone remembering to ask", "bt": 1, "rp": 1, "st": 2, "en": 0, "d": "absent", "dn": "" },
+    { "id": "V06", "g": "viewings", "n": "Vendor progress report", "w": "Weekly \"here's what happened on your house\" going out automatically", "bt": 0, "rp": 2, "st": 2, "en": 2, "d": "absent", "dn": "the single cheapest seller-retention feature on this sheet" },
+    { "id": "V07", "g": "viewings", "n": "Seller portal", "w": "The seller logs in and sees views, feedback, offers", "bt": 0, "rp": 1, "st": 2, "en": 0, "d": "absent", "dn": "client role reserved in RLS, not enabled" },
+    { "id": "V08", "g": "viewings", "n": "Buyer portal", "w": "Saved properties, documents, where their offer stands", "bt": 2, "rp": 1, "st": 2, "en": 1, "d": "absent", "dn": "" },
+    { "id": "V09", "g": "viewings", "n": "Valuation / CMA pipeline", "w": "Appraisal booked → presented → won or lost, tracked as a funnel", "bt": 2, "rp": 2, "st": 2, "en": 1, "d": "partial", "dn": "Lightstone + muni data exist; no appraisal funnel" },
+
+    { "id": "D01", "g": "deals", "n": "Deal pipeline through to registration", "w": "One board from mandate to transfer, not a spreadsheet", "bt": 2, "rp": 2, "st": 2, "en": 2, "d": "built", "dn": "transfer table + /pipeline" },
+    { "id": "D02", "g": "deals", "n": "Structured offer record", "w": "Amount, occupation date, expiry — fields, not a PDF", "bt": 1, "rp": 2, "st": 2, "en": 0, "d": "built", "dn": "offer table extended in 0057" },
+    { "id": "D03", "g": "deals", "n": "Agreement of Sale is the offer", "w": "No separate OTP at Dream — one irrevocable document", "bt": 0, "rp": 0, "st": 0, "en": 0, "d": "built", "dn": "domain correction already in the model" },
+    { "id": "D04", "g": "deals", "n": "Suspensive conditions with dates", "w": "Bond by the 30th, sale of buyer's house — each with its own state", "bt": 1, "rp": 1, "st": 1, "en": 0, "d": "built", "dn": "suspensive_condition + evidence document link" },
+    { "id": "D05", "g": "deals", "n": "Automatic lapse when a condition fails", "w": "The agreement is void, and the system knows it that morning", "bt": 0, "rp": 0, "st": 0, "en": 0, "d": "partial", "dn": "lifecycle exists; automatic lapse does not" },
+    { "id": "D06", "g": "deals", "n": "Bond application tracking", "w": "Which bank, applied when, approved for how much", "bt": 1, "rp": 1, "st": 1, "en": 0, "d": "partial", "dn": "offer.bond_* fields only, no workflow" },
+    { "id": "D07", "g": "deals", "n": "Conveyancer assignment & handoff", "w": "Attorney on the deal, with the pack sent to them", "bt": 1, "rp": 2, "st": 2, "en": 0, "d": "absent", "dn": "conveyancer tables exist; no UI assigns one" },
+    { "id": "D08", "g": "deals", "n": "Transfer & registration progress", "w": "Lodged, examined, registered — visible without phoning the attorney", "bt": 0, "rp": 1, "st": 1, "en": 0, "d": "built", "dn": "transfer.registered_date + RegisteredStamp" },
+    { "id": "D09", "g": "deals", "n": "Rates clearance step", "w": "Municipal clearance as a blocking task with a 60-day clock", "bt": 0, "rp": 0, "st": 0, "en": 0, "d": "absent", "dn": "freehold deals cannot register without it" },
+    { "id": "D10", "g": "deals", "n": "Levy clearance step", "w": "Body corporate clearance — slower, and a different party entirely", "bt": 0, "rp": 0, "st": 0, "en": 0, "d": "absent", "dn": "sectional title only; drives off L02" },
+    { "id": "D11", "g": "deals", "n": "Chain / dependent deals", "w": "Their sale funds this purchase — see the whole chain", "bt": 0, "rp": 2, "st": 2, "en": 0, "d": "absent", "dn": "the UK's core idea; partly relevant here" },
+    { "id": "D12", "g": "deals", "n": "Milestone comms to all parties", "w": "Bond approved → everyone told, without anyone typing it", "bt": 2, "rp": 1, "st": 2, "en": 1, "d": "absent", "dn": "" },
+
+    { "id": "$01", "g": "money", "n": "Commission calculated from the deal", "w": "Gross, VAT, net — off the sale price automatically", "bt": 2, "rp": 2, "st": 1, "en": 2, "d": "absent", "dn": "commission table exists; no code reads or writes it" },
+    { "id": "$02", "g": "money", "n": "Splits between agents and agencies", "w": "Listing agent, selling agent, joint-mandate partner", "bt": 2, "rp": 2, "st": 1, "en": 2, "d": "absent", "dn": "" },
+    { "id": "$03", "g": "money", "n": "Agent commission statements", "w": "A slip each agent can check against their own numbers", "bt": 2, "rp": 2, "st": 1, "en": 2, "d": "absent", "dn": "" },
+    { "id": "$04", "g": "money", "n": "FFC gate on payout", "w": "No valid Fidelity Fund Certificate, no commission — enforced", "bt": 0, "rp": 0, "st": 0, "en": 0, "d": "absent", "dn": "FFC dates are tracked; nothing blocks on them yet" },
+    { "id": "$05", "g": "money", "n": "Commission forecast", "w": "What the pipeline is worth if it all registers", "bt": 2, "rp": 2, "st": 2, "en": 2, "d": "absent", "dn": "" },
+    { "id": "$06", "g": "money", "n": "Trust account ledger", "w": "Client money in, held, disbursed — with provenance per deposit", "bt": 0, "rp": 2, "st": 2, "en": 0, "d": "absent", "dn": "s54 requires the account; the OS doesn't see it" },
+    { "id": "$07", "g": "money", "n": "Trust reconciliation & audit export", "w": "Monthly recon the auditor accepts without a rebuild", "bt": 0, "rp": 2, "st": 2, "en": 0, "d": "absent", "dn": "" },
+    { "id": "$08", "g": "money", "n": "Accounting integration", "w": "Xero or Sage, so the books aren't retyped", "bt": 2, "rp": 1, "st": 1, "en": 1, "d": "absent", "dn": "" },
+    { "id": "$09", "g": "money", "n": "Referral & bond origination income", "w": "The fee from the originator, tracked like any other income", "bt": 1, "rp": 1, "st": 1, "en": 1, "d": "absent", "dn": "" },
+
+    { "id": "P01", "g": "docs", "n": "Document storage with access control", "w": "Right people, right documents, signed URLs that expire", "bt": 2, "rp": 2, "st": 2, "en": 2, "d": "partial", "dn": "3 private buckets; /documents route 404s" },
+    { "id": "P02", "g": "docs", "n": "Template-driven generation", "w": "Thirteen masters, filled from the record, correct every time", "bt": 1, "rp": 2, "st": 1, "en": 1, "d": "planned", "dn": "plan 007 — templates arrived 2026-08-04" },
+    { "id": "P03", "g": "docs", "n": "Versioned drafts", "w": "Draft, revised, final — with who changed what", "bt": 1, "rp": 1, "st": 1, "en": 0, "d": "planned", "dn": "document_draft in 0065" },
+    { "id": "P04", "g": "docs", "n": "E-signature", "w": "Signed remotely, legally, without a scanner", "bt": 2, "rp": 1, "st": 1, "en": 0, "d": "absent", "dn": "" },
+    { "id": "P05", "g": "docs", "n": "Signed-document register per deal", "w": "Everything executed on this transaction, in one place", "bt": 2, "rp": 2, "st": 2, "en": 1, "d": "absent", "dn": "" },
+    { "id": "P06", "g": "docs", "n": "Document expiry tracking", "w": "Certificates, FFCs, mandates — all with a clock on them", "bt": 1, "rp": 2, "st": 2, "en": 1, "d": "partial", "dn": "FFC and mandate only" },
+    { "id": "P07", "g": "docs", "n": "Audit trail on every change", "w": "Field-level before and after, with the user's name", "bt": 1, "rp": 2, "st": 2, "en": 2, "d": "partial", "dn": "audit_log written from one file only" },
+    { "id": "P08", "g": "docs", "n": "Separate compliance store", "w": "FICA documents walled off from general files", "bt": 0, "rp": 1, "st": 1, "en": 1, "d": "built", "dn": "admin-only fica bucket" },
+
+    { "id": "F01", "g": "comply", "n": "FICA / KYC capture", "w": "ID, proof of address, source of funds, on the file", "bt": 0, "rp": 2, "st": 2, "en": 2, "d": "built", "dn": "fica table + status badge + gap tracking" },
+    { "id": "F02", "g": "comply", "n": "Live ID, PEP & sanctions screening", "w": "Verified against a real source, not eyeballed", "bt": 0, "rp": 2, "st": 2, "en": 2, "d": "absent", "dn": "Entegral Vault: R14.99 an ID check, pay-as-you-go" },
+    { "id": "F03", "g": "comply", "n": "Risk rating per client", "w": "The RMCP's risk categories applied automatically", "bt": 0, "rp": 1, "st": 2, "en": 2, "d": "absent", "dn": "" },
+    { "id": "F04", "g": "comply", "n": "FICA gaps against live deals", "w": "Which running transactions are missing paperwork, today", "bt": 0, "rp": 1, "st": 1, "en": 1, "d": "built", "dn": "/compliance" },
+    { "id": "F05", "g": "comply", "n": "POPIA consent capture", "w": "Recorded consent, per purpose, per contact", "bt": 1, "rp": 1, "st": 1, "en": 0, "d": "planned", "dn": "consent table since 0004 — nothing has ever written to it" },
+    { "id": "F06", "g": "comply", "n": "Consent-aware suppression", "w": "Nobody gets marketed to who said no", "bt": 1, "rp": 1, "st": 1, "en": 0, "d": "planned", "dn": "contact_point_suppression, unwired" },
+    { "id": "F07", "g": "comply", "n": "FFC on the practitioner record", "w": "Number and expiry against each agent", "bt": 0, "rp": 0, "st": 0, "en": 0, "d": "built", "dn": "0051_agent_ffc_expiry — nobody else has this" },
+    { "id": "F08", "g": "comply", "n": "FFC expiry watchlist", "w": "Warned before an agent becomes uncommissionable", "bt": 0, "rp": 0, "st": 0, "en": 0, "d": "built", "dn": "" },
+    { "id": "F09", "g": "comply", "n": "Data residency in a chosen region", "w": "Where the personal data physically sits", "bt": 0, "rp": 1, "st": 1, "en": -1, "d": "built", "dn": "Supabase EU/Ireland, POPIA-motivated" },
+
+    { "id": "K01", "g": "comms", "n": "Send email from the record", "w": "Correspondence that lands back on the contact", "bt": 2, "rp": 1, "st": 2, "en": 1, "d": "absent", "dn": "outbound is admin alerts only" },
+    { "id": "K02", "g": "comms", "n": "Inbound email parsed into records", "w": "Enquiries become contacts without retyping", "bt": 2, "rp": 1, "st": 2, "en": 2, "d": "built", "dn": "Resend + LLM extraction, /inbox" },
+    { "id": "K03", "g": "comms", "n": "SMS from the record", "w": "Two-way, threaded on the contact", "bt": 2, "rp": 0, "st": 1, "en": 2, "d": "absent", "dn": "" },
+    { "id": "K04", "g": "comms", "n": "WhatsApp from the record", "w": "How South Africans actually transact", "bt": 0, "rp": 0, "st": 2, "en": 2, "d": "absent", "dn": "party.whatsapp is a field; no messaging" },
+    { "id": "K05", "g": "comms", "n": "Templates with merge fields", "w": "Same message, right name, every time", "bt": 2, "rp": 2, "st": 2, "en": 2, "d": "absent", "dn": "" },
+    { "id": "K06", "g": "comms", "n": "Bulk / campaign send", "w": "New listing to the matched buyer list in one action", "bt": 2, "rp": 2, "st": 2, "en": 0, "d": "planned", "dn": "campaign tables exist; gated on NCC registration" },
+    { "id": "K07", "g": "comms", "n": "Drip & nurture sequences", "w": "The 18-month seller who needs touching six times", "bt": 2, "rp": 1, "st": 2, "en": 0, "d": "absent", "dn": "" },
+    { "id": "K08", "g": "comms", "n": "Call logging / dialer", "w": "Calls on the record without writing them up", "bt": 2, "rp": 1, "st": 2, "en": 0, "d": "absent", "dn": "" },
+    { "id": "K09", "g": "comms", "n": "Open & click tracking", "w": "Who actually read the mailer", "bt": 2, "rp": 1, "st": 1, "en": 0, "d": "absent", "dn": "" },
+    { "id": "K10", "g": "comms", "n": "Task & reminder engine", "w": "Follow-ups that chase you, not the other way round", "bt": 2, "rp": 2, "st": 2, "en": 2, "d": "partial", "dn": "watchlists only, no general task engine" },
+
+    { "id": "W01", "g": "market", "n": "Push listings to Property24", "w": "Our stock, out to the dominant SA portal, automatically", "bt": 0, "rp": 0, "st": 0, "en": 2, "d": "absent", "dn": "we scrape P24 in; we publish nothing out" },
+    { "id": "W02", "g": "market", "n": "Push listings to Private Property", "w": "Second portal, same feed", "bt": 0, "rp": 0, "st": 0, "en": 2, "d": "absent", "dn": "" },
+    { "id": "W03", "g": "market", "n": "Free portal syndication", "w": "MyProperty and friends, at no marketing cost", "bt": 0, "rp": 0, "st": 0, "en": 2, "d": "absent", "dn": "Entegral Sync reaches 18 destinations from R219/50 listings" },
+    { "id": "W04", "g": "market", "n": "Feed API others can consume", "w": "Publish once, let anyone pull it", "bt": 0, "rp": 1, "st": 1, "en": 2, "d": "absent", "dn": "2023 Competition Commission ruling forces free interop" },
+    { "id": "W05", "g": "market", "n": "Agency website fed from the CRM", "w": "dreamknysna.co.za updates itself when a listing changes", "bt": 2, "rp": 1, "st": 1, "en": 2, "d": "absent", "dn": "no public route exists; middleware gates everything" },
+    { "id": "W06", "g": "market", "n": "Public listing pages & SEO", "w": "A page per property that Google can find", "bt": 2, "rp": 1, "st": 1, "en": 2, "d": "absent", "dn": "" },
+    { "id": "W07", "g": "market", "n": "Social auto-posting & paid ads", "w": "Facebook and Instagram campaigns off the listing", "bt": 2, "rp": 1, "st": 1, "en": 2, "d": "absent", "dn": "Flow does exactly this locally, as a layer" },
+    { "id": "W08", "g": "market", "n": "Saved searches & buyer alerts", "w": "Buyers hear about matching stock before the portal shows it", "bt": 2, "rp": 2, "st": 2, "en": 2, "d": "absent", "dn": "" },
+    { "id": "W09", "g": "market", "n": "Landing pages for lead capture", "w": "Valuation and area pages that collect names", "bt": 2, "rp": 1, "st": 1, "en": 1, "d": "absent", "dn": "" },
+
+    { "id": "A01", "g": "ai", "n": "AI listing copy", "w": "Description and headline drafted from the facts", "bt": 2, "rp": 2, "st": 2, "en": 2, "d": "absent", "dn": "table stakes now — everyone ships it" },
+    { "id": "A02", "g": "ai", "n": "AI enquiry triage", "w": "Read the mail, work out what it is, file it", "bt": 2, "rp": 1, "st": 2, "en": 0, "d": "built", "dn": "lib/intake LLM extraction — already ahead here" },
+    { "id": "A03", "g": "ai", "n": "AI follow-up agent", "w": "Works the cold database while nobody is watching", "bt": 2, "rp": 0, "st": 2, "en": 0, "d": "absent", "dn": "" },
+    { "id": "A04", "g": "ai", "n": "AI call answering & summaries", "w": "Missed calls answered, written up on the record", "bt": 1, "rp": 0, "st": 2, "en": 0, "d": "absent", "dn": "" },
+    { "id": "A05", "g": "ai", "n": "Listing built from photos & plans", "w": "Upload the shoot, get a draft listing back", "bt": 2, "rp": 0, "st": 2, "en": 0, "d": "absent", "dn": "" },
+    { "id": "A06", "g": "ai", "n": "Ask your own database in words", "w": "\"Sellers in Brenton who haven't been called since June\"", "bt": 2, "rp": 0, "st": 1, "en": 0, "d": "absent", "dn": "" },
+    { "id": "A07", "g": "ai", "n": "AI file & compliance checking", "w": "Flags what's missing before the deal stalls", "bt": 2, "rp": 1, "st": 1, "en": 0, "d": "absent", "dn": "BoldTrail shipped ComplianceAI in Aug 2026" },
+    { "id": "A08", "g": "ai", "n": "Trained on the agency's voice", "w": "Copy that sounds like Dream, not like software", "bt": 0, "rp": 0, "st": 2, "en": 0, "d": "absent", "dn": "" },
+
+    { "id": "R01", "g": "report", "n": "Operational dashboard", "w": "What needs attention this morning", "bt": 2, "rp": 2, "st": 2, "en": 2, "d": "built", "dn": "/dashboard — operational, not financial" },
+    { "id": "R02", "g": "report", "n": "Agent performance", "w": "Mandates taken, viewings run, deals closed, per agent", "bt": 2, "rp": 2, "st": 2, "en": 1, "d": "absent", "dn": "named and deferred in the original roadmap" },
+    { "id": "R03", "g": "report", "n": "Commission & revenue reporting", "w": "What we earned, and what's still to land", "bt": 2, "rp": 2, "st": 2, "en": 2, "d": "absent", "dn": "" },
+    { "id": "R04", "g": "report", "n": "Lead source ROI", "w": "Which portal actually pays for itself", "bt": 2, "rp": 2, "st": 2, "en": 2, "d": "absent", "dn": "" },
+    { "id": "R05", "g": "report", "n": "Custom report builder", "w": "New question answered without a developer", "bt": 1, "rp": 2, "st": 1, "en": 1, "d": "absent", "dn": "" },
+    { "id": "R06", "g": "report", "n": "Scheduled reports by email", "w": "Monday numbers arrive on Monday", "bt": 1, "rp": 2, "st": 1, "en": 0, "d": "absent", "dn": "" },
+    { "id": "R07", "g": "report", "n": "CSV / spreadsheet export", "w": "Get the data out, for the accountant or the auditor", "bt": 2, "rp": 2, "st": 2, "en": 1, "d": "absent", "dn": "no export code anywhere in the app" },
+
+    { "id": "X01", "g": "platform", "n": "Role-based permissions", "w": "Agents see their own, admin sees everything", "bt": 2, "rp": 2, "st": 2, "en": 2, "d": "built", "dn": "17 RLS policies; 2 of 4 roles live" },
+    { "id": "X02", "g": "platform", "n": "Conveyancer login", "w": "The attorney works in the file instead of over email", "bt": 1, "rp": 1, "st": 1, "en": 0, "d": "absent", "dn": "role reserved, not enabled" },
+    { "id": "X03", "g": "platform", "n": "Client login", "w": "Buyers and sellers see their own transaction", "bt": 2, "rp": 1, "st": 2, "en": 0, "d": "absent", "dn": "role reserved, not enabled" },
+    { "id": "X04", "g": "platform", "n": "Multi-office", "w": "More than one branch on one system", "bt": 2, "rp": 2, "st": 2, "en": 2, "d": "na", "dn": "single-tenant by design today" },
+    { "id": "X05", "g": "platform", "n": "Mobile app", "w": "Usable properly on a phone at a show house", "bt": 2, "rp": 2, "st": 2, "en": 1, "d": "absent", "dn": "responsive web only, unverified" },
+    { "id": "X06", "g": "platform", "n": "Public / partner API", "w": "Let other systems read and write our data", "bt": 2, "rp": 2, "st": 2, "en": 2, "d": "absent", "dn": "internal /api routes only" },
+    { "id": "X07", "g": "platform", "n": "Automation connector", "w": "Zapier or similar, for the glue nobody wants to build", "bt": 2, "rp": 1, "st": 1, "en": 2, "d": "absent", "dn": "" },
+    { "id": "X08", "g": "platform", "n": "Published, predictable pricing", "w": "What it costs, without a sales call", "bt": 0, "rp": 0, "st": 0, "en": 2, "d": "na", "dn": "Entegral is the only one that publishes a rate card" }
+  ]
+}
+</script>
+<script id="app-me" type="application/json">{"me": "Camilla"}</script>
+<script id="app-state" type="application/json">{"votes": {"Simon": {}, "Camilla": {}, "Angie": {}, "Vanessa": {}}, "final": {}, "notes": {"Simon": {}, "Camilla": {}, "Angie": {}, "Vanessa": {}}, "chain": []}</script>
+<script id="app-script">
+(function () {
+  "use strict";
+
+  var DATA  = JSON.parse(document.getElementById("app-data").textContent);
+  var STATE = JSON.parse(document.getElementById("app-state").textContent);
+  var STAMP = JSON.parse(document.getElementById("app-me").textContent);
+
+  var REVIEWERS = ["Simon", "Camilla", "Angie", "Vanessa"];
+  if (!STATE.votes) STATE.votes = {};
+  REVIEWERS.forEach(function (n) { if (!STATE.votes[n]) STATE.votes[n] = {}; });
+  if (!STATE.final) STATE.final = {};
+  if (!STATE.chain) STATE.chain = [];
+  STATE.notes = normaliseNotes(STATE.notes);
+
+  function normaliseNotes(n) {
+    var out = {};
+    REVIEWERS.forEach(function (r) { out[r] = {}; });
+    if (!n || typeof n !== "object") return out;
+    var flat = Object.keys(n).some(function (k) { return typeof n[k] === "string"; });
+    if (flat) { out[REVIEWERS[0]] = n; return out; }
+    REVIEWERS.forEach(function (r) { out[r] = n[r] || {}; });
+    return out;
+  }
+
+  var LS_KEY = "dream-os-capability-map";
+  var ME_KEY = "dream-os-capability-map-me";
+  var root = document.getElementById("root");
+
+  var me = STAMP.me || "";
+  try { me = me || localStorage.getItem(ME_KEY) || ""; } catch (e) {}
+  if (REVIEWERS.indexOf(me) === -1) me = "";
+
+  var ui = { q: "", group: "all", show: "all" };
+  var artifactNs = null, downloadsNs = null;
+  var filesMode = true, readOnly = false;
+  var saveTimer = null, saveDelay = 2500;
+  var dirty = false, storageOk = true;
+
+  var COV = {
+    "2":  { mark: "●", cls: "cov-2", label: "Yes" },
+    "1":  { mark: "◐", cls: "cov-1", label: "Partial" },
+    "0":  { mark: "○", cls: "cov-0", label: "No" },
+    "-1": { mark: "?",      cls: "cov-u", label: "Not confirmed" }
+  };
+  var DREAM = {
+    built:   { t: "Built",   c: "chip-built" },
+    partial: { t: "Partial", c: "chip-partial" },
+    planned: { t: "Planned", c: "chip-planned" },
+    absent:  { t: "Not yet", c: "chip-absent" },
+    na:      { t: "n/a",     c: "chip-na" }
+  };
+  var DECISIONS = [
+    { k: "must", t: "Must", cls: "must" },
+    { k: "nice", t: "Nice", cls: "nice" },
+    { k: "no",   t: "No",   cls: "no" }
+  ];
+  var MARK = { must: "●", nice: "●", no: "○", "": "·" };
+
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+
+  function statusOf(id) {
+    var v = REVIEWERS.map(function (n) { return STATE.votes[n][id] || ""; });
+    var filled = v.filter(Boolean);
+    if (!filled.length) return "";
+    if (filled.length < REVIEWERS.length) return "waiting";
+    var same = filled.every(function (x) { return x === filled[0]; });
+    return same ? "agreed" : "split";
+  }
+
+  /* ---------- filtering ---------- */
+
+  function visibleRows() {
+    var q = ui.q.trim().toLowerCase();
+    return DATA.rows.filter(function (r) {
+      if (ui.group !== "all" && r.g !== ui.group) return false;
+      var st = statusOf(r.id);
+      if (ui.show === "split" && st !== "split") return false;
+      if (ui.show === "open" && st === "agreed") return false;
+      if (ui.show === "mine" && (me && STATE.votes[me][r.id])) return false;
+      if (ui.show === "unsettled" && !(st === "split" && !STATE.final[r.id])) return false;
+      if (ui.show === "gaps" && !(r.d === "absent" || r.d === "planned")) return false;
+      if (q) {
+        var hay = (r.n + " " + r.w + " " + (r.dn || "") + " " + r.id).toLowerCase();
+        if (hay.indexOf(q) === -1) return false;
+      }
+      return true;
+    });
+  }
+
+  function counts() {
+    var c = { agreed: 0, split: 0, waiting: 0, none: 0, mine: 0, unsettled: 0, total: DATA.rows.length };
+    DATA.rows.forEach(function (r) {
+      var st = statusOf(r.id);
+      if (st === "agreed") c.agreed++;
+      else if (st === "split") { c.split++; if (!STATE.final[r.id]) c.unsettled++; }
+      else if (st === "waiting") c.waiting++;
+      else c.none++;
+      if (me && STATE.votes[me][r.id]) c.mine++;
+    });
+    return c;
+  }
+
+  /* ---------- render ---------- */
+
+  function renderShell() {
+    var c = counts();
+    var groupOpts = ['<option value="all">All areas</option>'].concat(
+      DATA.groups.map(function (g) {
+        return '<option value="' + g.id + '">' + esc(g.name) + "</option>";
+      })
+    ).join("");
+    var meOpts = ['<option value="">Not set</option>'].concat(
+      REVIEWERS.map(function (n) { return '<option value="' + n + '">' + n + "</option>"; })
+    ).join("");
+
+    return [
+      '<header class="masthead">',
+        '<p class="eyebrow">Competitive capability map · four-way review</p>',
+        "<h1>What the world's best agency systems do, and what Dream OS does</h1>",
+        '<p class="standfirst">A hundred and twenty-two capabilities, drawn from the four systems worth learning from: <strong>BoldTrail</strong>, the American lead machine; <strong>Reapit</strong> and <strong>Street</strong>, which model the whole agency workflow the way Bronwyn actually works; and <strong>Entegral Base</strong>, the local incumbent at R949 a month. Simon, Camilla, Angie and Vanessa each vote in their own right. Work in any order, in parallel — when the files come back, merge them here and the page works out where you disagree.</p>',
+      "</header>",
+
+      '<div id="chooser"></div>',
+      '<section class="summary" id="summary">' + statCards(c) + "</section>",
+      '<div class="progress">',
+        '<div class="bar">',
+          '<i class="p-must" style="width:' + pct(c.agreed, c.total) + '%"></i>',
+          '<i class="p-nice" style="width:' + pct(c.split, c.total) + '%"></i>',
+          '<i class="p-no" style="width:' + pct(c.waiting, c.total) + '%"></i>',
+        "</div>",
+        '<p class="cap" id="progcap">' + progText(c) + "</p>",
+      "</div>",
+
+      '<div class="toolbar">',
+        '<div class="field me-field"><label for="me">You are</label><select id="me">' + meOpts + "</select></div>",
+        '<div class="field"><label for="q">Find</label>',
+          '<input id="q" type="search" placeholder="commission, FICA, WhatsApp…" value="' + esc(ui.q) + '"></div>',
+        '<div class="field"><label for="g">Area</label><select id="g">' + groupOpts + "</select></div>",
+        '<div class="field"><label for="s">Show</label><select id="s">',
+          '<option value="all">Everything</option>',
+          '<option value="mine">I haven\'t voted</option>',
+          '<option value="split">Where we disagree</option>',
+          '<option value="unsettled">Splits with no final call</option>',
+          '<option value="open">Not yet agreed</option>',
+          '<option value="gaps">Dream OS gaps</option>',
+        "</select></div>",
+        '<button id="clear" type="button">Reset</button>',
+        '<div class="spacer"></div>',
+        '<button id="merge" type="button">Merge someone’s file</button>',
+        '<input id="mergefile" type="file" accept=".html,text/html" multiple hidden>',
+        '<button id="pass" type="button" class="primary">Save &amp; send back</button>',
+        '<button id="csv" type="button" hidden>CSV</button>',
+        '<span class="savechip" id="savechip"></span>',
+      "</div>",
+
+      '<div id="ro"></div>',
+      '<div id="mergereport"></div>',
+      '<div class="tablewrap"><table id="grid"><thead>' + thead() + '</thead><tbody id="tbody"></tbody></table></div>',
+      legend(),
+      '<div class="chain" id="chain">' + chainText() + "</div>",
+      footerNotes()
+    ].join("");
+  }
+
+  function pct(n, total) { return total ? (n / total) * 100 : 0; }
+
+  function progText(c) {
+    return c.agreed + " agreed · " + c.split + " split" +
+      (c.unsettled ? " (" + c.unsettled + " with no final call)" : "") +
+      " · " + (c.waiting + c.none) + " still waiting on a vote";
+  }
+
+  function statCards(c) {
+    return [
+      { k: "Capabilities", v: c.total, cls: "" },
+      { k: "Agreed", v: c.agreed, cls: "is-must" },
+      { k: "We disagree", v: c.split, cls: "is-nice" },
+      { k: "Awaiting votes", v: c.waiting + c.none, cls: "is-no" },
+      { k: me ? me + "'s calls" : "Your calls", v: me ? c.mine : "—", cls: "" }
+    ].map(function (s) {
+      return '<div class="stat ' + s.cls + '"><span class="k">' + esc(s.k) + '</span><span class="v">' + s.v + "</span></div>";
+    }).join("");
+  }
+
+  function thead() {
+    var vend = DATA.vendors.map(function (v) {
+      return '<th class="vend">' + esc(v.name) + '<span class="sub">' + esc(v.sub) + "</span></th>";
+    }).join("");
+    return "<tr>" +
+      '<th class="cap-h">Capability<span class="sub">122 rows · 13 areas</span></th>' +
+      vend +
+      '<th class="dream">Dream OS<span class="sub">today</span></th>' +
+      '<th class="dec">Your call<span class="sub">and everyone else’s</span></th>' +
+      '<th class="note-h">Note</th>' +
+      "</tr>";
+  }
+
+  function covCell(v) {
+    var m = COV[String(v)] || COV["-1"];
+    return '<td class="vend"><span class="cov ' + m.cls + '" title="' + m.label + '">' + m.mark + "</span></td>";
+  }
+
+  function renderBody() {
+    var rows = visibleRows();
+    var tbody = document.getElementById("tbody");
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td class="empty" colspan="8">Nothing matches that. Try resetting the filters.</td></tr>';
+      return;
+    }
+    var byGroup = {};
+    rows.forEach(function (r) { (byGroup[r.g] = byGroup[r.g] || []).push(r); });
+
+    var html = "";
+    DATA.groups.forEach(function (g) {
+      var list = byGroup[g.id];
+      if (!list || !list.length) return;
+      html += '<tr class="group"><td colspan="8"><span class="gname">' + esc(g.name) +
+              '</span> <span class="gcount">' + list.length + "</span></td></tr>";
+      list.forEach(function (r) { html += rowHtml(r); });
+    });
+    tbody.innerHTML = html;
+  }
+
+  function rowHtml(r) {
+    var mine = me ? (STATE.votes[me][r.id] || "") : "";
+    var st = statusOf(r.id);
+    var dm = DREAM[r.d] || DREAM.absent;
+    var rowCls = st === "split" ? "is-split" : st === "agreed" ? "is-agreed" : "";
+
+    var why = r.w ? '<div class="why">' + esc(r.w) + "</div>" : "";
+    var dn = r.dn ? '<div class="why" style="opacity:.85"><em>' + esc(r.dn) + "</em></div>" : "";
+
+    var seg = DECISIONS.map(function (d) {
+      return '<button type="button" class="' + d.cls + '" data-dec="' + d.k + '" data-row="' + r.id +
+             '" aria-pressed="' + (mine === d.k ? "true" : "false") + '"' +
+             (me ? "" : " disabled") + ">" + d.t + "</button>";
+    }).join("");
+
+    var peers = REVIEWERS.map(function (n) {
+      var v = STATE.votes[n][r.id] || "";
+      return '<span' + (n === me ? ' class="self"' : "") + ' title="' + n + '"><b>' + n.charAt(0) +
+             '</b><i class="v-' + (v || "none") + '">' + MARK[v] + "</i></span>";
+    }).join("");
+
+    var statusChip = st ? '<span class="status st-' + st + '">' +
+      (st === "agreed" ? "Agreed" : st === "split" ? "Split" : "Waiting") + "</span>" : "";
+
+    var final = "";
+    if (st === "split") {
+      var f = STATE.final[r.id] || "";
+      final = '<div class="final"><span class="lbl">Final call</span><div class="seg">' +
+        DECISIONS.map(function (d) {
+          return '<button type="button" class="' + d.cls + '" data-final="' + d.k + '" data-row="' + r.id +
+                 '" aria-pressed="' + (f === d.k ? "true" : "false") + '">' + d.t + "</button>";
+        }).join("") + "</div></div>";
+    }
+
+    return '<tr class="' + rowCls + '">' +
+      '<td class="cap"><div class="name"><span class="rowid">' + esc(r.id) + "</span>" + esc(r.n) + "</div>" + why + dn + "</td>" +
+      covCell(r.bt) + covCell(r.rp) + covCell(r.st) + covCell(r.en) +
+      '<td class="dreamc"><span class="chip ' + dm.c + '">' + dm.t + "</span></td>" +
+      '<td><div class="dcell"><div class="seg">' + seg + '</div><div class="peers">' + peers +
+        (statusChip ? " " + statusChip : "") + "</div>" + final + "</div></td>" +
+      '<td>' + noteCell(r.id) + "</td>" +
+      "</tr>";
+  }
+
+  function noteCell(id) {
+    var own = me ? (STATE.notes[me][id] || "") : "";
+    var mine = '<input class="note" data-row="' + esc(id) + '" value="' + esc(own) +
+               '" placeholder="' + (me ? "—" : "say who you are first") + '"' + (me ? "" : " disabled") + ">";
+    var theirs = REVIEWERS.filter(function (n) {
+      return n !== me && STATE.notes[n] && STATE.notes[n][id];
+    }).map(function (n) {
+      return '<div class="peernote"><b>' + esc(n) + "</b> " + esc(STATE.notes[n][id]) + "</div>";
+    }).join("");
+    return mine + theirs;
+  }
+
+  function legend() {
+    var cov = Object.keys(COV).map(function (k) {
+      var m = COV[k];
+      return '<span class="item"><span class="cov ' + m.cls + '">' + m.mark + "</span>" + m.label + "</span>";
+    }).join("");
+    var dream = ["built", "partial", "planned", "absent"].map(function (k) {
+      return '<span class="item"><span class="chip ' + DREAM[k].c + '">' + DREAM[k].t + "</span></span>";
+    }).join("");
+    var stat = ["agreed", "split", "waiting"].map(function (k) {
+      return '<span class="item"><span class="status st-' + k + '">' + k + "</span></span>";
+    }).join("");
+    return '<div class="legend">' +
+      '<span class="grp"><span class="lbl">Coverage</span>' + cov + "</span>" +
+      '<span class="grp"><span class="lbl">Dream OS</span>' + dream + "</span>" +
+      '<span class="grp"><span class="lbl">Between you</span>' + stat + "</span>" +
+      "</div>";
+  }
+
+  function chainText() {
+    if (!STATE.chain.length) return "Handoff log · nobody has passed this on yet.";
+    return "Handoff log · " + STATE.chain.map(function (h) {
+      return "<b>" + esc(h.who) + "</b> " + esc(h.when);
+    }).join(" → ");
+  }
+
+  function footerNotes() {
+    return '<section class="notes">' +
+      "<div><h2>How the review works</h2>" +
+      "<p>Set who you are, top left. You vote in your own right; the initials under each row show how the other two voted, and the page marks the row <strong>Split</strong> the moment all three are in and you don’t agree.</p>" +
+      "<p>Filter to <strong>Where we disagree</strong> and you have your meeting agenda — the rest is settled.</p></div>" +
+
+      "<div><h2>Sending it back</h2>" +
+      "<p><strong>Save &amp; send back</strong> writes a fresh file carrying your votes. Email that file to Simon.</p>" +
+      "<p>You don’t have to wait for anyone. Four people can work at once, each in their own copy — Simon merges them at the end.</p>" +
+      "<p>The chip beside that button says <strong>Not in a file yet</strong> whenever you have work that hasn’t been written out, and the browser will stop you closing the tab while it does.</p></div>" +
+
+      "<div><h2>Merging what comes back</h2>" +
+      "<p><strong>Merge someone’s file</strong> — or just drag their file onto this page — reads their votes into this copy. Drop all of them at once if you like.</p>" +
+      "<p>A file is authoritative for whoever saved it: their column is taken as sent. For everybody else it only fills blanks, so merging in any order gives the same answer and merging twice changes nothing.</p></div>" +
+
+      "<div><h2>The three things nobody else does</h2>" +
+      "<p>Erf and cadastral data, municipal valuation rolls, and FFC expiry on the practitioner record are ours alone across all four systems — as is treating freehold and sectional title as a structural distinction rather than a tag.</p></div>" +
+
+      "<div><h2>Worth knowing before you vote</h2>" +
+      "<p>A conveyancer may not pay commission to a practitioner without a valid Fidelity Fund Certificate on file. We already track the dates; gating the payout on them is small work with real legal weight, and no international system has the concept.</p>" +
+      "<p>Since the 2023 Competition Commission ruling, Property24, Private Property and PropData must accept third-party listing feeds free of charge.</p></div>" +
+      "</section>";
+  }
+
+  function renderChooser() {
+    var el = document.getElementById("chooser");
+    if (!el) return;
+    if (me) { el.innerHTML = ""; return; }
+    el.innerHTML = '<div class="chooser"><p><strong>Who is working on this?</strong> ' +
+      "Pick yourself so your votes land in your own column and nobody overwrites anybody.</p>" +
+      '<div class="who">' + REVIEWERS.map(function (n) {
+        return '<button type="button" data-me="' + n + '">' + n + "</button>";
+      }).join("") + "</div></div>";
+  }
+
+  /* ---------- persistence ---------- */
+
+  function docHtml(stampMe) {
+    var style = document.getElementById("app-style").textContent;
+    var script = document.getElementById("app-script").textContent;
+    var data = document.getElementById("app-data").textContent;
+    var S = "<" + "/script>";
+    return "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n" +
+      "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n" +
+      "<title>Dream OS Capability Map</title>\n" +
+      '<link rel="preconnect" href="https://fonts.googleapis.com">\n' +
+      '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n' +
+      '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Spectral:wght@500;600&display=swap">\n' +
+      '<style id="app-style">' + style + "</style>\n</head>\n<body>\n" +
+      '<div class="wrap"><div id="root"></div></div>\n' +
+      '<script id="app-data" type="application/json">' + data + S + "\n" +
+      '<script id="app-me" type="application/json">' + JSON.stringify({ me: stampMe || "" }) + S + "\n" +
+      '<script id="app-state" type="application/json">' + JSON.stringify(STATE) + S + "\n" +
+      '<script id="app-script">' + script + S + "\n</body>\n</html>";
+  }
+
+  function chip(text, cls) {
+    var el = document.getElementById("savechip");
+    if (!el) return;
+    el.textContent = text;
+    el.className = "savechip" + (cls ? " " + cls : "");
+  }
+
+  function localSave() {
+    try { localStorage.setItem(LS_KEY, JSON.stringify(STATE)); }
+    catch (e) { storageOk = false; showStorageWarning(); }
+  }
+
+  function scheduleSave() {
+    dirty = true;
+    localSave();
+    if (!artifactNs) { chip("Not in a file yet", "is-warn"); return; }
+    chip("Saving…");
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(save, saveDelay);
+  }
+
+  function save() {
+    if (readOnly || !artifactNs) return;
+    var payload = filesMode ? { "data/decisions.json": JSON.stringify(STATE) } : docHtml("");
+    if (!filesMode) {
+      try { sessionStorage.setItem("dream-os-ui", JSON.stringify(ui)); } catch (e) {}
+    }
+    artifactNs.publish(payload).then(function () {
+      dirty = false;
+      chip("Saved for everyone", "is-on");
+    }).catch(function (err) {
+      var code = err && err.code;
+      if (code === "conflict") { chip("Reloading…"); return; }
+      if (code === "not_writer" || code === "not_granted" ||
+          code === "not_declared" || code === "consent_required") {
+        readOnly = true; chip("Saved here"); showReadOnly(); return;
+      }
+      if (filesMode && (code === "capability_disabled" || code === "capability_removed" ||
+                        code === "invalid_content" || code === "transform_error")) {
+        filesMode = false; save(); return;
+      }
+      if (code === "rate_limited") {
+        saveDelay = Math.min(saveDelay * 2, 20000);
+        chip("Saving shortly…", "is-warn");
+        if (saveTimer) clearTimeout(saveTimer);
+        saveTimer = setTimeout(save, saveDelay);
+        return;
+      }
+      chip("Saved here only", "is-warn");
+    });
+  }
+
+  function showStorageWarning() {
+    var el = document.getElementById("ro");
+    if (!el || el.dataset.storage) return;
+    el.dataset.storage = "1";
+    el.innerHTML = '<div class="readonly-note"><strong>This browser will not remember your ticks.</strong> ' +
+      "It is blocking local files from storing anything, so if you close this tab your work is gone. " +
+      "Either open the file in Chrome instead, or click <strong>Save &amp; send back</strong> every so often — " +
+      "the file it writes keeps everything, and you can carry on in it." + "</div>";
+  }
+
+  function showReadOnly() {
+    var el = document.getElementById("ro");
+    if (!el || el.dataset.shown) return;
+    el.dataset.shown = "1";
+    el.innerHTML = '<div class="readonly-note">You can read this map but not change it here. Your votes are kept in this browser only.</div>';
+  }
+
+  function passOn() {
+    if (!me) { renderChooser(); chip("Say who you are first", "is-warn"); return; }
+    var now = new Date();
+    var day = now.getFullYear() + "-" +
+      String(now.getMonth() + 1).padStart(2, "0") + "-" +
+      String(now.getDate()).padStart(2, "0");
+    STATE.chain = STATE.chain.filter(function (h) { return h.who !== me; });
+    STATE.chain.push({ who: me, when: day });
+    STATE.exportedBy = me;
+    localSave();
+    document.getElementById("chain").innerHTML = chainText();
+
+    var filename = "Capability-Map-" + me + ".html";
+    var html = docHtml("");
+
+    if (downloadsNs) {
+      downloadsNs.save({ filename: filename, data: html })
+        .then(function () { dirty = false; chip("File ready to email", "is-on"); })
+        .catch(function () { chip("Download refused", "is-warn"); });
+      scheduleSave();
+      return;
+    }
+    try {
+      var blob = new Blob([html], { type: "text/html" });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a");
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+      dirty = false;
+      chip("Saved as " + filename, "is-on");
+    } catch (e) {
+      chip("Could not write the file", "is-warn");
+    }
+  }
+
+
+  /* ---------- merging files that came back separately ---------- */
+
+  function stateFromHtml(text) {
+    var open = '<script id="app-state" type="application/json">';
+    var i = text.indexOf(open);
+    if (i === -1) return null;
+    var j = text.indexOf("<" + "/script>", i + open.length);
+    if (j === -1) return null;
+    try { return JSON.parse(text.slice(i + open.length, j)); } catch (e) { return null; }
+  }
+
+  function ownerOf(incoming) {
+    if (incoming.exportedBy && REVIEWERS.indexOf(incoming.exportedBy) !== -1) return incoming.exportedBy;
+    var chain = incoming.chain || [];
+    for (var k = chain.length - 1; k >= 0; k--) {
+      if (REVIEWERS.indexOf(chain[k].who) !== -1) return chain[k].who;
+    }
+    return null;
+  }
+
+  function mergeOne(text, filename) {
+    var incoming = stateFromHtml(text);
+    if (!incoming || !incoming.votes) {
+      return { file: filename, error: "That file isn’t one of these maps." };
+    }
+    var owner = ownerOf(incoming);
+    var inNotes = incoming.notes && typeof incoming.notes === "object" ? incoming.notes : {};
+    var flatNotes = Object.keys(inNotes).some(function (k) { return typeof inNotes[k] === "string"; });
+    var taken = [], filled = 0;
+
+    REVIEWERS.forEach(function (n) {
+      var v = incoming.votes[n] || {};
+      var keys = Object.keys(v);
+      if (!keys.length) return;
+      if (n === owner) {
+        var changed = keys.filter(function (id) { return STATE.votes[n][id] !== v[id]; }).length;
+        STATE.votes[n] = JSON.parse(JSON.stringify(v));
+        taken.push({ who: n, count: keys.length, changed: changed, authoritative: true });
+      } else {
+        var added = 0;
+        keys.forEach(function (id) {
+          if (!STATE.votes[n][id]) { STATE.votes[n][id] = v[id]; added++; }
+        });
+        if (added) taken.push({ who: n, count: added, changed: added, authoritative: false });
+        filled += added;
+      }
+    });
+
+    REVIEWERS.forEach(function (n) {
+      var src = flatNotes ? (n === owner ? inNotes : {}) : (inNotes[n] || {});
+      if (!src) return;
+      Object.keys(src).forEach(function (id) {
+        if (typeof src[id] !== "string") return;
+        if (n === owner || !STATE.notes[n][id]) STATE.notes[n][id] = src[id];
+      });
+    });
+
+    Object.keys(incoming.final || {}).forEach(function (id) {
+      if (!STATE.final[id]) STATE.final[id] = incoming.final[id];
+    });
+
+    (incoming.chain || []).forEach(function (h) {
+      if (!h || REVIEWERS.indexOf(h.who) === -1) return;
+      if (!STATE.chain.some(function (x) { return x.who === h.who; })) STATE.chain.push(h);
+    });
+
+    return { file: filename, owner: owner, taken: taken, gapsFilled: filled };
+  }
+
+  function mergeFiles(fileList) {
+    var files = Array.prototype.slice.call(fileList);
+    if (!files.length) return;
+    var results = [], pending = files.length;
+    files.forEach(function (f) {
+      var reader = new FileReader();
+      reader.onload = function () {
+        results.push(mergeOne(String(reader.result), f.name));
+        if (--pending === 0) finishMerge(results);
+      };
+      reader.onerror = function () {
+        results.push({ file: f.name, error: "Could not read that file." });
+        if (--pending === 0) finishMerge(results);
+      };
+      reader.readAsText(f);
+    });
+  }
+
+  function finishMerge(results) {
+    refreshCounts();
+    renderBody();
+    document.getElementById("chain").innerHTML = chainText();
+    scheduleSave();
+    showMergeReport(results);
+  }
+
+  function showMergeReport(results) {
+    var el = document.getElementById("mergereport");
+    if (!el) return;
+    var html = results.map(function (r) {
+      if (r.error) return "<li><b>" + esc(r.file) + "</b> — " + esc(r.error) + "</li>";
+      if (!r.taken.length) return "<li><b>" + esc(r.file) + "</b> — nothing new in it.</li>";
+      var who = r.owner ? esc(r.owner) + "’s file" : "unsigned file (gaps filled only)";
+      var bits = r.taken.map(function (t) {
+        return esc(t.who) + " " + t.count + (t.authoritative ? "" : " new");
+      }).join(", ");
+      return "<li><b>" + esc(r.file) + "</b> — " + who + ". Took " + bits + ".</li>";
+    }).join("");
+    var c = counts();
+    el.innerHTML = '<div class="mergepanel"><button class="x" type="button" id="mergex" aria-label="Dismiss">×</button>' +
+      "<h3>Merged</h3><ul>" + html + "</ul>" +
+      "<p>Now standing at " + c.agreed + " agreed, " + c.split + " split, " +
+      (c.waiting + c.none) + " still waiting on a vote.</p></div>";
+    var x = document.getElementById("mergex");
+    if (x) x.addEventListener("click", function () { el.innerHTML = ""; });
+  }
+
+  /* ---------- events ---------- */
+
+  function bind() {
+    var q = document.getElementById("q");
+    var g = document.getElementById("g");
+    var s = document.getElementById("s");
+    var m = document.getElementById("me");
+    g.value = ui.group; s.value = ui.show; m.value = me;
+
+    q.addEventListener("input", function () { ui.q = q.value; renderBody(); });
+    g.addEventListener("change", function () { ui.group = g.value; renderBody(); });
+    s.addEventListener("change", function () { ui.show = s.value; renderBody(); });
+    m.addEventListener("change", function () { setMe(m.value); });
+    document.getElementById("clear").addEventListener("click", function () {
+      ui.q = ""; ui.group = "all"; ui.show = "all";
+      q.value = ""; g.value = "all"; s.value = "all";
+      renderBody();
+    });
+    document.getElementById("pass").addEventListener("click", passOn);
+
+    var mf = document.getElementById("mergefile");
+    document.getElementById("merge").addEventListener("click", function () { mf.click(); });
+    mf.addEventListener("change", function () { mergeFiles(mf.files); mf.value = ""; });
+
+    ["dragover", "drop"].forEach(function (evt) {
+      document.addEventListener(evt, function (e) {
+        e.preventDefault();
+        if (evt === "drop" && e.dataTransfer && e.dataTransfer.files.length) {
+          mergeFiles(e.dataTransfer.files);
+        }
+      });
+    });
+
+    window.addEventListener("beforeunload", function (e) {
+      if (!dirty) return;
+      e.preventDefault();
+      e.returnValue = "";
+      return "";
+    });
+
+    document.getElementById("chooser").addEventListener("click", function (e) {
+      var b = e.target.closest("button[data-me]");
+      if (b) setMe(b.getAttribute("data-me"));
+    });
+
+    var body = document.getElementById("tbody");
+    body.addEventListener("click", function (e) {
+      var btn = e.target.closest("button[data-dec], button[data-final]");
+      if (!btn) return;
+      var id = btn.getAttribute("data-row");
+      if (btn.hasAttribute("data-final")) {
+        var fv = btn.getAttribute("data-final");
+        if (STATE.final[id] === fv) delete STATE.final[id]; else STATE.final[id] = fv;
+      } else {
+        if (!me) { renderChooser(); return; }
+        var v = btn.getAttribute("data-dec");
+        if (STATE.votes[me][id] === v) delete STATE.votes[me][id];
+        else STATE.votes[me][id] = v;
+      }
+      refreshCounts();
+      renderBody();
+      scheduleSave();
+    });
+
+    body.addEventListener("input", function (e) {
+      var inp = e.target.closest("input.note");
+      if (!inp) return;
+      var id = inp.getAttribute("data-row");
+      var v = inp.value.trim();
+      if (!me) return;
+      if (v) STATE.notes[me][id] = v; else delete STATE.notes[me][id];
+      scheduleSave();
+    });
+  }
+
+  function setMe(v) {
+    me = REVIEWERS.indexOf(v) === -1 ? "" : v;
+    try { localStorage.setItem(ME_KEY, me); } catch (e) {}
+    var sel = document.getElementById("me");
+    if (sel) sel.value = me;
+    renderChooser();
+    refreshCounts();
+    renderBody();
+  }
+
+  function refreshCounts() {
+    var c = counts();
+    document.getElementById("summary").innerHTML = statCards(c);
+    var bar = document.querySelector(".progress .bar");
+    if (bar) {
+      bar.querySelector(".p-must").style.width = pct(c.agreed, c.total) + "%";
+      bar.querySelector(".p-nice").style.width = pct(c.split, c.total) + "%";
+      bar.querySelector(".p-no").style.width = pct(c.waiting, c.total) + "%";
+    }
+    var cap = document.getElementById("progcap");
+    if (cap) cap.textContent = progText(c);
+  }
+
+  function csv() {
+    var names = {};
+    DATA.groups.forEach(function (g) { names[g.id] = g.name; });
+    var LBL = { must: "Must have", nice: "Nice to have", no: "Not for us" };
+    var head = ["ID", "Area", "Capability", "Why it matters"]
+      .concat(DATA.vendors.map(function (v) { return v.name; }))
+      .concat(["Dream OS today", "Dream OS note"])
+      .concat(REVIEWERS)
+      .concat(["Status", "Final call"])
+      .concat(REVIEWERS.map(function (n) { return n + "'s note"; }));
+    var lines = [head];
+    DATA.rows.forEach(function (r) {
+      lines.push([
+        r.id, names[r.g] || r.g, r.n, r.w,
+        COV[String(r.bt)].label, COV[String(r.rp)].label,
+        COV[String(r.st)].label, COV[String(r.en)].label,
+        (DREAM[r.d] || DREAM.absent).t, r.dn || ""
+      ].concat(REVIEWERS.map(function (n) { return LBL[STATE.votes[n][r.id]] || ""; }))
+       .concat([statusOf(r.id), LBL[STATE.final[r.id]] || ""])
+       .concat(REVIEWERS.map(function (n) { return (STATE.notes[n] && STATE.notes[n][r.id]) || ""; })));
+    });
+    return lines.map(function (row) {
+      return row.map(function (cell) { return '"' + String(cell).replace(/"/g, '""') + '"'; }).join(",");
+    }).join("\r\n");
+  }
+
+  /* ---------- boot ---------- */
+
+  try {
+    var stashed = sessionStorage.getItem("dream-os-ui");
+    if (stashed) { ui = JSON.parse(stashed); sessionStorage.removeItem("dream-os-ui"); }
+  } catch (e) {}
+
+  try {
+    var local = localStorage.getItem(LS_KEY);
+    if (local) {
+      var p = JSON.parse(local);
+      var empty = REVIEWERS.every(function (n) { return !Object.keys(STATE.votes[n]).length; });
+      if (empty && p.votes) {
+        REVIEWERS.forEach(function (n) { STATE.votes[n] = p.votes[n] || {}; });
+        STATE.final = p.final || {};
+        STATE.notes = normaliseNotes(p.notes);
+        STATE.chain = p.chain || [];
+      }
+    }
+  } catch (e) {}
+
+  root.innerHTML = renderShell();
+  renderChooser();
+  renderBody();
+  bind();
+  chip("");
+
+  try {
+    localStorage.setItem(LS_KEY + "-probe", "1");
+    localStorage.removeItem(LS_KEY + "-probe");
+  } catch (e) { storageOk = false; showStorageWarning(); }
+
+  if (window.claude) fetch("data/decisions.json", { cache: "no-store" })
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (saved) {
+      if (!saved) return;
+      REVIEWERS.forEach(function (n) { STATE.votes[n] = (saved.votes && saved.votes[n]) || {}; });
+      STATE.final = saved.final || {};
+      STATE.notes = normaliseNotes(saved.notes);
+      STATE.chain = saved.chain || [];
+      localSave();
+      refreshCounts();
+      renderBody();
+      document.getElementById("chain").innerHTML = chainText();
+    })
+    .catch(function () {});
+
+  if (window.claude && typeof window.claude.use === "function") {
+    window.claude.use("artifact").then(function (ns) {
+      if (ns) artifactNs = ns; else chip("Saved here");
+    }).catch(function () {});
+    window.claude.use("downloads").then(function (dl) {
+      if (!dl) return;
+      downloadsNs = dl;
+      var btn = document.getElementById("csv");
+      if (!btn) return;
+      btn.hidden = false;
+      btn.addEventListener("click", function () {
+        dl.save({ filename: "dream-os-capability-map.csv", data: csv() }).catch(function () {});
+      });
+    }).catch(function () {});
+  } else {
+    var btn = document.getElementById("csv");
+    if (btn) {
+      btn.hidden = false;
+      btn.addEventListener("click", function () {
+        try {
+          var blob = new Blob([csv()], { type: "text/csv" });
+          var url = URL.createObjectURL(blob);
+          var a = document.createElement("a");
+          a.href = url; a.download = "dream-os-capability-map.csv";
+          document.body.appendChild(a); a.click(); a.remove();
+          setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+        } catch (e) {}
+      });
+    }
+  }
+})();
+
+</script>
+</body>
+</html>
