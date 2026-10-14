@@ -8,6 +8,35 @@ _Last updated: 2026-10-14_
 
 ---
 
+## ARC A3 — DOCUMENTS HUB (2026-10-14, late)
+
+### Shipped
+- **`/documents`** (Deals → Documents in the nav). "Generated": every
+  `document_draft` the user can see (RLS: own + transfers they lead;
+  admins all), newest first — template, property link, author, date,
+  status pill, "Open record". "Templates": the active `doc_template` rows;
+  mandates say "Prepare from a property record", purchaser-requiring ones
+  "Prepare from a deal — coming". No migration.
+- **Property record → "Generated documents"** section (new
+  `GeneratedDocuments.tsx`), between Offers/Compliance and Viewings; hidden
+  when empty. `page.tsx` queries `document_draft` by property.
+- Rows stack below 760px.
+
+### Verification
+- typecheck, lint, build green. Not loaded in a browser — straightforward
+  list pages; check `/documents` after deploy shows the Templates list (7
+  active) and, after saving a mandate, one Generated row.
+
+### Loose ends
+- A4: open a draft back into the editor (edit field values, switch
+  variants, override clause text, omit optional clauses, versions).
+- A5: PDF + signed-document register; upload-signed-copy.
+- "Prepare…" for movables / addenda / condition-report appendix needs a
+  transfer-based context builder (purchaser, agreement date, erf) — do
+  with A4 so there is one editor for every template.
+
+---
+
 ## ARC A2 — RESOLVER + CLAUSE-LIBRARY RENDERER (2026-10-14, late)
 
 The document engine's data layer (0065/0068/0069) finally has code on top
@@ -72,11 +101,14 @@ React template, and saving one keeps a `document_draft`.
 ### Verification
 - typecheck, lint (0 errors), `test:documents`, `next build` all green in
   the cloud container.
-- **Not loaded in a browser.** After 0071 is applied and this deploys,
-  open a property → Prepare mandate → Exclusive: expect the title line,
-  the seller paragraph filled from the record, highlighted gaps for price /
-  commission / term, "Still needed" listing them, and the gaps closing as
-  you type. Then Joint and Open. Print preview should show no highlights.
+- **Browser check done (20:55 SAST, after 0071 applied + deploy).** 7 The
+  Grove → Exclusive: title, sellers ("Mark Tracy Sofianos and The Leisure
+  Partnership"), Erf 1764, address, 614 m² from the record; typing
+  29 950 000 / 5 / 6 produced "ZAR 29 950 000 (Twenty Nine Million Nine
+  Hundred and Fifty Thousand RAND)", "5% (Five percent)", "6 (six)
+  months", expiry 2027-04-14. Joint: Pam Golding in the title, Joint
+  Agency line after the FFC warrant. Open: no juristic clause. No console
+  errors. Print preview not checked.
 - Not tested: a seller with a passport only; a listing with no transfer
   (renders blanks — by design).
 

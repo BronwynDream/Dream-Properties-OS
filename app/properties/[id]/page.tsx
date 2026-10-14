@@ -16,6 +16,7 @@ import Viewings, { type ViewingItem, type AttendeeItem } from "./Viewings";
 import Offers, { type OfferRow } from "./Offers";
 import AttachListing from "./AttachListing";
 import PrepareMandateButton from "./PrepareMandateButton";
+import GeneratedDocuments from "./GeneratedDocuments";
 import { PRODUCTS as LIGHTSTONE_PRODUCTS } from "@/lib/lightstone";
 import { Rand, randString } from "@/app/components/format";
 import type { PpraFormType } from "@/lib/ppraDisclosure";
@@ -217,6 +218,15 @@ export default async function PropertyRecord({
   const members = (membersData ?? []) as any[];
 
   const membersFor = (pid: string) => members.filter((m) => m.entity_party_id === pid);
+
+  // Documents generated from the clause library for this property (plan 019
+  // Arc A2/A3). RLS scopes agents to their own + transfers they lead.
+  const { data: draftsData } = await supabase
+    .from("document_draft")
+    .select("id, title, status, created_at, mandate_id, template:template_id(label), author:created_by(full_name)")
+    .eq("property_id", params.id)
+    .order("created_at", { ascending: false });
+  const generatedDocs = (draftsData ?? []) as any[];
 
   // Documents linked to these transfers, with short-lived signed URLs to view them.
   // Now including doc_type.category + mime_type so we can group and identify photos.
@@ -1164,6 +1174,8 @@ export default async function PropertyRecord({
             a viewing may pre-date an active transfer, and because it's a
             different kind of activity (scheduling / prospecting) than
             documents / compliance. */}
+        <GeneratedDocuments rows={generatedDocs} />
+
         <Viewings
           propertyId={prop.id}
           listingId={listingForPicker?.id ?? null}

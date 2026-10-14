@@ -2653,3 +2653,8 @@ a.topbar-who-name:hover { color: var(--white); text-decoration: underline; }
 .source-health-green { background: var(--positive); }
 .source-health-amber { background: var(--caution); }
 .source-health-red   { background: var(--critical); }
+
+/* /documents rows stack on phones (plan 019 slice A3) */
+@media (max-width: 760px) {
+  .doc-row { grid-template-columns: 1fr !important; }
+}

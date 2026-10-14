@@ -35,6 +35,7 @@ const NAV: NavItem[] = [
     label: "Deals",
     children: [
       { kind: "leaf", href: "/mandates", label: "Mandates" },
+      { kind: "leaf", href: "/documents", label: "Documents" },
       { kind: "leaf", href: "/pipeline", label: "Pipeline" },
       { kind: "leaf", href: "/viewings", label: "Viewings" },
       { kind: "leaf", href: "/compliance", label: "Compliance", adminOnly: true },
