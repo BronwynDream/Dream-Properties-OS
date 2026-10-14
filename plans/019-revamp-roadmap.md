@@ -137,6 +137,25 @@ content it frames exists.
   Business API (needs subscription); commission/trust (out of scope);
   Lightstone API (declined at R5k/mo).
 
+## Pre-launch: database purge (parked, Simon 2026-10-14)
+
+Nobody has used the system yet; most or all data in Bon Bon is test
+data from migration trials and scraper runs. Before the agents are let in,
+purge transactional data and keep reference data. Not scheduled; scope it
+when Simon says go. Shape when it comes:
+
+- **Keep**: schema, `app_user`, cadastral parcels, `muni_property` /
+  `muni_valuation`, valuation-roll uploads, clause library and
+  `doc_template*`, agencies, settings.
+- **Purge**: `property`, `transfer`, `party` and their children, listings,
+  mandates, agreements, documents and storage buckets (`staging`,
+  `documents`, `fica`), `ingest_batch` / `ingest_file`, `external_listing`
+  and the Property24 queue (re-scrape after), `feed_run`.
+- Do it as a reviewed SQL script committed to `supabase/`, run inside a
+  transaction, after a Supabase point-in-time backup. Decide first whether
+  the pilot deals (7 The Grove, Plot A4, 3 Oupad) are test data or the
+  first real records.
+
 ## Per-PR done criteria (every slice)
 
 - `npm run typecheck`, `npm run build` (in the cloud container — see the
