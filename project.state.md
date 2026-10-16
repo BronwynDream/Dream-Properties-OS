@@ -71,7 +71,12 @@ filed on the property record, and the signed copy filed against it.
   into server functions → logo now inlined as base64 in
   `lib/documents/logo.ts`), and numbered sub-clauses with an inline blank
   were set in Courier (fill-line heuristic tightened to "Label: ____" lines
-  only). Both fixed in the follow-up commit; re-check on the next finalise.
+  only). Both fixed and re-verified live on a fresh addendum draft
+  (`832496d2`): logo in the letterhead, body face throughout. Third nit from
+  that PDF: justified text stretched lines ending in a hard break ("in
+  respect of Erf ___ Knysna (___), dated") — paragraphs now left-aligned.
+- The property record's document list already shows the generated PDF
+  (document_link → property works end to end).
 - NOT yet verified live: the signed-copy upload from a phone photo.
 
 ### Loose ends

@@ -27,7 +27,7 @@ const s = StyleSheet.create({
   ffc: { fontFamily: "Courier", fontSize: 8, color: "#6B6153", marginTop: 4 },
   title: { fontFamily: "Times-Bold", fontSize: 14, letterSpacing: 0.3, marginBottom: 12 },
   heading: { fontFamily: "Helvetica-Bold", fontSize: 10.5, marginTop: 10, marginBottom: 4 },
-  para: { marginBottom: 7, textAlign: "justify" },
+  para: { marginBottom: 7 }, // left-aligned: justify stretches lines that end in a hard break (blanks, "dated ___")
   row: { marginBottom: 6, fontFamily: "Courier", fontSize: 9.5 },
   footer: { position: "absolute", left: MARGIN, right: MARGIN, bottom: 24, borderTopWidth: 0.5, borderTopColor: "#D8CFBE", paddingTop: 6, fontSize: 7.5, color: "#8C8172" },
   footerRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 2 },
