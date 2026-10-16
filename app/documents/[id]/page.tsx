@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getDreamAgency } from "@/lib/agency";
 import { loadTemplate } from "@/lib/documents/resolve";
 import DraftEditor from "./DraftEditor";
+import { refreshPpraTokens } from "@/lib/documents/ppra";
 
 // Open a saved document draft in the editor (plan 019 Arc A4).
 // Not wrapped in <TopBar> — same reasoning as the mandate page: a printable
@@ -55,6 +56,12 @@ export default async function DraftPage({ params }: { params: { id: string } }) 
     .limit(20);
 
   const agency = await getDreamAgency();
+  const fieldValues = await refreshPpraTokens(supabase, {
+    template_code: tpl?.code ?? null,
+    transfer_id: draft.transfer_id,
+    property_id: draft.property_id,
+    field_values: (draft.field_values ?? {}) as Record<string, string | number | boolean | null>,
+  });
 
   return (
     <main style={{ background: "#F5F1E8", minHeight: "100vh", padding: "20px 20px 60px" }}>
@@ -74,7 +81,7 @@ export default async function DraftPage({ params }: { params: { id: string } }) 
           title: draft.title ?? model.label,
           status: draft.status,
           version: draft.version,
-          field_values: (draft.field_values ?? {}) as Record<string, string | number | boolean | null>,
+          field_values: fieldValues,
           clause_selections: draft.clause_selections ?? {},
           clause_overrides: draft.clause_overrides ?? {},
           omitted_clauses: draft.omitted_clauses ?? [],

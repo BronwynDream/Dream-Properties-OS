@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { questionsFor, answerMark, PLOT_PRESET, type PpraFormType } from "@/lib/ppraDisclosure";
+import { questionsFor, answerMark, ppraFormTypeFor, PLOT_PRESET, type PpraFormType } from "@/lib/ppraDisclosure";
 import type { DocContext } from "./resolve";
 
 // PPRA Section 67 disclosure ↔ the document engine (plan 019 Arc A6).
@@ -107,4 +107,28 @@ export async function ppraContext(
 function shortLabel(label: string): string {
   const s = label.replace(/^I am aware (of|that)\s+/i, "").replace(/\.$/, "");
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/**
+ * The statement answers live on the property record, not on the draft, so a
+ * PPRA draft re-reads them every time it is opened or finalised. Returns the
+ * field values with the ans_* tokens and additional information refreshed;
+ * other drafts come back unchanged.
+ */
+export async function refreshPpraTokens(
+  supabase: SupabaseClient,
+  draft: { template_code: string | null; transfer_id: string | null; property_id: string | null; field_values: DocContext },
+): Promise<DocContext> {
+  if (draft.template_code !== "ppra_disclosure" || !draft.transfer_id || !draft.property_id) return draft.field_values;
+  const { data: p } = await supabase.from("property").select("property_type:property_type_id(label)").eq("id", draft.property_id).maybeSingle();
+  const typeLabel = ((Array.isArray(p?.property_type) ? p?.property_type[0] : p?.property_type) as { label: string } | null | undefined)?.label ?? null;
+  const live = await ppraContext(supabase, draft.transfer_id, ppraFormTypeFor(typeLabel));
+  const next: DocContext = { ...draft.field_values };
+  for (const k of Object.keys(next)) if (k.startsWith(PPRA_ANSWER_PREFIX)) delete next[k];
+  for (const [k, v] of Object.entries(live)) {
+    // Additional information typed on the draft wins over the record's.
+    if (k === "ppra_additional_info" && next[k]) continue;
+    next[k] = v;
+  }
+  return next;
 }

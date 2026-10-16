@@ -101,7 +101,9 @@ export default function DraftEditor({
     () => resolveDocument(model, ctx, { clause_selections: selections, clause_overrides: overrides, omitted_clauses: omitted }),
     [model, ctx, selections, overrides, omitted],
   );
-  const stillNeeded = Array.from(new Set(doc.unresolved.map((t) => LABELS[t] ?? t.replace(/_/g, " "))));
+  const unansweredStatements = doc.unresolved.filter((t) => t.startsWith(PPRA_ANSWER_PREFIX)).length;
+  const stillNeeded = Array.from(new Set(doc.unresolved.filter((t) => !t.startsWith(PPRA_ANSWER_PREFIX)).map((t) => LABELS[t] ?? t.replace(/_/g, " "))));
+  if (unansweredStatements > 0) stillNeeded.unshift(`${unansweredStatements} statement answer${unansweredStatements === 1 ? "" : "s"} on the property record`);
 
   function setField(k: string, v: string) {
     setFields((f) => ({ ...f, [k]: v === "" ? null : v }));
@@ -260,7 +262,7 @@ export default function DraftEditor({
           <div style={{ ...panel, background: "#FFF8EA", borderColor: "var(--caution)" }}>
             <h3 style={h3}>Statement answers</h3>
             <p style={{ fontSize: 12, margin: 0, lineHeight: 1.45 }}>
-              The YES / NO / N/A answers come from the PPRA disclosure on the property record — change them there and reopen this document. Unanswered statements show as gaps.
+              The YES / NO / N/A answers come from the PPRA disclosure on the property record and are re-read every time this document is opened or finalised — change them there. Unanswered statements show as gaps.
             </p>
           </div>
         )}

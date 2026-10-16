@@ -4,6 +4,7 @@ import { getDreamAgency } from "@/lib/agency";
 import { loadTemplate, resolveDocument, type DocContext } from "./resolve";
 import { deriveContext } from "./derive";
 import { renderDocumentPdf } from "./pdf";
+import { refreshPpraTokens } from "./ppra";
 import { dreamLogoBuffer } from "./logo";
 
 // Finalisation and the signed-copy register (plan 019 Arc A5).
@@ -76,7 +77,8 @@ export async function finaliseDraft(userClient: SupabaseClient, userId: string, 
   const model = await loadTemplate(userClient, tpl.code);
   if (!model) return { ok: false, error: `Template ${tpl.code} could not be loaded.` };
 
-  const ctx = deriveContext(draft.field_values ?? {});
+  const fields = await refreshPpraTokens(userClient, { template_code: tpl.code, transfer_id: draft.transfer_id, property_id: draft.property_id, field_values: draft.field_values ?? {} });
+  const ctx = deriveContext(fields);
   const doc = resolveDocument(model, ctx, {
     clause_selections: draft.clause_selections ?? {},
     clause_overrides: draft.clause_overrides ?? {},

@@ -53,9 +53,18 @@ _Last updated: 2026-10-16_
 - tsc clean, eslint clean on touched files, `next build` clean. Migrations
   replayed in the container harness: `ppra_disclosure` typed, 10 slots;
   amendments variants as intended.
-- NOT yet live: apply 0075 + 0076, push, then Prepare document → PPRA
-  disclosure on 7 The Grove and check the statements render with marks and
-  the plot preset on a vacant-land deal.
+- Live (0075 + 0076 applied): Prepare document → PPRA disclosure on 7 The
+  Grove opened the prescribed form with the property description filled and
+  eleven gaps. Answering on the property record then showed the draft did
+  NOT pick the answers up — field_values are snapshotted at creation. Fixed:
+  `refreshPpraTokens()` re-reads the ans_* tokens from the record on every
+  open and at finalise (additional information typed on the draft wins).
+  "Still needed" now says "N statement answers on the property record"
+  instead of listing raw token names. Re-check after push: open draft
+  `c9c668d9` → roof NO / electrical YES marks + the explanation under
+  Additional information.
+- NOT yet checked: the plot preset on a vacant-land deal (no vacant-land
+  transfer in the test data).
 
 ### Loose ends
 
