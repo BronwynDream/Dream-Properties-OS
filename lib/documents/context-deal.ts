@@ -2,11 +2,9 @@
 // addenda, condition-report appendix, and later the sale agreements.
 //
 // Same fill-source rule as mandates: the record supplies what it can, the
-// draft editor asks for the rest, nothing is defaulted. The short templates
-// seeded in 0069 keep Bronwyn's fill-in blanks verbatim (no tokens yet), so
-// today this context is stored on the draft for the title and for future
-// tokenisation; the agent fills blanks by editing the clause wording on the
-// document. When those bodies gain {{tokens}} the values are already here.
+// draft editor asks for the rest, nothing is defaulted. Migration 0074 put
+// {{tokens}} into the short templates seeded in 0069, so what is built here
+// lands on the page; signature blocks keep their blanks for signing day.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { DocContext } from "./resolve";
@@ -70,7 +68,7 @@ export async function buildDealContext(
       ctx.purchase_price = formatZar(Number(agreement.price));
       ctx.purchase_price_words = numberToWords(Number(agreement.price));
     }
-    ctx.agreement_date = agreement?.signature_date ?? null;
+    ctx.agreement_date = longDate(agreement?.signature_date ?? null);
   }
 
   const label = ctx.transfer_name ? String(ctx.transfer_name) : prop?.primary_address ?? "Document";
@@ -89,6 +87,14 @@ export function joinNames(names: string[]): string {
   const n = names.filter(Boolean);
   if (n.length <= 1) return n[0] ?? "";
   return `${n.slice(0, -1).join(", ")} and ${n[n.length - 1]}`;
+}
+
+/** "2026-03-14" → "14 March 2026", as a contract writes a date. */
+export function longDate(iso: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric", timeZone: "Africa/Johannesburg" });
 }
 
 /** "12 Eagles Way, The Heads, Knysna" → "12 Eagles Way, The Heads". */
@@ -110,4 +116,6 @@ export const DEAL_TOKEN_LABELS: Record<string, string> = {
   purchase_price: "Purchase price (ZAR)",
   agreement_date: "Agreement date",
   movables_price: "Price for the movables (ZAR)",
+  movables_agreement_date: "Date of the movables agreement",
+  agent_disclosures: "Disclosures the agent made (if any)",
 };

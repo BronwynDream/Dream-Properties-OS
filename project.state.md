@@ -8,6 +8,43 @@ _Last updated: 2026-10-16_
 
 ---
 
+## TOKENISE THE SHORT TEMPLATES (2026-10-16, after A5)
+
+The first live finalise printed an addendum that said "all fields filled"
+and was full of blanks: 0069 kept Bronwyn's underscores verbatim, so the
+record could not put seller, purchaser, erf, address or date on the page.
+
+### Shipped
+
+- **Migration `0074_tokenise_small_templates.sql`** — rewrites the Master
+  bodies of `movables.definitions` (erf, known-as, purchaser, seller),
+  `movables.purchase_price` (`{{movables_price}}` / `_words`),
+  `addendum.parties` and `addendum_movables.parties` (names, erf, address,
+  `{{agreement_date}}` / `{{movables_agreement_date}}`) and
+  `condition_report.seller_unable` (`{{agent_disclosures}}`). Signature
+  blocks keep their blanks — place and date are written at signing.
+- `lib/documents/context-deal.ts` — `agreement_date` now formatted as a
+  contract writes it ("14 March 2026", `longDate()`); labels for the two new
+  tokens so the editor asks for them in plain words.
+
+### Verification
+
+- tsc clean. Migration not run locally (no Postgres in the container);
+  apply on Bon Bon, then open a new addendum draft on 7 The Grove and check
+  the parties block fills from the transfer and "Still needed" lists only
+  the agreement date if the transfer has none.
+
+### Loose ends
+
+- `addendum.amendments` still prints the master's "EXAMPLES: 1. Clause ___
+  shall now read…" unless the agent edits the wording. By design (the agent
+  drafts the real amendments) but a final PDF with "EXAMPLES" in it is a
+  trap — consider a blank-by-default variant + a nudge in the editor.
+- Existing finalised drafts are untouched; already-open drafts pick up the
+  new wording on next render (selections point at the same variant rows).
+
+---
+
 ## ARC A5 — FINALISE → PDF, FILED; SIGNED-COPY REGISTER (2026-10-16)
 
 Plan 019, slice A5. A draft can now be frozen into a PDF that is stored and
