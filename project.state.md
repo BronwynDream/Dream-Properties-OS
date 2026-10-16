@@ -8,6 +8,56 @@ _Last updated: 2026-10-16_
 
 ---
 
+## LANDING PAGE — "WHAT ARE YOU HERE TO DO?" (2026-10-16)
+
+Simon: *"when the agent lands on the page, what is it that they are trying
+to use the system for at that point in time … essentially those 6 blocks
+as tiles on the landing page."* Arc D1 pulled forward.
+
+### Shipped
+- **`app/dashboard/Landing.tsx`** (server component) rendered at the top
+  of `/dashboard`: greeting in Fraunces ("Morning, Simon.") + date; a
+  one-line **today strip** (viewings today · mandates expiring ≤30 d ·
+  enquiries waiting — live items gold-underlined, each a link); **six
+  tiles** in the agent's own words, each with one live figure:
+  market → `/map` (live listings, exclusive count) · deal in progress →
+  `/pipeline` (deals in conveyancing, next/overdue transfer) · new
+  listing → `/properties#new` (erven on file) · prepare a document →
+  `/documents` (drafts in progress) · enquiries → `/inbox` (items
+  waiting) · find a person → `/contacts` (people on record). Admins get a
+  line below: data-feed light (planned feeds excluded), triage count,
+  valuation rolls. Attention list and work columns stay underneath.
+- CSS in `globals.css` under `.land-*`, paper tokens only; gold tideline
+  rises under a tile on hover/focus; 3 / 2 / 1 columns at 1040 / 600px;
+  reduced-motion respected; visible focus.
+- `#new` anchor on `/properties` for the new-listing tile.
+- Design process: `frontend-design` + `estate-agency-design` skills;
+  reviewed against Vercel's web-interface-guidelines checklist (labels,
+  focus, tabular-nums, text-wrap balance, reduced motion, no div-clicks).
+  Skill research: Vercel agent-skills (web-design-guidelines,
+  react-best-practices) and AccessLint are the worthwhile public
+  additions; UI/UX Pro Max is a style database, not needed with a locked
+  token system.
+
+### Verification
+- typecheck, lint, build green. **Browser check done** at desktop
+  (3-col) and 375px (1-col, no overflow); no console errors. Two fixes
+  after the check: an overdue transfer now reads "3 Oupad is 199 d past
+  transfer date" instead of "next: … 31 Mar"; the admin feed light
+  ignores planned feeds (Private Property) so it isn't red for a roadmap
+  item.
+
+### Loose ends
+- "Find a person" becomes the ⌘K search in Arc B2.
+- Agents' figures are scoped where the data has an agent (viewings,
+  mandates, deals); listings, drafts, people and enquiries are
+  agency-wide. Revisit when agents are on the system.
+- The three work columns below the tiles are now the second screen; the
+  UX audit's #14/#15 (property record order, properties list) are still
+  the next D items.
+
+---
+
 ## ARC A4 — DRAFT EDITOR + VERSIONS + PREPARE FROM A DEAL (2026-10-16)
 
 ### Shipped

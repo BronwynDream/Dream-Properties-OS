@@ -88,7 +88,15 @@ export default async function Landing({ supabase, userId, firstName, isAdmin, my
   ]);
 
   const nearestRow = (nearest as { data: { name: string; transfer_date: string } | null }).data;
-  const nearestNote = nearestRow ? `next: ${nearestRow.name} · ${fmtDate(nearestRow.transfer_date)}` : null;
+  let nearestNote: string | null = null;
+  if (nearestRow) {
+    const days = Math.round((Date.parse(nearestRow.transfer_date + "T00:00:00") - todayStart.getTime()) / 86400_000);
+    const short = nearestRow.name.replace(/,\s*Knysna\s*$/i, "");
+    nearestNote =
+      days < 0 ? `${short} is ${-days} d past transfer date`
+      : days === 0 ? `${short} transfers today`
+      : `next: ${short} · ${fmtDate(nearestRow.transfer_date)}`;
+  }
 
   const tiles: Tile[] = [
     {
@@ -142,7 +150,8 @@ export default async function Landing({ supabase, userId, firstName, isAdmin, my
   if (isAdmin) {
     const latest = new Map<string, FeedLatest>();
     for (const r of ((feedRows as { data: FeedLatest[] | null }).data ?? [])) latest.set(r.feed, r);
-    const lights = FEEDS.map((f) => feedLight(f, latest.get(f.key)));
+    // A feed that is not built yet is a roadmap item, not a problem.
+    const lights = FEEDS.filter((f) => !f.planned).map((f) => feedLight(f, latest.get(f.key)));
     healthLight = lights.includes("red") ? "red" : lights.includes("amber") ? "amber" : lights.includes("grey") ? "grey" : "green";
   }
 
