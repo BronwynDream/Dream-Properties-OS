@@ -10,8 +10,9 @@ import { BLANK } from "@/lib/documents/resolve";
 // no markup:
 //   - blank line           → new paragraph
 //   - ALL-CAPS short line  → heading-weight (titles, "ANNEXURE 'A'")
-//   - line containing tabs → signature/definition row, rendered pre-wrap so
-//                            the underscores and columns survive
+//   - "2.1<tab>text"       → numbered sub-clause, hanging indent
+//   - "Label:<tab>value"   → contract-information row, two columns
+//   - short fill-in line   → signature row, pre-wrap so the underscores survive
 //   - {{token}} left blank → BLANK underscores; highlighted on screen when
 //                            `showGaps` is on, plain in print
 //
@@ -35,7 +36,11 @@ export default function ClauseDocument({
         .clause-doc .cd-title { font-weight: 700; font-size: 13pt; letter-spacing: 0.02em; margin: 0 0 12pt; }
         .clause-doc .cd-heading { font-weight: 700; margin: 14pt 0 6pt; }
         .clause-doc .cd-row { white-space: pre-wrap; font-family: inherit; margin: 0 0 8pt; }
-        .clause-doc .cd-gap { background: #fff3c4; border-bottom: 1.5px solid #c8a032; }
+        .clause-doc .cd-sub { font-weight: 700; margin: 6pt 0 6pt; }
+        .clause-doc .cd-kv { display: grid; grid-template-columns: 11.5em minmax(0, 1fr); gap: 8pt; margin: 0 0 4pt; }
+        .clause-doc .cd-kv > span:first-child { color: #5F6883; font-size: 0.92em; }
+        .clause-doc .cd-num { display: grid; grid-template-columns: 3em minmax(0, 1fr); margin: 0 0 10pt; line-height: 1.45; }
+        .clause-doc .cd-gap { background: #E2E8F6; border-bottom: 1.5px solid #122E87; }
         @media print { .clause-doc .cd-gap { background: none; border-bottom: none; } }
       `}</style>
     </div>
@@ -43,6 +48,7 @@ export default function ClauseDocument({
 }
 
 function Section({ s, showGaps }: { s: ResolvedSection; showGaps: boolean }) {
+  const gap = (p: string) => (showGaps ? highlightGaps(p) : p);
   let paras = s.body.split(/\n\s*\n/).map((p) => p.replace(/\s+$/, ""));
   // Some seeded bodies open with the clause heading itself (the masters
   // put it on its own line). Don't print it twice.
@@ -56,14 +62,33 @@ function Section({ s, showGaps }: { s: ResolvedSection; showGaps: boolean }) {
         </p>
       )}
       {paras.map((p, i) => {
-        const isRow = p.includes("\t") || /_{6,}/.test(p) && p.length < 160 && !/[a-z]{4,}.*[a-z]{4,}.*[a-z]{4,}/.test(p);
         const isTitle = i === 0 && !s.heading && isAllCaps(p) && p.length < 90;
-        const cls = isTitle ? "cd-title" : isRow ? "cd-row" : undefined;
-        return (
-          <p key={i} className={cls}>
-            {showGaps ? highlightGaps(p) : p}
-          </p>
-        );
+        if (isTitle) return <p key={i} className="cd-title">{gap(p)}</p>;
+        // Same conventions as the PDF (lib/documents/pdf.tsx): numbered
+        // sub-clause, label/value row, short all-caps sub-heading.
+        const num = p.match(/^(\d+(?:\.\d+)*\.?)\t+([\s\S]+)$/);
+        if (num) {
+          const text = num[2].replace(/\t+/g, "  ");
+          return (
+            <div key={i} className="cd-num">
+              <span>{num[1]}</span>
+              <span style={isAllCaps(text) && text.length < 80 ? { fontWeight: 700 } : undefined}>{gap(text)}</span>
+            </div>
+          );
+        }
+        const kv = p.match(/^([^\t\n]{1,40})\t+([\s\S]+)$/);
+        if (kv) {
+          return (
+            <div key={i} className="cd-kv">
+              <span>{kv[1].trim()}</span>
+              <span>{gap(kv[2].replace(/\t+/g, "  "))}</span>
+            </div>
+          );
+        }
+        const isRow = /_{6,}/.test(p) && p.length < 160 && !/[a-z]{4,}.*[a-z]{4,}.*[a-z]{4,}/.test(p);
+        if (isRow) return <p key={i} className="cd-row">{gap(p)}</p>;
+        if (isAllCaps(p) && p.length < 80) return <p key={i} className="cd-sub">{gap(p)}</p>;
+        return <p key={i}>{gap(p)}</p>;
       })}
     </section>
   );

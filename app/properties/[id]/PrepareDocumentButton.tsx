@@ -8,7 +8,10 @@ import { createDraft } from "@/app/documents/[id]/actions";
 // creates a draft pre-filled from the property and its active transfer and
 // opens the editor. Mandates have their own button next door.
 
-const TEMPLATES: { code: string; title: string; hint: string; needsTransfer: boolean }[] = [
+const TEMPLATES: { code: string; title: string; hint: string; needsTransfer: boolean; soon?: boolean }[] = [
+  { code: "agreement_sale_house", title: "Agreement of sale — freehold house", hint: "Bronwyn's 2026 master, filled from the deal. Signed first, it is the offer.", needsTransfer: true },
+  { code: "agreement_sale_sectional", title: "Agreement of sale — sectional title", hint: "Being loaded next.", needsTransfer: true, soon: true },
+  { code: "agreement_sale_land", title: "Agreement of sale — vacant land", hint: "Being loaded next.", needsTransfer: true, soon: true },
   { code: "movables_agreement", title: "Movables agreement", hint: "Furniture and movables sold with the property.", needsTransfer: true },
   { code: "addendum_sale", title: "Addendum to agreement of sale", hint: "Amend named clauses of a signed agreement.", needsTransfer: true },
   { code: "addendum_movables", title: "Addendum to movables agreement", hint: "Amend a signed movables agreement.", needsTransfer: true },
@@ -64,13 +67,13 @@ export default function PrepareDocumentButton({
         <div
           role="menu"
           style={{
-            position: "absolute", top: "calc(100% + 6px)", right: 0, minWidth: 280,
-            background: "var(--paper)", border: "1px solid var(--paper-line)", borderRadius: 8,
-            boxShadow: "0 6px 22px rgba(15, 42, 99, 0.12)", padding: 6, zIndex: 20,
+            position: "absolute", top: "calc(100% + 6px)", right: 0,
+            background: "var(--white)", border: "1px solid var(--line-soft)", borderRadius: "var(--radius-md)",
+            boxShadow: "var(--shadow-lg)", padding: 6, zIndex: 20, minWidth: 320,
           }}
         >
           {TEMPLATES.map((t) => {
-            const blocked = t.needsTransfer && !transferId;
+            const blocked = t.soon || (t.needsTransfer && !transferId);
             return (
               <button
                 key={t.code}
@@ -86,7 +89,7 @@ export default function PrepareDocumentButton({
               >
                 <div style={{ fontSize: 13, fontWeight: 600 }}>{t.title}</div>
                 <div style={{ fontSize: 11, color: "var(--paper-mute)" }}>
-                  {blocked ? "Needs a deal on this property first." : t.hint}
+                  {t.soon ? t.hint : blocked ? "Needs a deal on this property first." : t.hint}
                 </div>
               </button>
             );

@@ -8,6 +8,73 @@ _Last updated: 2026-10-16_
 
 ---
 
+## AGREEMENT OF SALE — FREEHOLD HOUSE IN THE LIBRARY (2026-10-16)
+
+Simon: "so if i want to populate a sales agreement, what do i do?" — the
+answer was "you can't yet": the three sale templates were registered in 0069
+with no clauses. This loads the freehold house one end to end.
+
+### Shipped
+
+- **`scripts/seed-sale-house.py` → `0078_seed_sale_house.sql`** (generated;
+  edit the script). 39 clauses / 53 wordings from Bronwyn's 17 Sept master,
+  verbatim. Blanks → tokens. Her "DELETE / OR / IF APPLICABLE" alternatives
+  → variants:
+  * BOND line + clause 8: chosen by the deal — `bond_amount` filled prints
+    the bond clause; empty prints "Not applicable" (cash).
+  * 15.1–15.5 certificates: "Applies" / "Not applicable" each.
+  * 5.5 existing lease (default "Not let"), 19 building plans (available /
+    not available — R100 000 retained), 24 suspensive (None / sale of
+    purchaser's property / viewing / Master's consent).
+  * 22.1 estate and 22.2 Thesen Islands: pre-picked from the property's
+    estate and suburb.
+  Template activated. **Wording that is ours, not Bronwyn's**: only the
+  one-line "… – Not applicable." variants that keep the clause numbers
+  (listed in the migration header). Needs her OK.
+- Fidelity check: all 160 master paragraphs found in the library; the
+  differences are headings (stored as slot headings), the two agent
+  instructions that must not print, "20.1If" spacing, and the expiry
+  "___ day of ____" → `{{offer_expires}}`.
+- `lib/documents/context-deal.ts` — the contract-information page fills
+  from the record: per side names, IDs (ID/passport/registration), postal,
+  domicilium, marital status (from `matrimonial_regime`), email, phone;
+  "N/A" for represented-by when every party is a person and for marriage
+  date when every party is unmarried/divorced/widowed. Also title deed,
+  suburb, estate, deposit, transfer date, lead agent, conveyancer firm +
+  contact, commission % from the latest mandate on the property, principal.
+  `derive.ts`: words + ZAR formatting for deposit, bond, occupational rent.
+- **PDF + on-screen layout conventions** (`pdf.tsx`, `ClauseDocument.tsx`):
+  "2.1<tab>text" → hanging-indent numbered sub-clause; "Label:<tab>value" →
+  two-column contract-information row; short all-caps line → bold
+  sub-heading; heading-only clauses travel with the next clause; sections
+  under 700 chars never split. PDF palette moved to Blueprint (blue title,
+  slate ink, cool hairlines).
+- Prepare document… lists the three sale agreements; sectional and land
+  show "Being loaded next".
+
+### Verification
+
+- Engine chain 0065→0078 replays cleanly in the container harness.
+- Sample 12-page PDF rendered through the real resolver with a bond sale +
+  sale-of-purchaser's-property condition + two certificates N/A; read
+  every page. Cash, estate and Thesen choices switch correctly. tsc,
+  eslint, document tests, build clean.
+- NOT yet live: apply 0078, push, prepare one on 7 The Grove.
+
+### Loose ends
+
+- **FFC number mismatch for Bronwyn**: her master says "FFC 2026 – 2028 No.
+  20261501621"; the agency record has 2026-15016210000. Kept her text
+  verbatim; one of them is wrong.
+- Master clause 12.3 "Any notice to a party shall –" ends mid-sentence (the
+  sub-items are missing in her Word file). Kept verbatim; ask her.
+- Sectional title and land agreements next — most wording shared; reuse
+  `sale.*` clauses, add variants where they differ.
+- Editor field list is long (~40) on the agreement; grouping by section
+  would help (Arc D polish).
+
+---
+
 ## ARC B1 + B2 — ONE SEARCH OVER EVERYTHING, ⌘K IN THE TOP BAR (2026-10-16)
 
 ### Shipped

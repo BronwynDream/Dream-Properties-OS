@@ -9,33 +9,48 @@ import type { AgencyIdentity } from "@/lib/agency";
 // It is rendered from the same ResolvedDocument the editor shows, with the
 // agency letterhead and the PPRA footer, so screen and paper never drift.
 //
-// Fonts are the PDF built-ins (Helvetica, Times) on purpose: no network
-// fetch at render time, identical output on Vercel and locally, and a
-// classic serif title that sits with Dream's wordmark. When the new look is
-// chosen, the letterhead here is the one place to change.
+// Fonts are the PDF built-ins (Helvetica) on purpose: no network fetch at
+// render time, identical output on Vercel and locally. Colours follow the
+// Blueprint look (2026-10-16): Dream blue title, slate ink, cool hairlines.
+// Layout conventions read from the clause bodies: "2.1<tab>text" is a
+// numbered sub-clause with a hanging indent, "Label:<tab>value" is a
+// contract-information row, a short all-caps line is a sub-heading.
 
 const PAGE_W = 595.28; // A4 pt
 const MARGIN = 56;
 
 const s = StyleSheet.create({
-  page: { paddingTop: 48, paddingBottom: 64, paddingHorizontal: MARGIN, fontFamily: "Helvetica", fontSize: 10.5, lineHeight: 1.45, color: "#1F1B16" },
-  letterhead: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", borderBottomWidth: 1, borderBottomColor: "#D8CFBE", paddingBottom: 10, marginBottom: 22 },
+  page: { paddingTop: 48, paddingBottom: 64, paddingHorizontal: MARGIN, fontFamily: "Helvetica", fontSize: 10.5, lineHeight: 1.45, color: "#1B2236" },
+  letterhead: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", borderBottomWidth: 1, borderBottomColor: "#DEE3EF", paddingBottom: 10, marginBottom: 22 },
   logo: { width: 96, height: 48, objectFit: "contain" },
   identity: { alignItems: "flex-end" },
   agencyName: { fontFamily: "Helvetica-Bold", fontSize: 11.5 },
-  agencyLine: { fontSize: 8.5, color: "#6B6153", marginTop: 2 },
-  ffc: { fontFamily: "Courier", fontSize: 8, color: "#6B6153", marginTop: 4 },
-  title: { fontFamily: "Times-Bold", fontSize: 14, letterSpacing: 0.3, marginBottom: 12 },
+  agencyLine: { fontSize: 8.5, color: "#5F6883", marginTop: 2 },
+  ffc: { fontFamily: "Courier", fontSize: 8, color: "#5F6883", marginTop: 4 },
+  title: { fontFamily: "Helvetica-Bold", fontSize: 14, letterSpacing: 0.6, marginBottom: 12, color: "#122E87" },
   heading: { fontFamily: "Helvetica-Bold", fontSize: 10.5, marginTop: 10, marginBottom: 4 },
   para: { marginBottom: 7 }, // left-aligned: justify stretches lines that end in a hard break (blanks, "dated ___")
   row: { marginBottom: 6, fontFamily: "Courier", fontSize: 9.5 },
-  footer: { position: "absolute", left: MARGIN, right: MARGIN, bottom: 24, borderTopWidth: 0.5, borderTopColor: "#D8CFBE", paddingTop: 6, fontSize: 7.5, color: "#8C8172" },
+  subhead: { fontFamily: "Helvetica-Bold", marginBottom: 6, marginTop: 4 },
+  // "Full Names:<tab>value" — the contract-information table.
+  kv: { flexDirection: "row", marginBottom: 4 },
+  kvLabel: { width: 160, paddingRight: 8, fontSize: 9.5, color: "#5F6883" },
+  kvValue: { flex: 1 },
+  // "2.1<tab>text" — numbered sub-clause with a hanging indent.
+  num: { flexDirection: "row", marginBottom: 7 },
+  numLabel: { width: 34 },
+  numText: { flex: 1 },
+  footer: { position: "absolute", left: MARGIN, right: MARGIN, bottom: 24, borderTopWidth: 0.5, borderTopColor: "#DEE3EF", paddingTop: 6, fontSize: 7.5, color: "#6B7490" },
   footerRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 2 },
 });
 
 // "Seller:  ________" style fill-in lines; numbered sub-clauses with a
 // blank inside prose stay in the body face.
 const FILL_LINE_RE = /^[^\n]{0,40}:?\s*_{6,}\s*$/;
+const NUMBERED_RE = /^(\d+(?:\.\d+)*\.?)\t+([\s\S]+)$/;
+const LABEL_ROW_RE = /^([^\t\n]{1,40})\t+([\s\S]+)$/;
+/** A section this short never splits across a page. */
+const KEEP_TOGETHER_CHARS = 700;
 
 function isAllCaps(p: string): boolean {
   const letters = p.replace(/[^A-Za-z]/g, "");
@@ -69,21 +84,48 @@ export async function renderDocumentPdf(args: {
         </View>
 
         {sections.map((sec, i) => {
+          // A heading-only clause ("15. CERTIFICATES OF COMPLIANCE") is
+          // printed with the clause that follows it, never on its own.
+          if (!sec.body.trim() && sec.heading) return null;
+          const prev = sections[i - 1];
+          const carried = prev && !prev.body.trim() && prev.heading ? prev : null;
           let paras = sec.body.split(/\n\s*\n/).map((p) => p.replace(/\s+$/, ""));
           if (sec.heading && paras.length > 1 && norm(paras[0]) === norm(sec.heading)) paras = paras.slice(1);
           const render = (p: string, j: number) => {
             const isTitle = i === 0 && j === 0 && !sec.heading && isAllCaps(p) && p.length < 90;
-            const isRow = FILL_LINE_RE.test(p);
             if (isTitle) return <Text key={j} style={s.title}>{p}</Text>;
-            if (isRow) return <Text key={j} style={s.row}>{p.replace(/\t+/g, "   ")}</Text>;
+            if (FILL_LINE_RE.test(p)) return <Text key={j} style={s.row}>{p.replace(/\t+/g, "   ")}</Text>;
+            const num = p.match(NUMBERED_RE);
+            if (num) {
+              const text = num[2].replace(/\t+/g, "  ");
+              return (
+                <View key={j} style={s.num}>
+                  <Text style={s.numLabel}>{num[1]}</Text>
+                  <Text style={[s.numText, isAllCaps(text) && text.length < 80 ? { fontFamily: "Helvetica-Bold" } : {}]}>{text}</Text>
+                </View>
+              );
+            }
+            const kv = p.match(LABEL_ROW_RE);
+            if (kv) {
+              return (
+                <View key={j} style={s.kv} wrap={false}>
+                  <Text style={s.kvLabel}>{kv[1].trim()}</Text>
+                  <Text style={s.kvValue}>{kv[2].replace(/\t+/g, "  ")}</Text>
+                </View>
+              );
+            }
+            if (isAllCaps(p) && p.length < 80) return <Text key={j} style={s.subhead}>{p}</Text>;
             return <Text key={j} style={s.para}>{p.replace(/\t+/g, "  ")}</Text>;
           };
           // Keep a heading with its first paragraph so a page never ends on
           // a bare clause number.
           const [first, ...rest] = paras;
           return (
-            <View key={sec.slotId} wrap>
+            <View key={sec.slotId} wrap={sec.body.length > KEEP_TOGETHER_CHARS}>
               <View wrap={false}>
+                {carried ? (
+                  <Text style={s.heading}>{carried.numbering ? `${carried.numbering}. ` : ""}{carried.heading}</Text>
+                ) : null}
                 {sec.heading ? (
                   <Text style={s.heading}>{sec.numbering ? `${sec.numbering}. ` : ""}{sec.heading}</Text>
                 ) : null}

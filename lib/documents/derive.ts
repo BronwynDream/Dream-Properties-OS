@@ -9,11 +9,14 @@ export const DERIVED: Record<string, (ctx: DocContext) => string | null> = {
   asking_price_words: (c) => wordsOfZar(c.asking_price),
   purchase_price_words: (c) => wordsOfZar(c.purchase_price),
   movables_price_words: (c) => wordsOfZar(c.movables_price),
+  deposit_words: (c) => wordsOfZar(c.deposit),
+  bond_amount_words: (c) => wordsOfZar(c.bond_amount),
+  occupational_rent_words: (c) => wordsOfZar(c.occupational_rent),
   commission_pct_words: (c) => (numOf(c.commission_pct) != null ? percentToWords(numOf(c.commission_pct)!) : null),
   term_months_words: (c) => (numOf(c.term_months) != null ? numberToWords(numOf(c.term_months)!).toLowerCase() : null),
 };
 
-const ZAR_FIELDS = ["asking_price", "purchase_price", "movables_price"];
+const ZAR_FIELDS = ["asking_price", "purchase_price", "movables_price", "deposit", "bond_amount", "occupational_rent"];
 
 export function numOf(v: unknown): number | null {
   if (v == null || v === "") return null;
