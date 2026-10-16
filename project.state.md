@@ -47,10 +47,11 @@ rebuilt top bar and the landing page in the Option B layout.
 
 - tsc / eslint / `next build` clean; fonts fetched at build. Login page
   screenshotted locally (Instrument Sans, blue card head, cool ground).
-- NOT yet seen live: top bar menus, landing band, phone layout, and every
-  other page under the new tokens — a sweep is needed; expect a few
-  hard-coded warm hexes (22 literal occurrences across 33 tsx files, mostly
-  the map's data colours, which are intentionally literal).
+- Seen live (2026-10-16 13:35): landing band + tiles, Admin menu with the
+  dot, dashboard attention/columns, property record, map (renders; rail on
+  the cool ground), phone layout at 375px with the drawer. Nothing broken
+  by the token swap on those pages; the full page-by-page sweep is still
+  worth doing once Bronwyn has clicked around.
 
 ### Loose ends
 
@@ -114,9 +115,10 @@ rebuilt top bar and the landing page in the Option B layout.
   `refreshPpraTokens()` re-reads the ans_* tokens from the record on every
   open and at finalise (additional information typed on the draft wins).
   "Still needed" now says "N statement answers on the property record"
-  instead of listing raw token names. Re-check after push: open draft
-  `c9c668d9` → roof NO / electrical YES marks + the explanation under
-  Additional information.
+  instead of listing raw token names. Re-checked live: draft `c9c668d9`
+  shows roof NO [X], electrical YES [X], the explanation under Additional
+  information, and "9 statement answers on the property record" as the gap.
+  A6 closed.
 - NOT yet checked: the plot preset on a vacant-land deal (no vacant-land
   transfer in the test data).
 
