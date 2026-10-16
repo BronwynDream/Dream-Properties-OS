@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import TopBar from "@/app/components/TopBar";
+import Landing from "./Landing";
 import { Rand } from "@/app/components/format";
 
 export const dynamic = "force-dynamic";
@@ -262,6 +263,15 @@ export default async function Dashboard() {
     <>
       <TopBar />
       <main className="page">
+        <Landing
+          supabase={supabase}
+          userId={user.id}
+          firstName={(profile?.full_name ?? "there").split(" ")[0]}
+          isAdmin={isAdmin}
+          myListingIds={myListingIds}
+          myPropertyIds={myPropertyIds}
+        />
+
         {/* Attention row — 3-5 items that need eyes on them today, ranked by
             urgency. If nothing needs attention we show a small "caught up"
             state instead of hiding, so the section is a stable landmark. */}

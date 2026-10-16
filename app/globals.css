@@ -2658,3 +2658,143 @@ a.topbar-who-name:hover { color: var(--white); text-decoration: underline; }
 @media (max-width: 760px) {
   .doc-row { grid-template-columns: 1fr !important; }
 }
+
+/* ---------------------------------------------------------------------------
+   Landing — "What are you here to do?" (plan 019, Arc D1, 2026-10-16)
+   Six intent tiles in the agent's own words, one live figure each, under a
+   one-line account of today. Paper tokens only; boldness spent on the
+   greeting and the tile titles in Fraunces, everything else quiet.
+   --------------------------------------------------------------------------- */
+.land { margin: 0 0 40px; }
+.land-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.land-greeting {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: clamp(1.75rem, 1.2rem + 2vw, 2.75rem);
+  line-height: var(--leading-tight);
+  letter-spacing: -0.01em;
+  color: var(--ink-900);
+  margin: 0;
+  text-wrap: balance;
+}
+.land-date {
+  font-family: var(--font-mono);
+  font-size: var(--step--1);
+  color: var(--ink-500);
+  margin: 0;
+  letter-spacing: 0.02em;
+}
+.land-today {
+  margin: 10px 0 0;
+  font-family: var(--font-mono);
+  font-size: var(--step--1);
+  color: var(--ink-400);
+  line-height: 1.7;
+}
+.land-today-sep { color: var(--line-strong); }
+.land-today-item { color: inherit; text-decoration: none; }
+.land-today-item.is-live { color: var(--ink-700); font-weight: 600; border-bottom: 1.5px solid var(--gold); }
+.land-today-item:hover { color: var(--accent-700); }
+.land-today-item:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; border-radius: 2px; }
+
+.land-ask {
+  margin: 28px 0 10px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--estuary);
+}
+.land-tiles {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.land-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 150px;
+  padding: 18px 20px 16px;
+  background: var(--white);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-md);
+  color: var(--ink-900);
+  text-decoration: none;
+  position: relative;
+  overflow: hidden;
+  transition: border-color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+}
+/* The tideline, rising on hover — the OS's own motif, not a new one. */
+.land-tile::after {
+  content: "";
+  position: absolute;
+  left: 20px; right: 20px; bottom: 0;
+  height: 2px;
+  background: var(--gold);
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 220ms ease;
+}
+.land-tile:hover, .land-tile:focus-visible {
+  border-color: var(--line-strong);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+  outline: none;
+}
+.land-tile:focus-visible { box-shadow: 0 0 0 2px var(--gold); }
+.land-tile:hover::after, .land-tile:focus-visible::after { transform: scaleX(1); }
+.land-tile-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: var(--step-1);
+  line-height: 1.2;
+  color: var(--estuary);
+  text-wrap: balance;
+}
+.land-tile-what {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ink-500);
+  max-width: 34ch;
+}
+.land-tile-figure {
+  margin-top: auto;
+  font-family: var(--font-mono);
+  font-size: var(--step--1);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-700);
+}
+.land-tile-note { color: var(--ink-400); }
+
+.land-admin {
+  margin: 14px 0 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-400);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+.land-admin-item { color: var(--ink-500); text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
+.land-admin-item:hover { color: var(--accent-700); }
+.land-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; }
+.land-dot-green { background: var(--positive); }
+.land-dot-amber { background: var(--caution); }
+.land-dot-red { background: var(--critical); }
+.land-dot-grey { background: var(--ink-400); }
+
+@media (max-width: 1040px) { .land-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) {
+  .land-tiles { grid-template-columns: 1fr; }
+  .land-tile { min-height: 0; padding: 14px 16px 12px; }
+  .land-today { line-height: 1.9; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .land-tile, .land-tile::after { transition: none; }
+  .land-tile:hover { transform: none; }
+}

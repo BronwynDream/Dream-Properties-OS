@@ -47,7 +47,7 @@ export default async function PropertiesList() {
       <hr className="tideline" />
 
       <section className="app-body" style={{ maxWidth: 1000 }}>
-        <div style={{ marginBottom: 20 }}>
+        <div id="new" style={{ marginBottom: 20, scrollMarginTop: 80 }}>
           <NewPropertyForm suburbs={suburbs} />
         </div>
 
