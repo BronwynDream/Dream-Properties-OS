@@ -1,6 +1,5 @@
 import Link from "next/link";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { FEEDS, feedLight, type FeedLatest, type Light } from "@/lib/feeds/registry";
 
 // The landing page proper (plan 019, Arc D1 pulled forward 2026-10-16).
 //
@@ -27,12 +26,14 @@ type Tile = {
   href: string;
   title: string;
   what: string;
-  figure: string | null;
-  figureNote?: string | null;
+  /** The one live figure, big, in mono. */
+  value: string;
+  label: string;
+  note?: string | null;
+  noteTone?: "critical" | null;
 };
 
 const n = (r: { count: number | null }) => r.count ?? 0;
-const plural = (c: number, one: string, many = `${one}s`) => `${c} ${c === 1 ? one : many}`;
 
 function greeting(now: Date): string {
   const h = Number(new Intl.DateTimeFormat("en-ZA", { hour: "numeric", hour12: false, timeZone: "Africa/Johannesburg" }).format(now));
@@ -49,7 +50,7 @@ export default async function Landing({ supabase, userId, firstName, isAdmin, my
 
   const [
     viewingsToday, expiring, enquiries,
-    liveAll, liveExclusive, inFlight, nearest, drafts, parties, erven, feedRows,
+    liveAll, liveExclusive, inFlight, nearest, drafts, parties, erven,
   ] = await Promise.all([
     // Today strip
     (() => {
@@ -84,16 +85,17 @@ export default async function Landing({ supabase, userId, firstName, isAdmin, my
     supabase.from("document_draft").select("id", { count: "exact", head: true }).eq("status", "draft"),
     supabase.from("party").select("id", { count: "exact", head: true }),
     supabase.from("muni_property").select("sg_number", { count: "exact", head: true }),
-    isAdmin ? supabase.from("v_feed_latest").select("feed, status, trigger, started_at, finished_at, items, error") : Promise.resolve({ data: [] }),
   ]);
 
   const nearestRow = (nearest as { data: { name: string; transfer_date: string } | null }).data;
   let nearestNote: string | null = null;
+  let nearestOverdue = false;
   if (nearestRow) {
     const days = Math.round((Date.parse(nearestRow.transfer_date + "T00:00:00") - todayStart.getTime()) / 86400_000);
     const short = nearestRow.name.replace(/,\s*Knysna\s*$/i, "");
+    nearestOverdue = days < 0;
     nearestNote =
-      days < 0 ? `${short} is ${-days} d past transfer date`
+      days < 0 ? `${short} ${-days} d overdue`
       : days === 0 ? `${short} transfers today`
       : `next: ${short} · ${fmtDate(nearestRow.transfer_date)}`;
   }
@@ -103,111 +105,100 @@ export default async function Landing({ supabase, userId, firstName, isAdmin, my
       href: "/map",
       title: "See what's on the market",
       what: "Every listing on the map — ours, Property24, the competition — over the erven.",
-      figure: `${plural(n(liveAll), "live listing")}`,
-      figureNote: n(liveExclusive) > 0 ? `${n(liveExclusive)} exclusive` : null,
+      value: String(n(liveAll)),
+      label: n(liveAll) === 1 ? "live listing" : "live listings",
+      note: n(liveExclusive) > 0 ? `${n(liveExclusive)} exclusive` : null,
     },
     {
       href: "/pipeline",
       title: "Work on a deal in progress",
       what: "Offers, conditions, conveyancing — where each sale stands and what's next.",
-      figure: plural(n(inFlight), "deal in conveyancing", "deals in conveyancing"),
-      figureNote: nearestNote,
+      value: String(n(inFlight)),
+      label: "in conveyancing",
+      note: nearestNote,
+      noteTone: nearestOverdue ? "critical" : null,
     },
     {
       href: "/properties#new",
       title: "I have a new listing",
       what: "Start the property record from the erf, so the deeds, valuation and boundary come with it.",
-      figure: `${formatCount(n(erven))} erven on file`,
-      figureNote: "Knysna municipal roll",
+      value: formatCount(n(erven)),
+      label: "erven on file",
+      note: "Knysna municipal roll",
     },
     {
       href: "/documents",
       title: "Prepare a document",
       what: "Mandates, agreements, addenda — from Bronwyn's templates, filled from the record.",
-      figure: plural(n(drafts), "document in progress", "documents in progress"),
+      value: String(n(drafts)),
+      label: n(drafts) === 1 ? "document in progress" : "documents in progress",
     },
     {
       href: "/inbox",
       title: "Follow up on enquiries",
       what: "What came in by email and from the portals, and what's waiting for a reply.",
-      figure: plural(n(enquiries), "item waiting", "items waiting"),
+      value: String(n(enquiries)),
+      label: n(enquiries) === 1 ? "item waiting" : "items waiting",
     },
     {
       href: "/contacts",
       title: "Find a person",
       what: "Sellers, buyers, conveyancers — who they are and every property they've touched.",
-      figure: `${formatCount(n(parties))} people on record`,
+      value: formatCount(n(parties)),
+      label: "people on record",
     },
   ];
 
   const today = [
-    { href: "/viewings", count: n(viewingsToday), label: plural(n(viewingsToday), "viewing") + " today" },
-    { href: "/mandates", count: n(expiring), label: plural(n(expiring), "mandate") + " expiring within 30 days" },
-    { href: "/inbox", count: n(enquiries), label: plural(n(enquiries), "enquiry", "enquiries") + " waiting" },
+    { href: "/viewings", count: n(viewingsToday), label: n(viewingsToday) === 1 ? "viewing today" : "viewings today" },
+    { href: "/mandates", count: n(expiring), label: n(expiring) === 1 ? "mandate expiring ≤ 30 d" : "mandates expiring ≤ 30 d" },
+    { href: "/inbox", count: n(enquiries), label: n(enquiries) === 1 ? "enquiry waiting" : "enquiries waiting" },
   ];
 
-  let healthLight: Light | null = null;
-  if (isAdmin) {
-    const latest = new Map<string, FeedLatest>();
-    for (const r of ((feedRows as { data: FeedLatest[] | null }).data ?? [])) latest.set(r.feed, r);
-    // A feed that is not built yet is a roadmap item, not a problem.
-    const lights = FEEDS.filter((f) => !f.planned).map((f) => feedLight(f, latest.get(f.key)));
-    healthLight = lights.includes("red") ? "red" : lights.includes("amber") ? "amber" : lights.includes("grey") ? "grey" : "green";
-  }
-
   return (
-    <section className="land" aria-labelledby="land-greeting">
-      <header className="land-head">
-        <h1 id="land-greeting" className="land-greeting">
-          {greeting(now)}, {firstName}.
-        </h1>
-        <p className="land-date">
-          {new Intl.DateTimeFormat("en-ZA", { weekday: "long", day: "numeric", month: "long", timeZone: "Africa/Johannesburg" }).format(now)}
-        </p>
-      </header>
+    <>
+      <div className="land-band">
+        <div className="land-band-inner">
+          <header className="land-head">
+            <h1 id="land-greeting" className="land-greeting">
+              {greeting(now)}, {firstName}.
+            </h1>
+            <p className="land-date">
+              {new Intl.DateTimeFormat("en-ZA", { weekday: "short", day: "numeric", month: "short", timeZone: "Africa/Johannesburg" }).format(now).toUpperCase()}
+            </p>
+          </header>
+          <p className="land-today">
+            {today.map((t) => (
+              <Link key={t.href} href={t.href} className={t.count > 0 ? "land-today-item is-live" : "land-today-item"}>
+                <span className="land-today-count">{t.count}</span>
+                <span className="land-today-label">{t.label}</span>
+              </Link>
+            ))}
+          </p>
+        </div>
+      </div>
 
-      <p className="land-today">
-        {today.map((t, i) => (
-          <span key={t.href}>
-            {i > 0 && <span className="land-today-sep" aria-hidden> · </span>}
-            <Link href={t.href} className={t.count > 0 ? "land-today-item is-live" : "land-today-item"}>
-              {t.label}
-            </Link>
-          </span>
-        ))}
-      </p>
-
-      <p className="land-ask">What are you here to do?</p>
-      <ul className="land-tiles">
-        {tiles.map((t) => (
-          <li key={t.href}>
-            <Link href={t.href} className="land-tile">
-              <span className="land-tile-title">{t.title}</span>
-              <span className="land-tile-what">{t.what}</span>
-              {t.figure && (
+      <section className="page land" aria-labelledby="land-greeting">
+        <p className="land-ask">What are you here to do?</p>
+        <ul className="land-tiles">
+          {tiles.map((t) => (
+            <li key={t.href}>
+              <Link href={t.href} className="land-tile">
+                <span className="land-tile-title">{t.title}</span>
+                <span className="land-tile-what">{t.what}</span>
                 <span className="land-tile-figure">
-                  {t.figure}
-                  {t.figureNote && <span className="land-tile-note"> · {t.figureNote}</span>}
+                  <span className="land-tile-value">{t.value}</span>
+                  <span className="land-tile-label">
+                    {t.label}
+                    {t.note && <span className={t.noteTone === "critical" ? "land-tile-note is-critical" : "land-tile-note"}> · {t.note}</span>}
+                  </span>
                 </span>
-              )}
-            </Link>
-          </li>
-        ))}
-      </ul>
-
-      {isAdmin && healthLight && (
-        <p className="land-admin">
-          <Link href="/admin/health" className="land-admin-item">
-            <span className={`land-dot land-dot-${healthLight}`} aria-hidden />
-            Data feeds {healthLight === "green" ? "healthy" : healthLight === "amber" ? "need a look" : healthLight === "red" ? "have a problem" : "not yet run"}
-          </Link>
-          <span className="land-today-sep" aria-hidden> · </span>
-          <Link href="/triage" className="land-admin-item">{plural(n(enquiries), "batch", "batches")} in triage</Link>
-          <span className="land-today-sep" aria-hidden> · </span>
-          <Link href="/admin/valuation-rolls" className="land-admin-item">Valuation rolls</Link>
-        </p>
-      )}
-    </section>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </section>
+    </>
   );
 }
 

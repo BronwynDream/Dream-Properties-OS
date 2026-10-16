@@ -2,102 +2,84 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import type { Light } from "@/lib/feeds/registry";
 
-// Nav model:
-//  - Leaf = direct link (Overview, Inbox)
-//  - Group = dropdown that opens to a list of child links
-// Both leaves and groups can be admin-gated. A group is admin-gated when
-// EVERY child is admin-only OR the group itself is marked adminOnly; children
-// filter individually so an agent looking at a partially-gated group only
-// sees the child links they're allowed.
+// Top bar — Blueprint (plan 019 Arc D, 2026-10-16).
+//
+// Flat row of the places an agent actually goes, in the order of the day:
+// Home, Map, Properties, Deals, Documents, People, Inbox. Two small menus
+// hold the rest: More (the tools), Admin (admin-only, carrying the data-
+// health dot so Bronwyn sees a feed problem from any page). The avatar
+// opens account + sign out. Under 768px the row folds into the drawer.
 
-type Leaf = { kind: "leaf"; href: string; label: string; adminOnly?: boolean };
-type Group = { kind: "group"; label: string; adminOnly?: boolean; children: Leaf[] };
-type NavItem = Leaf | Group;
+type Leaf = { href: string; label: string; adminOnly?: boolean };
+type Group = { label: string; adminOnly?: boolean; children: Leaf[]; alignRight?: boolean };
 
-const NAV: NavItem[] = [
-  { kind: "leaf", href: "/dashboard", label: "Overview" },
-  { kind: "leaf", href: "/inbox", label: "Inbox" },
-  {
-    kind: "group",
-    label: "Records",
-    children: [
-      { kind: "leaf", href: "/properties", label: "Properties" },
-      { kind: "leaf", href: "/map", label: "Map" },
-      { kind: "leaf", href: "/contacts", label: "Contacts" },
-      { kind: "leaf", href: "/erf-lookup", label: "Erf Lookup" },
-      { kind: "leaf", href: "/estates", label: "Estates" },
-    ],
-  },
-  {
-    kind: "group",
-    label: "Deals",
-    children: [
-      { kind: "leaf", href: "/mandates", label: "Mandates" },
-      { kind: "leaf", href: "/documents", label: "Documents" },
-      { kind: "leaf", href: "/pipeline", label: "Pipeline" },
-      { kind: "leaf", href: "/viewings", label: "Viewings" },
-      { kind: "leaf", href: "/compliance", label: "Compliance", adminOnly: true },
-    ],
-  },
-  {
-    kind: "group",
-    label: "Admin",
-    adminOnly: true,
-    children: [
-      { kind: "leaf", href: "/admin/health", label: "Data health" },
-      { kind: "leaf", href: "/triage", label: "Triage" },
-      { kind: "leaf", href: "/dupes", label: "Dupes" },
-      { kind: "leaf", href: "/team", label: "Team" },
-      { kind: "leaf", href: "/settings", label: "Settings" },
-    ],
-  },
+const PRIMARY: Leaf[] = [
+  { href: "/dashboard", label: "Home" },
+  { href: "/map", label: "Map" },
+  { href: "/properties", label: "Properties" },
+  { href: "/pipeline", label: "Deals" },
+  { href: "/documents", label: "Documents" },
+  { href: "/contacts", label: "People" },
+  { href: "/inbox", label: "Inbox" },
 ];
 
+const MORE: Group = {
+  label: "More",
+  children: [
+    { href: "/mandates", label: "Mandates" },
+    { href: "/viewings", label: "Viewings" },
+    { href: "/estates", label: "Estates" },
+    { href: "/erf-lookup", label: "Erf lookup" },
+  ],
+};
+
+const ADMIN: Group = {
+  label: "Admin",
+  adminOnly: true,
+  children: [
+    { href: "/admin/health", label: "Data health" },
+    { href: "/compliance", label: "Compliance" },
+    { href: "/triage", label: "Triage" },
+    { href: "/dupes", label: "Dupes" },
+    { href: "/team", label: "Team" },
+    { href: "/settings", label: "Settings" },
+  ],
+};
+
 function isActiveHref(pathname: string, href: string): boolean {
+  if (href === "/dashboard") return pathname === "/dashboard" || pathname === "/";
   return pathname === href || pathname.startsWith(href + "/");
 }
 
-function visibleChildren(g: Group, isAdmin: boolean): Leaf[] {
-  return g.children.filter((c) => !c.adminOnly || isAdmin);
-}
-
-function visibleNav(isAdmin: boolean): NavItem[] {
-  const out: NavItem[] = [];
-  for (const item of NAV) {
-    if (item.kind === "leaf") {
-      if (!item.adminOnly || isAdmin) out.push(item);
-      continue;
-    }
-    if (item.adminOnly && !isAdmin) continue;
-    const kids = visibleChildren(item, isAdmin);
-    if (kids.length === 0) continue;
-    out.push({ ...item, children: kids });
-  }
-  return out;
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
 export default function TopBarClient({
   name,
   role,
+  healthLight,
 }: {
   name: string;
   role: string;
+  healthLight: Light | null;
 }) {
   const path = usePathname();
   const isAdmin = role === "admin";
-  const items = visibleNav(isAdmin);
+  const groups: Group[] = isAdmin ? [MORE, ADMIN] : [MORE];
 
-  // Drawer state (mobile only — CSS hides the desktop nav below 900px and
-  // shows the hamburger drawer instead).
   const [drawerOpen, setDrawerOpen] = useState(false);
   useEffect(() => setDrawerOpen(false), [path]);
 
-  // Open dropdown group name, or null when nothing's open. One at a time —
-  // clicking a different group closes the previous one.
-  const [openGroup, setOpenGroup] = useState<string | null>(null);
-  useEffect(() => setOpenGroup(null), [path]);
+  // One open menu at a time: a group label, "who", or null.
+  const [openMenu, setOpenMenu] = useState<string | null>(null);
+  useEffect(() => setOpenMenu(null), [path]);
 
   return (
     <header className="topbar">
@@ -114,130 +96,119 @@ export default function TopBarClient({
           <span className="topbar-hamburger-bar" />
         </button>
 
-        <Link href="/dashboard" className="topbar-brand">
-          <span className="topbar-brand-mark" aria-hidden>D</span>
+        <Link href="/dashboard" className="topbar-brand" aria-label="Dream Knysna OS — home">
           <span className="topbar-brand-text">
-            <span className="topbar-brand-name">Dream Knysna</span>
-            <span className="topbar-brand-sub">Properties OS</span>
+            <span className="topbar-brand-name">Dream</span>
+            <span className="topbar-brand-sub">Knysna OS</span>
           </span>
         </Link>
 
         <nav className="topbar-nav" aria-label="Primary">
-          {items.map((item) => {
-            if (item.kind === "leaf") {
-              const active = isActiveHref(path, item.href);
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={active ? "topbar-tab topbar-tab-on" : "topbar-tab"}
-                  aria-current={active ? "page" : undefined}
-                >
-                  {item.label}
-                </Link>
-              );
-            }
+          {PRIMARY.map((item) => {
+            const active = isActiveHref(path, item.href);
             return (
-              <TopBarGroup
-                key={item.label}
-                group={item}
-                path={path}
-                openLabel={openGroup}
-                onOpen={(name) =>
-                  setOpenGroup((current) => (current === name ? null : name))
-                }
-                onClose={() => setOpenGroup(null)}
-              />
+              <Link
+                key={item.href}
+                href={item.href}
+                className={active ? "topbar-tab topbar-tab-on" : "topbar-tab"}
+                aria-current={active ? "page" : undefined}
+              >
+                {item.label}
+              </Link>
             );
           })}
+          {groups.map((g) => (
+            <Menu
+              key={g.label}
+              id={g.label}
+              open={openMenu === g.label}
+              onToggle={() => setOpenMenu((c) => (c === g.label ? null : g.label))}
+              onClose={() => setOpenMenu(null)}
+              button={
+                <>
+                  {g.label === "Admin" && healthLight && (
+                    <span className={`topbar-dot topbar-dot-${healthLight}`} aria-hidden />
+                  )}
+                  {g.label}
+                  <span aria-hidden className="topbar-group-chevron">▾</span>
+                </>
+              }
+              buttonClass={
+                g.children.some((c) => isActiveHref(path, c.href)) || openMenu === g.label
+                  ? "topbar-tab topbar-tab-on topbar-group-btn"
+                  : "topbar-tab topbar-group-btn"
+              }
+            >
+              {g.children.map((c) => {
+                const active = isActiveHref(path, c.href);
+                return (
+                  <Link
+                    key={c.href}
+                    role="menuitem"
+                    href={c.href}
+                    className={active ? "topbar-group-item topbar-group-item-on" : "topbar-group-item"}
+                    onClick={() => setOpenMenu(null)}
+                  >
+                    {c.href === "/admin/health" && healthLight && (
+                      <span className={`topbar-dot topbar-dot-${healthLight}`} aria-hidden />
+                    )}
+                    {c.label}
+                  </Link>
+                );
+              })}
+            </Menu>
+          ))}
         </nav>
 
         <div className="topbar-tools">
-          <span className="topbar-who">
-            <Link href="/account/password" className="topbar-who-name" title="Account settings">
-              {name}
+          <Menu
+            id="who"
+            open={openMenu === "who"}
+            onToggle={() => setOpenMenu((c) => (c === "who" ? null : "who"))}
+            onClose={() => setOpenMenu(null)}
+            alignRight
+            button={<span aria-hidden>{initials(name)}</span>}
+            buttonClass="topbar-avatar"
+            buttonLabel={`${name} — account menu`}
+          >
+            <div className="topbar-who-menu-head">
+              <span className="topbar-who-menu-name">{name}</span>
+              <span className="topbar-who-menu-role">{role}</span>
+            </div>
+            <div className="topbar-group-sep" />
+            <Link role="menuitem" href="/account/password" className="topbar-group-item" onClick={() => setOpenMenu(null)}>
+              Change password
             </Link>
-            <span className={`topbar-who-role role-${role}`}>{role}</span>
-          </span>
-          <form action="/auth/signout" method="post">
-            <button className="topbar-signout" type="submit">
-              Sign out
-            </button>
-          </form>
+            <form action="/auth/signout" method="post">
+              <button className="topbar-signout" type="submit" role="menuitem">
+                Sign out
+              </button>
+            </form>
+          </Menu>
         </div>
       </div>
-      <div className="topbar-tideline" aria-hidden />
 
-      {/* Mobile drawer — flat list with small section headers between groups.
-          Nested dropdowns are wrong on mobile; the tap surface is small enough
-          that the flat list stays legible. */}
+      {/* Mobile drawer — one flat list, section labels between the groups. */}
       <div
         className={`topbar-drawer${drawerOpen ? " on" : ""}`}
         aria-hidden={!drawerOpen}
         onClick={() => setDrawerOpen(false)}
       >
-        <nav
-          className="topbar-drawer-nav"
-          aria-label="Primary (mobile)"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {items.map((item) => {
-            if (item.kind === "leaf") {
-              const active = isActiveHref(path, item.href);
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={
-                    active
-                      ? "topbar-drawer-tab topbar-drawer-tab-on"
-                      : "topbar-drawer-tab"
-                  }
-                  aria-current={active ? "page" : undefined}
-                  onClick={() => setDrawerOpen(false)}
-                >
-                  {item.label}
-                </Link>
-              );
-            }
-            return (
-              <div key={item.label}>
-                <div className="topbar-drawer-section">{item.label}</div>
-                {item.children.map((c) => {
-                  const active = isActiveHref(path, c.href);
-                  return (
-                    <Link
-                      key={c.href}
-                      href={c.href}
-                      className={
-                        active
-                          ? "topbar-drawer-tab topbar-drawer-tab-on"
-                          : "topbar-drawer-tab"
-                      }
-                      aria-current={active ? "page" : undefined}
-                      onClick={() => setDrawerOpen(false)}
-                    >
-                      {c.label}
-                    </Link>
-                  );
-                })}
-              </div>
-            );
-          })}
-
+        <nav className="topbar-drawer-nav" aria-label="Primary (mobile)" onClick={(e) => e.stopPropagation()}>
+          {PRIMARY.map((item) => (
+            <DrawerLink key={item.href} item={item} path={path} onPick={() => setDrawerOpen(false)} />
+          ))}
+          {groups.map((g) => (
+            <div key={g.label}>
+              <div className="topbar-drawer-section">{g.label}</div>
+              {g.children.map((c) => (
+                <DrawerLink key={c.href} item={c} path={path} onPick={() => setDrawerOpen(false)} dot={c.href === "/admin/health" ? healthLight : null} />
+              ))}
+            </div>
+          ))}
           <div>
-            <div className="topbar-drawer-section">Account</div>
-            <Link
-              href="/account/password"
-              className={
-                isActiveHref(path, "/account/password")
-                  ? "topbar-drawer-tab topbar-drawer-tab-on"
-                  : "topbar-drawer-tab"
-              }
-              onClick={() => setDrawerOpen(false)}
-            >
-              Change password
-            </Link>
+            <div className="topbar-drawer-section">{name}</div>
+            <DrawerLink item={{ href: "/account/password", label: "Change password" }} path={path} onPick={() => setDrawerOpen(false)} />
             <form action="/auth/signout" method="post">
               <button className="topbar-signout-drawer topbar-drawer-tab" type="submit">
                 Sign out
@@ -250,29 +221,48 @@ export default function TopBarClient({
   );
 }
 
-function TopBarGroup({
-  group,
-  path,
-  openLabel,
-  onOpen,
-  onClose,
-}: {
-  group: Group;
-  path: string;
-  openLabel: string | null;
-  onOpen: (label: string) => void;
-  onClose: () => void;
-}) {
-  const isOpen = openLabel === group.label;
-  const hasActiveChild = group.children.some((c) => isActiveHref(path, c.href));
-  const wrapperRef = useRef<HTMLDivElement>(null);
+function DrawerLink({ item, path, onPick, dot }: { item: Leaf; path: string; onPick: () => void; dot?: Light | null }) {
+  const active = isActiveHref(path, item.href);
+  return (
+    <Link
+      href={item.href}
+      className={active ? "topbar-drawer-tab topbar-drawer-tab-on" : "topbar-drawer-tab"}
+      aria-current={active ? "page" : undefined}
+      onClick={onPick}
+    >
+      {dot && <span className={`topbar-dot topbar-dot-${dot}`} style={{ marginRight: 8 }} aria-hidden />}
+      {item.label}
+    </Link>
+  );
+}
 
-  // Click outside + Escape both close the dropdown so it never lingers.
+/** A button that opens a small menu; click-outside and Escape close it. */
+function Menu({
+  id,
+  open,
+  onToggle,
+  onClose,
+  button,
+  buttonClass,
+  buttonLabel,
+  alignRight,
+  children,
+}: {
+  id: string;
+  open: boolean;
+  onToggle: () => void;
+  onClose: () => void;
+  button: ReactNode;
+  buttonClass: string;
+  buttonLabel?: string;
+  alignRight?: boolean;
+  children: ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (!isOpen) return;
+    if (!open) return;
     function onMouseDown(e: MouseEvent) {
-      if (!wrapperRef.current) return;
-      if (!wrapperRef.current.contains(e.target as Node)) onClose();
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
     }
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
@@ -283,44 +273,24 @@ function TopBarGroup({
       document.removeEventListener("mousedown", onMouseDown);
       document.removeEventListener("keydown", onKey);
     };
-  }, [isOpen, onClose]);
+  }, [open, onClose]);
 
   return (
-    <div ref={wrapperRef} className="topbar-group">
+    <div ref={ref} className="topbar-group">
       <button
         type="button"
-        className={
-          hasActiveChild || isOpen
-            ? "topbar-tab topbar-tab-on topbar-group-btn"
-            : "topbar-tab topbar-group-btn"
-        }
+        className={buttonClass}
         aria-haspopup="menu"
-        aria-expanded={isOpen}
-        onClick={() => onOpen(group.label)}
+        aria-expanded={open}
+        aria-controls={`menu-${id}`}
+        aria-label={buttonLabel}
+        onClick={onToggle}
       >
-        {group.label}
-        <span aria-hidden className="topbar-group-chevron">▾</span>
+        {button}
       </button>
-      {isOpen && (
-        <div role="menu" className="topbar-group-menu">
-          {group.children.map((c) => {
-            const active = isActiveHref(path, c.href);
-            return (
-              <Link
-                key={c.href}
-                role="menuitem"
-                href={c.href}
-                className={
-                  active
-                    ? "topbar-group-item topbar-group-item-on"
-                    : "topbar-group-item"
-                }
-                onClick={onClose}
-              >
-                {c.label}
-              </Link>
-            );
-          })}
+      {open && (
+        <div id={`menu-${id}`} role="menu" className={alignRight ? "topbar-group-menu is-right" : "topbar-group-menu"}>
+          {children}
         </div>
       )}
     </div>

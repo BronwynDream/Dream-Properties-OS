@@ -262,15 +262,15 @@ export default async function Dashboard() {
   return (
     <>
       <TopBar />
-      <main className="page">
-        <Landing
-          supabase={supabase}
-          userId={user.id}
-          firstName={(profile?.full_name ?? "there").split(" ")[0]}
-          isAdmin={isAdmin}
-          myListingIds={myListingIds}
-          myPropertyIds={myPropertyIds}
-        />
+      <Landing
+        supabase={supabase}
+        userId={user.id}
+        firstName={(profile?.full_name ?? "there").split(" ")[0]}
+        isAdmin={isAdmin}
+        myListingIds={myListingIds}
+        myPropertyIds={myPropertyIds}
+      />
+      <main className="page page-after-land">
 
         {/* Attention row — 3-5 items that need eyes on them today, ranked by
             urgency. If nothing needs attention we show a small "caught up"

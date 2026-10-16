@@ -8,6 +8,60 @@ _Last updated: 2026-10-16_
 
 ---
 
+## LOOK & FEEL "BLUEPRINT" (OPTION B) + TOP BAR (2026-10-16)
+
+Bronwyn chose Option B from the three-option PDF. Applied across the OS
+by re-binding the design tokens rather than touching components, plus a
+rebuilt top bar and the landing page in the Option B layout.
+
+### Shipped
+
+- **Fonts** — `app/layout.tsx`: Instrument Sans (`--font-body`, and
+  `--font-display` now aliases it: one family, no serif) + Geist Mono
+  (`geist` package, `--font-geist-mono` → `--font-mono`). Fraunces, Inter,
+  JetBrains Mono gone.
+- **Tokens** — `app/globals.css` `:root` rewritten with the same NAMES:
+  Dream blue `--navy #122E87`, `--estuary #0B1D5A`, cool ground
+  `--paper-0 #F4F6FB` / white cards, slate ink, `--line-* #C5CDE3/#DEE3EF`,
+  fynbos `--positive #3D7A4E`, rust `--critical #B9431F`, radius 6/10, cool
+  shadows, status pills per the option. **`--gold` now aliases `--navy`** —
+  40 rules pointed at it; the ones that put gold on a dark surface
+  (eyebrows on blue, exclusive-mandate pill, hero map pivot, warn icon →
+  caution) were re-pointed by hand. `--grid-blue` is the survey grid.
+- **Top bar** — `TopBarClient.tsx` rewritten: blue band with the grid,
+  DREAM / KNYSNA OS wordmark, flat row Home · Map · Properties · Deals ·
+  Documents · People · Inbox (active = white underline), **More** menu
+  (Mandates, Viewings, Estates, Erf lookup), **Admin** menu (admin-only:
+  Data health with the feed-light dot, Compliance, Triage, Dupes, Team,
+  Settings), avatar (initials) menu with Change password / Sign out. Drawer
+  under 768px mirrors it. `lib/feeds/overall.ts` `overallFeedLight()` is
+  shared by the bar; Landing's old admin line is gone.
+- **Landing** — `Landing.tsx` renders the Option B layout: greeting, date
+  and today's three figures (big mono numbers) on a blue band that
+  continues the bar; the six tiles below on the ground, each with one big
+  mono figure + label; overdue note in rust. Dashboard page now places
+  `<Landing/>` before `<main className="page page-after-land">`.
+- No search box yet: ⌘K search is Arc B and the box lands with it.
+
+### Verification
+
+- tsc / eslint / `next build` clean; fonts fetched at build. Login page
+  screenshotted locally (Instrument Sans, blue card head, cool ground).
+- NOT yet seen live: top bar menus, landing band, phone layout, and every
+  other page under the new tokens — a sweep is needed; expect a few
+  hard-coded warm hexes (22 literal occurrences across 33 tsx files, mostly
+  the map's data colours, which are intentionally literal).
+
+### Loose ends
+
+- Map markers still use gold for exclusive mandates (`MapView.tsx`,
+  `PropertyHero.tsx` layer paints). The map needs its own palette pass with
+  a browser check (house rule).
+- Document surface (`/documents/[id]`, mandate page) keeps its warm paper
+  (`#F5F1E8` hard-coded) — decide whether the paper should go cool too.
+
+---
+
 ## ARC A6 — PPRA SECTION 67 DISCLOSURE AS A DOCUMENT; ADDENDUM AMENDMENTS (2026-10-16)
 
 ### Shipped
