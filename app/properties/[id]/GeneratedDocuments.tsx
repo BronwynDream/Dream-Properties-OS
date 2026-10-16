@@ -40,14 +40,16 @@ export default function GeneratedDocuments({ rows }: { rows: Row[] }) {
                 borderRadius: 3,
                 padding: "10px 14px",
                 display: "grid",
-                gridTemplateColumns: "minmax(0, 1fr) auto",
+                gridTemplateColumns: "minmax(0, 1fr) auto auto",
                 gap: 14,
                 alignItems: "center",
                 background: "var(--white)",
               }}
             >
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontWeight: 600 }}>{tpl?.label ?? r.title ?? "Document"}</div>
+                <Link href={`/documents/${r.id}`} style={{ fontWeight: 600, color: "var(--ink)", textDecoration: "none" }}>
+                  {tpl?.label ?? r.title ?? "Document"}
+                </Link>
                 <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--paper-mute)" }}>
                   {author?.full_name ?? "—"} ·{" "}
                   {new Date(r.created_at).toLocaleDateString("en-ZA", { day: "2-digit", month: "short", year: "numeric", timeZone: "Africa/Johannesburg" })}
@@ -67,6 +69,9 @@ export default function GeneratedDocuments({ rows }: { rows: Row[] }) {
               >
                 {r.status}
               </span>
+              <Link href={`/documents/${r.id}`} className="btn-secondary" style={{ padding: "6px 10px", fontSize: 12 }}>
+                Open
+              </Link>
             </li>
           );
         })}

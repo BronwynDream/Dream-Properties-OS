@@ -58,6 +58,7 @@ export default function MandateEditor({
   const [saving, startSaving] = useTransition();
   const [saveErr, setSaveErr] = useState<string | null>(null);
   const [savedId, setSavedId] = useState<string | null>(null);
+  const [draftId, setDraftId] = useState<string | null>(null);
 
   const askingPriceNum = parsePrice(askingPrice);
   const commissionPctNum = parseNum(commissionPct);
@@ -118,6 +119,7 @@ export default function MandateEditor({
         return;
       }
       setSavedId(res.mandateId);
+      setDraftId(res.draftId);
       router.refresh();
     });
   }
@@ -241,7 +243,10 @@ export default function MandateEditor({
         )}
         {savedId && (
           <p style={{ marginTop: 12, color: "#1F7A4D", fontSize: 13 }}>
-            Mandate saved, and a draft of this document is on file. Return to the property record to see it.
+            Mandate saved, and this document is on file.{" "}
+            {draftId && (
+              <a href={`/documents/${draftId}`} style={{ color: "var(--navy)" }}>Open it to edit or print later →</a>
+            )}
           </p>
         )}
       </div>

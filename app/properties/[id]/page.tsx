@@ -17,6 +17,7 @@ import Offers, { type OfferRow } from "./Offers";
 import AttachListing from "./AttachListing";
 import PrepareMandateButton from "./PrepareMandateButton";
 import GeneratedDocuments from "./GeneratedDocuments";
+import PrepareDocumentButton from "./PrepareDocumentButton";
 import { PRODUCTS as LIGHTSTONE_PRODUCTS } from "@/lib/lightstone";
 import { Rand, randString } from "@/app/components/format";
 import type { PpraFormType } from "@/lib/ppraDisclosure";
@@ -1094,6 +1095,11 @@ export default async function PropertyRecord({
                 propertyId={prop.id}
                 listingId={listingForPicker?.id ?? null}
                 hasCurrentMandate={!!currentMandate}
+              />
+              <PrepareDocumentButton
+                propertyId={prop.id}
+                transferId={activeTransfer?.id ?? null}
+                listingId={listingForPicker?.id ?? null}
               />
               <LightstoneFetch
                 propertyId={prop.id}

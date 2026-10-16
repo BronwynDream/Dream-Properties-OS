@@ -126,12 +126,8 @@ export default async function DocumentsHub() {
                       {author?.full_name ?? "—"} · {fmtDate(d.created_at)}
                     </div>
                     <StatusPill status={d.status} />
-                    <Link
-                      href={d.property_id ? `/properties/${d.property_id}` : "/documents"}
-                      className="btn-secondary"
-                      style={{ padding: "6px 10px", fontSize: 12 }}
-                    >
-                      Open record
+                    <Link href={`/documents/${d.id}`} className="btn-secondary" style={{ padding: "6px 10px", fontSize: 12 }}>
+                      Open
                     </Link>
                   </li>
                 );
@@ -165,8 +161,8 @@ export default async function DocumentsHub() {
                   {PREPARE_HREF[t.code]
                     ? "Prepare from a property record"
                     : t.requires_purchaser
-                    ? "Prepare from a deal — coming"
-                    : "Coming"}
+                    ? "Prepare from a property record with a deal"
+                    : "Prepare from a property record"}
                 </span>
               </li>
             ))}

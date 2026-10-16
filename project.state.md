@@ -4,7 +4,59 @@ Running log of what's decided, built, and next. Updated at the end of each worki
 session. `PROJECT.md` remains the canonical business/design doc; this file is the
 "where are we right now" companion.
 
-_Last updated: 2026-10-14_
+_Last updated: 2026-10-16_
+
+---
+
+## ARC A4 — DRAFT EDITOR + VERSIONS + PREPARE FROM A DEAL (2026-10-16)
+
+### Shipped
+- **Migration 0072** — `document_draft.version` (default 1) and
+  `document_draft_version` (snapshot of field_values / clause_selections /
+  clause_overrides / omitted_clauses before every save, with saver and
+  note). RLS mirrors the draft. **NOT YET APPLIED to Bon Bon.** Verify:
+  `select column_name from information_schema.columns where table_name =
+  'document_draft' and column_name = 'version';` → 1 row.
+- **`/documents/[id]`** — the draft editor, one component for every
+  template (`DraftEditor.tsx`): a Fields panel with one input per
+  `{{token}}` the template's wording uses (`*_words` derive from their
+  numeric sibling — price, commission, term), a Clauses panel with a
+  variant selector where the library has more than one wording, "Edit
+  wording" (kept in `clause_overrides`, library untouched, flagged "edited
+  on this document", "Reset to library"), include/omit for optional slots,
+  a Versions list, Save (snapshot → update → version+1) and Print. Final
+  documents open read-only. Live preview with highlighted gaps and "Still
+  needed".
+- **`createDraft`** server action + **`lib/documents/context-deal.ts`**:
+  "Prepare document…" on the property record (new
+  `PrepareDocumentButton.tsx`, next to Prepare mandate) offers the four
+  short templates from 0069; picking one creates a draft pre-filled from
+  the property and its active transfer (sellers, purchasers, ID lines,
+  erf, address, extent, agreement price + date) and opens the editor.
+  Blocked with a hint when the property has no deal. The 0069 bodies keep
+  Bronwyn's underscore blanks (no tokens yet), so for those four the agent
+  fills blanks via "Edit wording"; the context is stored for when the
+  bodies are tokenised.
+- Hub rows and the property record's Generated documents now open the
+  editor; the mandate editor links to its draft after save.
+
+### Verification
+- typecheck, lint (0 errors), test:documents, build green.
+- Not loaded in a browser. After 0072 + deploy: open a property with a
+  deal → Prepare document… → Movables agreement → editor opens with the
+  title "Agreement of Sale — Movables — <transfer name>"; edit a clause,
+  Save → "Saved as version 2", Versions shows v1. Then open the mandate
+  saved on 14 Oct from /documents and switch a clause variant.
+
+### Loose ends
+- Tokenise the 0069 bodies (purchase price, parties, erf, date) so the
+  Fields panel does the filling for movables/addenda too. Small migration.
+- Redirect inside `createDraft` means a thrown NEXT_REDIRECT in the
+  client transition — expected Next behaviour; if it ever shows as an
+  error toast, return the id and `router.push` instead.
+- A5 next: finalise → PDF (server render of ClauseDocument) stored in the
+  `documents` bucket + `document` row + `document_link` to transfer;
+  upload-signed-copy; status final; register view.
 
 ---
 
