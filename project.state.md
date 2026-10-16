@@ -42,11 +42,14 @@ _Last updated: 2026-10-16_
 
 ### Verification
 - typecheck, lint (0 errors), test:documents, build green.
-- Not loaded in a browser. After 0072 + deploy: open a property with a
-  deal → Prepare document… → Movables agreement → editor opens with the
-  title "Agreement of Sale — Movables — <transfer name>"; edit a clause,
-  Save → "Saved as version 2", Versions shows v1. Then open the mandate
-  saved on 14 Oct from /documents and switch a clause variant.
+- Browser check done (10:58 SAST, after 0072 + deploy): 7 The Grove →
+  Prepare document… → Movables agreement → editor opened as "Agreement of
+  Sale — Movables — 7 The Grove Sofianos to Davis" (draft
+  994af811…, test data); edited clause 4, Save → v2, "edited on this
+  document", Versions v1 · Simon Houghton. No console errors. Fixed after:
+  a body whose first line repeats the slot heading no longer prints it
+  twice. Variant switching not exercised live (no mandate draft existed
+  yet — the 14 Oct test mandates were never saved).
 
 ### Loose ends
 - Tokenise the 0069 bodies (purchase price, parties, erf, date) so the

@@ -43,7 +43,10 @@ export default function ClauseDocument({
 }
 
 function Section({ s, showGaps }: { s: ResolvedSection; showGaps: boolean }) {
-  const paras = s.body.split(/\n\s*\n/).map((p) => p.replace(/\s+$/, ""));
+  let paras = s.body.split(/\n\s*\n/).map((p) => p.replace(/\s+$/, ""));
+  // Some seeded bodies open with the clause heading itself (the masters
+  // put it on its own line). Don't print it twice.
+  if (s.heading && paras.length > 1 && norm(paras[0]) === norm(s.heading)) paras = paras.slice(1);
   return (
     <section data-clause={s.clauseKey}>
       {s.heading && (
@@ -64,6 +67,10 @@ function Section({ s, showGaps }: { s: ResolvedSection; showGaps: boolean }) {
       })}
     </section>
   );
+}
+
+function norm(t: string): string {
+  return t.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 
 function isAllCaps(p: string): boolean {
