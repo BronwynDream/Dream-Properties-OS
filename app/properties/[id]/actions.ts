@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { questionsFor, type PpraFormType } from "@/lib/ppraDisclosure";
+import type { PpraFormType } from "@/lib/ppraDisclosure";
+import { ensureDisclosureRows } from "@/lib/documents/ppra";
 import { seedsFor, type InventoryCategory, type InventoryKind } from "@/lib/inventory";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -224,43 +225,9 @@ export async function ensurePpraDisclosure(input: {
   const { supabase } = gate;
   if (!input.transferId) return { ok: false, error: "transferId required" };
 
-  const { data: existing } = await supabase
-    .from("ppra_disclosure")
-    .select("id")
-    .eq("transfer_id", input.transferId)
-    .eq("form_type", input.formType)
-    .maybeSingle();
-  let disclosureId = existing?.id as string | undefined;
-
-  if (!disclosureId) {
-    const { data: created, error: insErr } = await supabase
-      .from("ppra_disclosure")
-      .insert({ transfer_id: input.transferId, form_type: input.formType })
-      .select("id")
-      .single();
-    if (insErr || !created) return { ok: false, error: insErr?.message ?? "insert failed" };
-    disclosureId = created.id;
-  }
-
-  // Backfill any missing canonical rows. New questions added to the
-  // library (e.g. plot form rev) show up on old disclosures on next open.
-  const canonical = questionsFor(input.formType);
-  const { data: existingRows } = await supabase
-    .from("ppra_disclosure_answer_row")
-    .select("question_key")
-    .eq("disclosure_id", disclosureId);
-  const have = new Set((existingRows ?? []).map((r: { question_key: string }) => r.question_key));
-  const toInsert = canonical
-    .filter((q) => !have.has(q.key))
-    .map((q) => ({
-      disclosure_id: disclosureId!,
-      question_key: q.key,
-      question_label: q.label,
-    }));
-  if (toInsert.length > 0) {
-    const { error: rowErr } = await supabase.from("ppra_disclosure_answer_row").insert(toInsert);
-    if (rowErr) return { ok: false, error: rowErr.message };
-  }
+  const ensured = await ensureDisclosureRows(supabase, input.transferId, input.formType);
+  if (!ensured.ok) return ensured;
+  const disclosureId = ensured.disclosureId;
 
   revalidatePath(`/properties/${input.propertyId}`);
   revalidatePath("/compliance");

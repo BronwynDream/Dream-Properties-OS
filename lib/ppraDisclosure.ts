@@ -44,18 +44,33 @@ export const HOUSE_QUESTIONS: PpraQuestion[] = [
   { key: "heritage",              label: "I am aware that a structure on the Property has been earmarked as a historic structure or heritage site.",                                                             concerningAnswer: "yes", category: "regulatory"   },
 ];
 
-// Plot / vacant-land variant. Draft — align with Bronwyn's actual
-// scanned form once a text version is provided.
-export const PLOT_QUESTIONS: PpraQuestion[] = [
-  { key: "zoning_conforming",     label: "I am aware that the property zoning conforms with the intended use disclosed to the purchaser.",                                                                       concerningAnswer: "no",  category: "regulatory"   },
-  { key: "servitudes",            label: "I am aware of any registered servitudes, way-leaves or restrictions affecting the property.",                                                                          concerningAnswer: "yes", category: "boundary"     },
-  { key: "boundary_dispute",      label: "I am aware of boundary line disputes, encroachments or encumbrances in connection with the property.",                                                                 concerningAnswer: "yes", category: "boundary"     },
-  { key: "invasive_species",      label: "I am aware of any invasive vegetation on the property as contemplated in the NEMBA Regulations (Act 10 of 2004).",                                                     concerningAnswer: "yes", category: "environmental"},
-  { key: "environmental_restrictions", label: "I am aware of any environmental, wetland or heritage restrictions affecting development on the property.",                                                        concerningAnswer: "yes", category: "environmental"},
-  { key: "water_rights",          label: "I am aware of any water rights, boreholes or municipal supply constraints affecting the property.",                                                                    concerningAnswer: "yes", category: "environmental"},
-  { key: "access",                label: "I am aware of any access, right-of-way or road-frontage constraints affecting the property.",                                                                           concerningAnswer: "yes", category: "boundary"     },
-  { key: "geotech",               label: "I am aware of any geotechnical, dolomite, undermined-land or flood-plain reports concerning the property.",                                                            concerningAnswer: "yes", category: "structural"   },
-];
+// Plot / vacant-land. Bronwyn's "Mandatory PPRA Disclosure Form Vacant
+// Land 2026" (docs/templates/2026-final/) is the SAME prescribed form, not a
+// different question set: every statement is pre-answered N/A except the
+// boundary-dispute one (NO), with "This Property is Vacant Land." as the
+// additional information. Section 67's form is prescribed, so a vacant-land
+// question set of our own would not be the statutory disclosure. The
+// earlier invented plot questions (zoning, NEMBA, water rights…) are gone;
+// the preset below is applied to the structured record when a plot
+// disclosure is created, and the seller can still change any answer.
+export const PLOT_QUESTIONS: PpraQuestion[] = HOUSE_QUESTIONS;
+
+export const PLOT_PRESET: { answers: Record<string, "yes" | "no" | "na">; additionalInfo: string } = {
+  answers: Object.fromEntries(HOUSE_QUESTIONS.map((q) => [q.key, q.key === "boundary_dispute" ? "no" : "na"])) as Record<string, "yes" | "no" | "na">,
+  additionalInfo: "This Property is Vacant Land.",
+};
+
+/** Which form a property takes, from its type label ("Vacant land", "House - 27"…). */
+export function ppraFormTypeFor(propertyTypeLabel: string | null | undefined): PpraFormType {
+  return /vacant|plot|land|erf$/.test((propertyTypeLabel ?? "").toLowerCase()) ? "plot" : "house";
+}
+
+/** The answer as it prints on the prescribed form. Unanswered → null (a gap). */
+export function answerMark(answer: "yes" | "no" | "na" | "unanswered" | null | undefined): string | null {
+  if (!answer || answer === "unanswered") return null;
+  const box = (on: boolean) => (on ? "[X]" : "[ ]");
+  return `YES ${box(answer === "yes")}    NO ${box(answer === "no")}    N/A ${box(answer === "na")}`;
+}
 
 export function questionsFor(form: PpraFormType): PpraQuestion[] {
   return form === "house" ? HOUSE_QUESTIONS : PLOT_QUESTIONS;

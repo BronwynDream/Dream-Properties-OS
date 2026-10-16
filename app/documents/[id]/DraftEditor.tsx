@@ -9,6 +9,7 @@ import { resolveDocument, type DocContext, type TemplateModel } from "@/lib/docu
 import { DERIVED, deriveContext } from "@/lib/documents/derive";
 import { TOKEN_LABELS } from "@/lib/documents/context";
 import { DEAL_TOKEN_LABELS } from "@/lib/documents/context-deal";
+import { PPRA_TOKEN_LABELS, PPRA_ANSWER_PREFIX } from "@/lib/documents/ppra";
 import { saveDraft, finaliseDraftAction, fileSignedCopyAction, type DraftState } from "./actions";
 
 // The draft editor (plan 019 Arc A4). Works for any template in the clause
@@ -40,8 +41,16 @@ type Draft = {
   has_signed: boolean;
 };
 
-const LABELS: Record<string, string> = { ...TOKEN_LABELS, ...DEAL_TOKEN_LABELS };
+const LABELS: Record<string, string> = { ...TOKEN_LABELS, ...DEAL_TOKEN_LABELS, ...PPRA_TOKEN_LABELS };
 const TOKEN_RE = /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g;
+
+/** Tokens that take paragraphs, not a line: a textarea in the editor, blank
+ *  line between paragraphs on the page. */
+const LONG_TOKENS = new Set(["amendments", "agent_disclosures", "ppra_additional_info"]);
+const LONG_HINTS: Record<string, string> = {
+  amendments: "1. Clause 4 (Transfer and Risk) shall now read: …\n\n2. Clause 5 (Possession and Occupation) is deleted and replaced with: …",
+  agent_disclosures: "Type None if the agent made no disclosures.",
+};
 
 export default function DraftEditor({
   draft,
@@ -77,8 +86,14 @@ export default function DraftEditor({
     for (const s of model.slots) for (const v of s.variants) for (const m of v.body.matchAll(TOKEN_RE)) set.add(m[1]);
     // Overrides can introduce tokens too.
     for (const body of Object.values(overrides)) for (const m of body.matchAll(TOKEN_RE)) set.add(m[1]);
-    return Array.from(set).filter((t) => !(t in DERIVED) && t !== "mandate_type");
+    return Array.from(set).filter((t) => !(t in DERIVED) && t !== "mandate_type" && !t.startsWith(PPRA_ANSWER_PREFIX));
   }, [model, overrides]);
+  // PPRA statement answers are not typed here: they come from the
+  // disclosure on the property record, where each "yes" needs its reason.
+  const hasAnswerTokens = useMemo(
+    () => model.slots.some((s) => s.variants.some((v) => v.body.includes(`{{${PPRA_ANSWER_PREFIX}`))),
+    [model],
+  );
 
   const ctx = useMemo(() => deriveContext(fields), [fields]);
 
@@ -241,6 +256,14 @@ export default function DraftEditor({
           )}
         </div>
 
+        {hasAnswerTokens && (
+          <div style={{ ...panel, background: "#FFF8EA", borderColor: "var(--caution)" }}>
+            <h3 style={h3}>Statement answers</h3>
+            <p style={{ fontSize: 12, margin: 0, lineHeight: 1.45 }}>
+              The YES / NO / N/A answers come from the PPRA disclosure on the property record — change them there and reopen this document. Unanswered statements show as gaps.
+            </p>
+          </div>
+        )}
         {tokens.length > 0 && (
           <div style={panel}>
             <h3 style={h3}>Fields</h3>
@@ -248,13 +271,24 @@ export default function DraftEditor({
               {tokens.map((t) => (
                 <label key={t} style={{ display: "block" }}>
                   <span style={fieldLabel}>{LABELS[t] ?? t.replace(/_/g, " ")}</span>
-                  <input
-                    type="text"
-                    value={fields[t] == null ? "" : String(fields[t])}
-                    onChange={(e) => setField(t, e.target.value)}
-                    disabled={readOnly}
-                    style={inputStyle}
-                  />
+                  {LONG_TOKENS.has(t) ? (
+                    <textarea
+                      value={fields[t] == null ? "" : String(fields[t])}
+                      onChange={(e) => setField(t, e.target.value)}
+                      disabled={readOnly}
+                      rows={6}
+                      placeholder={LONG_HINTS[t]}
+                      style={{ ...inputStyle, resize: "vertical", lineHeight: 1.45 }}
+                    />
+                  ) : (
+                    <input
+                      type="text"
+                      value={fields[t] == null ? "" : String(fields[t])}
+                      onChange={(e) => setField(t, e.target.value)}
+                      disabled={readOnly}
+                      style={inputStyle}
+                    />
+                  )}
                 </label>
               ))}
             </div>

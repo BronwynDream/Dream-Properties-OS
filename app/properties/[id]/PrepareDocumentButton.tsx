@@ -12,6 +12,7 @@ const TEMPLATES: { code: string; title: string; hint: string; needsTransfer: boo
   { code: "movables_agreement", title: "Movables agreement", hint: "Furniture and movables sold with the property.", needsTransfer: true },
   { code: "addendum_sale", title: "Addendum to agreement of sale", hint: "Amend named clauses of a signed agreement.", needsTransfer: true },
   { code: "addendum_movables", title: "Addendum to movables agreement", hint: "Amend a signed movables agreement.", needsTransfer: true },
+  { code: "ppra_disclosure", title: "PPRA mandatory disclosure", hint: "Section 67 condition report, filled from the answers on this record.", needsTransfer: true },
   { code: "condition_report_appendix", title: "Condition report appendix", hint: "Seller unable to complete the Property Condition Report.", needsTransfer: true },
 ];
 

@@ -6,6 +6,9 @@ import { createClient } from "@/lib/supabase/server";
 import type { DocContext } from "@/lib/documents/resolve";
 import { buildDealContext } from "@/lib/documents/context-deal";
 import { finaliseDraft, fileSignedCopy } from "@/lib/documents/finalise";
+import { ensureDisclosureRows } from "@/lib/documents/ppra";
+import { ppraFormTypeFor } from "@/lib/ppraDisclosure";
+import { createServiceClient } from "@/lib/supabase/service";
 
 // Draft actions (plan 019 Arc A4).
 //
@@ -88,6 +91,18 @@ export async function createDraft(input: {
     .eq("code", input.templateCode)
     .maybeSingle();
   if (!tpl || !tpl.active) return { ok: false, error: `Template ${input.templateCode} is not available.` };
+
+  // The PPRA form is filled from the structured disclosure, so make sure
+  // that record exists first (plot deals start from the vacant-land
+  // preset). Written with the service client: the disclosure tables are
+  // admin-write under RLS, but starting one is part of preparing the deal.
+  if (input.templateCode === "ppra_disclosure") {
+    if (!input.transferId) return { ok: false, error: "The disclosure belongs to a deal — open or create the transfer first." };
+    const { data: p } = await supabase.from("property").select("property_type:property_type_id(label)").eq("id", input.propertyId).maybeSingle();
+    const typeLabel = ((Array.isArray(p?.property_type) ? p?.property_type[0] : p?.property_type) as { label: string } | null | undefined)?.label ?? null;
+    const ensured = await ensureDisclosureRows(createServiceClient(), input.transferId, ppraFormTypeFor(typeLabel));
+    if (!ensured.ok) return ensured;
+  }
 
   const { ctx, label } = await buildDealContext(supabase, input.propertyId, input.transferId);
 

@@ -8,6 +8,67 @@ _Last updated: 2026-10-16_
 
 ---
 
+## ARC A6 — PPRA SECTION 67 DISCLOSURE AS A DOCUMENT; ADDENDUM AMENDMENTS (2026-10-16)
+
+### Shipped
+
+- **Finding that changed the model.** Bronwyn's "Vacant Land" PPRA form is
+  the SAME prescribed form as the house one, pre-answered N/A on every
+  statement except boundary disputes (NO), with "This Property is Vacant
+  Land." as additional information. The OS had an invented plot question
+  set (zoning, NEMBA, water rights…) that is not the statutory disclosure.
+  `lib/ppraDisclosure.ts`: `PLOT_QUESTIONS = HOUSE_QUESTIONS`, plus
+  `PLOT_PRESET` applied when a plot disclosure is created; `ppraFormTypeFor()`
+  and `answerMark()` shared helpers (property page and /compliance now use
+  the same detection).
+- **Migration `0076_ppra_disclosure_template.sql`** — one `ppra_disclosure`
+  template (10 clauses, regulation wording verbatim). The eleven statement
+  answers are `{{ans_<question_key>}}` tokens; additional information and
+  property description are tokens too. Retires the 0069 placeholders
+  `ppra_disclosure_house/land`.
+- **`lib/documents/ppra.ts`** — `ensureDisclosureRows()` (shared by the
+  property-page action and draft creation; plot preset on create) and
+  `ppraContext()` (answers → "YES [X]  NO [ ]  N/A [ ]", explanations folded
+  into additional information; unanswered stays a gap). `buildDealContext`
+  merges it for any transfer, so the disclosure tokens are on every deal
+  draft's context.
+- `createDraft('ppra_disclosure')` ensures the structured record exists
+  first (service client — the ppra tables are admin-write under RLS, but
+  starting the disclosure is part of preparing the deal).
+- Editor: `ans_*` tokens are not fields; a panel says the answers live on
+  the property record. "PPRA mandatory disclosure" added to Prepare
+  document….
+- **Migration `0075_addendum_amendments_variant.sql`** — "Write the
+  amendments" variant (`{{amendments}}`) is now the default for both
+  addenda; Bronwyn's EXAMPLES block kept as a reference variant. Editor
+  renders long tokens (`amendments`, `agent_disclosures`,
+  `ppra_additional_info`) as a textarea with a hint.
+- The whole engine chain 0065→0076 replays cleanly into a stub Postgres in
+  the container (stub tables for property/transfer/document/app_user + the
+  is_admin/is_staff/set_updated_at functions) — a cheap migration harness
+  worth keeping; see the session transcript for the stub script.
+
+### Verification
+
+- tsc clean, eslint clean on touched files, `next build` clean. Migrations
+  replayed in the container harness: `ppra_disclosure` typed, 10 slots;
+  amendments variants as intended.
+- NOT yet live: apply 0075 + 0076, push, then Prepare document → PPRA
+  disclosure on 7 The Grove and check the statements render with marks and
+  the plot preset on a vacant-land deal.
+
+### Loose ends
+
+- PPRA answers are still admin-write (requireAdmin + RLS). An agent leading
+  the transfer can prepare the form but not answer it — contradicts "for
+  Bronwyn and agents equally". Needs a lead-agent write policy (Arc C).
+- "Annexed to the agreement of sale" waits for the sale agreements to be
+  seeded (A-seed). `document_link` to the transfer already ties them.
+- The [X] marks are text; a tick-box table in the PDF would be closer to the
+  master's layout. Cosmetic.
+
+---
+
 ## TOKENISE THE SHORT TEMPLATES (2026-10-16, after A5)
 
 The first live finalise printed an addendum that said "all fields filled"

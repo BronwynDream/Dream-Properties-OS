@@ -20,7 +20,7 @@ import GeneratedDocuments from "./GeneratedDocuments";
 import PrepareDocumentButton from "./PrepareDocumentButton";
 import { PRODUCTS as LIGHTSTONE_PRODUCTS } from "@/lib/lightstone";
 import { Rand, randString } from "@/app/components/format";
-import type { PpraFormType } from "@/lib/ppraDisclosure";
+import { ppraFormTypeFor, type PpraFormType } from "@/lib/ppraDisclosure";
 import type { ViewingKind } from "@/lib/viewings";
 
 export const dynamic = "force-dynamic";
@@ -614,9 +614,7 @@ export default async function PropertyRecord({
   // Deal compliance — PPRA disclosure + CoC certs. Only wired for the
   // active transfer. Form type derives from property_type: anything that
   // looks like vacant land uses the plot form, else house.
-  const propTypeLabel = (prop.property_type?.label ?? "").toLowerCase();
-  const dealFormType: PpraFormType =
-    /vacant|plot|land|erf$/.test(propTypeLabel) ? "plot" : "house";
+  const dealFormType: PpraFormType = ppraFormTypeFor(prop.property_type?.label);
 
   let dealDisclosure: {
     id: string;

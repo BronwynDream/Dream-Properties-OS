@@ -9,6 +9,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { DocContext } from "./resolve";
 import { formatZar, numberToWords } from "./resolve";
+import { ppraContext } from "./ppra";
+import { ppraFormTypeFor } from "@/lib/ppraDisclosure";
 
 type Party = { display_name: string; party_type: string; id_number: string | null; registration_no: string | null };
 
@@ -19,9 +21,10 @@ export async function buildDealContext(
 ): Promise<{ ctx: DocContext; label: string }> {
   const { data: prop } = await supabase
     .from("property")
-    .select("primary_address, extent_sqm")
+    .select("primary_address, extent_sqm, property_type:property_type_id(label)")
     .eq("id", propertyId)
     .maybeSingle();
+  const propertyTypeLabel = ((Array.isArray(prop?.property_type) ? prop?.property_type[0] : prop?.property_type) as { label: string } | null | undefined)?.label ?? null;
   const { data: erf } = await supabase
     .from("erf")
     .select("erf_number")
@@ -35,6 +38,8 @@ export async function buildDealContext(
     property_known_as: knownAs(prop?.primary_address ?? null),
     property_address: prop?.primary_address ?? null,
     extent_sqm: prop?.extent_sqm != null ? formatZar(Number(prop.extent_sqm)) : null,
+    property_description:
+      erf?.erf_number ? `Erf ${erf.erf_number} Knysna, Western Cape${prop?.primary_address ? `, known as ${knownAs(prop.primary_address)}, Knysna` : ""}` : null,
   };
 
   if (transferId) {
@@ -69,6 +74,8 @@ export async function buildDealContext(
       ctx.purchase_price_words = numberToWords(Number(agreement.price));
     }
     ctx.agreement_date = longDate(agreement?.signature_date ?? null);
+    // PPRA Section 67 answers, when the deal has a disclosure on record.
+    Object.assign(ctx, await ppraContext(supabase, transferId, ppraFormTypeFor(propertyTypeLabel)));
   }
 
   const label = ctx.transfer_name ? String(ctx.transfer_name) : prop?.primary_address ?? "Document";
@@ -117,5 +124,6 @@ export const DEAL_TOKEN_LABELS: Record<string, string> = {
   agreement_date: "Agreement date",
   movables_price: "Price for the movables (ZAR)",
   movables_agreement_date: "Date of the movables agreement",
+  amendments: "The amendments (numbered, one per paragraph)",
   agent_disclosures: "Disclosures the agent made (if any)",
 };

@@ -138,7 +138,7 @@ content it frames exists.
 | 2 | A2 + A3 | 1 |
 | 3–4 | A4 | 2 |
 | 5 | A5 | 1 — ✅ shipped 2026-10-16 |
-| 6 | A6 | 1 |
+| 6 | A6 | 1 — ✅ shipped 2026-10-16 (live check pending) |
 | 7–9 | B1–B3 | 3 |
 | 10 | B4 + B5 | 1–2 |
 | 11–14 | C1–C5 | 4 |

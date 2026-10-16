@@ -5,7 +5,7 @@ import TopBar from "@/app/components/TopBar";
 import { getSetting } from "@/lib/settings";
 import { PropertyDate, FicaStatusBadge } from "@/app/components/format";
 import { deriveFicaState, ficaLabel, type DerivedFica, type RawFicaRecord } from "@/lib/fica";
-import { questionsFor, summariseAnswers, type PpraFormType } from "@/lib/ppraDisclosure";
+import { questionsFor, summariseAnswers, ppraFormTypeFor, type PpraFormType } from "@/lib/ppraDisclosure";
 
 export const dynamic = "force-dynamic";
 
@@ -789,8 +789,7 @@ async function loadDealDocGaps(
   for (const t of transferRows) {
     const propId = t.property?.id as string | undefined;
     if (!propId) continue;
-    const propTypeLabel = (t.property?.property_type?.label ?? "").toString().toLowerCase();
-    const formType: PpraFormType = /vacant|plot|land|erf$/.test(propTypeLabel) ? "plot" : "house";
+    const formType: PpraFormType = ppraFormTypeFor(t.property?.property_type?.label?.toString());
     const canonical = questionsFor(formType);
     const gaps: DocGap[] = [];
 
