@@ -8,6 +8,49 @@ _Last updated: 2026-10-16_
 
 ---
 
+## ARC B1 + B2 — ONE SEARCH OVER EVERYTHING, ⌘K IN THE TOP BAR (2026-10-16)
+
+### Shipped
+
+- **Migration `0077_search_everything.sql`** — `search_everything(q,
+  per_kind)` returns `(kind, id, title, subtitle, href, score)` across
+  properties (address, erf number, title deed), deals (transfer name),
+  people (name, email, phone by last nine digits, exact ID / passport /
+  registration number — matched, never returned), prepared drafts, filed
+  documents (title + full-text over `ocr_text`), market listings (address,
+  headline, exact P24/PP ref; links to the map pin, else the portal), erven
+  on the municipal roll (exact erf number or "13 campbell" street match),
+  estates. Trigram `word_similarity` + substring for short fields, so typos
+  are forgiven ("sofianso" → Sofianos); exact identifiers rank 1.0.
+  **Security invoker** — every branch runs under the caller's RLS. Adds the
+  trigram / FTS indexes the existing set didn't cover.
+- `app/api/search/route.ts` — GET `?q=` → the RPC as the signed-in user.
+- `app/components/CommandSearch.tsx` — the box: "Search ⌘K" button in the
+  top bar (icon only on phones), ⌘K / Ctrl+K or "/" to open, debounced
+  fetch with abort, results grouped Properties → Deals → People → Prepared
+  → Filed → Market → Erven → Estates, ↑ ↓ Enter Esc, full-screen on phones.
+  External portal links open in a new tab.
+
+### Verification
+
+- Migration run against a stub schema in the container with sample rows:
+  "grove" (property, deal, draft, filed agreement, erf), "1764" (property +
+  roll), "13 campbell" (market listing + roll), phone in three formats,
+  ID number (person, ID not shown), "occupational rent" (OCR text), typo
+  tolerance, single-character query returns nothing. tsc / eslint / build
+  clean.
+- NOT yet live: apply 0077, push, then the box in the browser.
+
+### Loose ends
+
+- B3 (ask-your-data, SQL-generating) and B4 (clause search, draft from
+  precedent) and B5 (market research layer) remain in Arc B.
+- Filed documents with no property link show "not filed on a property" and
+  don't open; a document viewer route would fix that.
+- No recent-searches / recently-viewed list in the empty state yet.
+
+---
+
 ## LOOK & FEEL "BLUEPRINT" (OPTION B) + TOP BAR (2026-10-16)
 
 Bronwyn chose Option B from the three-option PDF. Applied across the OS

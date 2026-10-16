@@ -4,14 +4,16 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { Light } from "@/lib/feeds/registry";
+import CommandSearch from "./CommandSearch";
 
 // Top bar — Blueprint (plan 019 Arc D, 2026-10-16).
 //
 // Flat row of the places an agent actually goes, in the order of the day:
 // Home, Map, Properties, Deals, Documents, People, Inbox. Two small menus
 // hold the rest: More (the tools), Admin (admin-only, carrying the data-
-// health dot so Bronwyn sees a feed problem from any page). The avatar
-// opens account + sign out. Under 768px the row folds into the drawer.
+// health dot so Bronwyn sees a feed problem from any page). Search (⌘K)
+// sits by the avatar, which opens account + sign out. Under 768px the row
+// folds into the drawer; search stays in the bar as an icon.
 
 type Leaf = { href: string; label: string; adminOnly?: boolean };
 type Group = { label: string; adminOnly?: boolean; children: Leaf[]; alignRight?: boolean };
@@ -161,6 +163,7 @@ export default function TopBarClient({
         </nav>
 
         <div className="topbar-tools">
+          <CommandSearch />
           <Menu
             id="who"
             open={openMenu === "who"}
