@@ -1,11 +1,10 @@
-import { readFile } from "node:fs/promises";
-import path from "node:path";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServiceClient } from "@/lib/supabase/service";
 import { getDreamAgency } from "@/lib/agency";
 import { loadTemplate, resolveDocument, type DocContext } from "./resolve";
 import { deriveContext } from "./derive";
 import { renderDocumentPdf } from "./pdf";
+import { dreamLogoBuffer } from "./logo";
 
 // Finalisation and the signed-copy register (plan 019 Arc A5).
 //
@@ -51,14 +50,6 @@ function one<T>(v: T | T[] | null): T | null {
   return v == null ? null : Array.isArray(v) ? v[0] ?? null : v;
 }
 
-async function loadLogo(): Promise<Buffer | null> {
-  try {
-    return await readFile(path.join(process.cwd(), "public", "brand", "dream-knysna-logo.png"));
-  } catch {
-    return null;
-  }
-}
-
 function safeName(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "document";
 }
@@ -93,7 +84,7 @@ export async function finaliseDraft(userClient: SupabaseClient, userId: string, 
   });
 
   const agency = await getDreamAgency();
-  const logo = await loadLogo();
+  const logo = dreamLogoBuffer();
   const reference = `Dream OS · ${draft.id.slice(0, 8)} · v${draft.version}`;
   let pdf: Buffer;
   try {

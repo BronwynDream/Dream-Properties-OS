@@ -33,7 +33,9 @@ const s = StyleSheet.create({
   footerRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 2 },
 });
 
-const BLANK_RE = /_{6,}/;
+// "Seller:  ________" style fill-in lines; numbered sub-clauses with a
+// blank inside prose stay in the body face.
+const FILL_LINE_RE = /^[^\n]{0,40}:?\s*_{6,}\s*$/;
 
 function isAllCaps(p: string): boolean {
   const letters = p.replace(/[^A-Za-z]/g, "");
@@ -71,10 +73,10 @@ export async function renderDocumentPdf(args: {
           if (sec.heading && paras.length > 1 && norm(paras[0]) === norm(sec.heading)) paras = paras.slice(1);
           const render = (p: string, j: number) => {
             const isTitle = i === 0 && j === 0 && !sec.heading && isAllCaps(p) && p.length < 90;
-            const isRow = p.includes("\t") || (BLANK_RE.test(p) && p.length < 160);
+            const isRow = FILL_LINE_RE.test(p);
             if (isTitle) return <Text key={j} style={s.title}>{p}</Text>;
             if (isRow) return <Text key={j} style={s.row}>{p.replace(/\t+/g, "   ")}</Text>;
-            return <Text key={j} style={s.para}>{p}</Text>;
+            return <Text key={j} style={s.para}>{p.replace(/\t+/g, "  ")}</Text>;
           };
           // Keep a heading with its first paragraph so a page never ends on
           // a bare clause number.

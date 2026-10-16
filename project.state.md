@@ -64,9 +64,15 @@ filed on the property record, and the signed copy filed against it.
   passes, `next build` clean in the container.
 - Rendered a 3-page sample through the real renderer and looked at every
   page (letterhead, title, tab rows, headings, footer, page numbers).
-- NOT yet verified live: finalising the test movables draft on
-  dreamproperties.app — needs 0073 applied and the push. Do this first next
-  session; also check the signed-copy upload from a phone photo.
+- Live (0073 applied, Vercel green): finalised the test movables draft
+  `994af811` in the browser → FINAL, timestamp, Download PDF opened the
+  3-page PDF from storage. Two things the live PDF showed that the container
+  sample did not: the logo fell back to text (Vercel does not ship /public
+  into server functions → logo now inlined as base64 in
+  `lib/documents/logo.ts`), and numbered sub-clauses with an inline blank
+  were set in Courier (fill-line heuristic tightened to "Label: ____" lines
+  only). Both fixed in the follow-up commit; re-check on the next finalise.
+- NOT yet verified live: the signed-copy upload from a phone photo.
 
 ### Loose ends
 
