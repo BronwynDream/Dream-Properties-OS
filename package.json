@@ -12,6 +12,7 @@
     "test:documents": "npx --yes tsx lib/documents/__tests__/resolve.test.ts"
   },
   "dependencies": {
+    "@react-pdf/renderer": "^3.4.4",
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.45.4",
     "@types/mapbox-gl": "^3.4.1",

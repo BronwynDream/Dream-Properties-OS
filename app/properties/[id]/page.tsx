@@ -224,7 +224,7 @@ export default async function PropertyRecord({
   // Arc A2/A3). RLS scopes agents to their own + transfers they lead.
   const { data: draftsData } = await supabase
     .from("document_draft")
-    .select("id, title, status, created_at, mandate_id, template:template_id(label), author:created_by(full_name)")
+    .select("id, title, status, created_at, mandate_id, signed_document_id, rendered_document_id, template:template_id(label), author:created_by(full_name)")
     .eq("property_id", params.id)
     .order("created_at", { ascending: false });
   const generatedDocs = (draftsData ?? []) as any[];

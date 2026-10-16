@@ -99,26 +99,10 @@ Wireframe 07 made real. The Phase-5 promise in PROJECT.md.
 | D5 | "View as agent" for admins, with a visible banner | audit D1 |
 | D6 | Split `MapView.tsx` (1,953 LOC) and `properties/[id]/page.tsx` (1,280 LOC) as each is touched; retire inline styles file by file | plan 012 intent |
 
-### Slice H — Data Health page (pulled forward; runs before A2)
-
-Added 2026-10-14 after Simon saw the live map rail: *"not sure all these
-left-hand buttons will go down well with the agents … we need a dashboard
-that has green lights for each section."* Agreed.
-
-| Step | Delivers |
-|---|---|
-| H1 | `feed_run` table: one row per scheduled/manual run (feed, started, finished, status, items, error). Each cron/refresh route writes one. |
-| H2 | `/admin/health` page: one row per feed with a green / amber / red light, last run, count, queue depth, and that feed's refresh button. Feeds: Dream website, Property24 (index + Firecrawl + drain queue), Private Property (red until built), municipal valuation roll, geocoding (pinned / missing), inbound email webhook, enquiry intake. |
-| H3 | Map rail slimmed to basemap, sources, cadastral outlines, mandate filter. Every refresh / drain / re-geocode button and the "n / m processed" counters move to H2. Source chips get a small dot mirroring the health light (read-only for agents). Legend label "Sole / Open / None" → "Open / None". |
-
-Half a session. H3 is a map change, so it is loaded in a browser before
-merge (house rule).
-
 ## Ordering and why
 
-A1 → **H** → A2 … → B → C → D, with D2–D3 allowed to interleave once A5
-lands (the document register changes what the property record should show
-first).
+A → B → C → D, with D2–D3 allowed to interleave once A5 lands (the
+document register changes what the property record should show first).
 
 A first because the templates are ready, it closes the "documents vanish"
 hole, and it is the most visible change for Bronwyn. B depends on A storing
@@ -137,25 +121,6 @@ content it frames exists.
   Business API (needs subscription); commission/trust (out of scope);
   Lightstone API (declined at R5k/mo).
 
-## Pre-launch: database purge (parked, Simon 2026-10-14)
-
-Nobody has used the system yet; most or all data in Bon Bon is test
-data from migration trials and scraper runs. Before the agents are let in,
-purge transactional data and keep reference data. Not scheduled; scope it
-when Simon says go. Shape when it comes:
-
-- **Keep**: schema, `app_user`, cadastral parcels, `muni_property` /
-  `muni_valuation`, valuation-roll uploads, clause library and
-  `doc_template*`, agencies, settings.
-- **Purge**: `property`, `transfer`, `party` and their children, listings,
-  mandates, agreements, documents and storage buckets (`staging`,
-  `documents`, `fica`), `ingest_batch` / `ingest_file`, `external_listing`
-  and the Property24 queue (re-scrape after), `feed_run`.
-- Do it as a reviewed SQL script committed to `supabase/`, run inside a
-  transaction, after a Supabase point-in-time backup. Decide first whether
-  the pilot deals (7 The Grove, Plot A4, 3 Oupad) are test data or the
-  first real records.
-
 ## Per-PR done criteria (every slice)
 
 - `npm run typecheck`, `npm run build` (in the cloud container — see the
@@ -169,11 +134,10 @@ when Simon says go. Shape when it comes:
 
 | Session | Slice | Est. |
 |---|---|---|
-| 1 | A1 | done 2026-10-14 |
-| 2 | H + start A2 | 1 |
-| 2–3 | A2 + A3 | 1 |
+| 1 | A1 | this session |
+| 2 | A2 + A3 | 1 |
 | 3–4 | A4 | 2 |
-| 5 | A5 | 1 |
+| 5 | A5 | 1 — ✅ shipped 2026-10-16 |
 | 6 | A6 | 1 |
 | 7–9 | B1–B3 | 3 |
 | 10 | B4 + B5 | 1–2 |

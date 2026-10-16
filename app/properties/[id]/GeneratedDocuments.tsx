@@ -11,6 +11,8 @@ type Row = {
   status: "draft" | "final" | "superseded";
   created_at: string;
   mandate_id: string | null;
+  signed_document_id: string | null;
+  rendered_document_id: string | null;
   template: { label: string } | { label: string }[] | null;
   author: { full_name: string | null } | { full_name: string | null }[] | null;
 };
@@ -67,11 +69,18 @@ export default function GeneratedDocuments({ rows }: { rows: Row[] }) {
                   padding: "2px 8px",
                 }}
               >
-                {r.status}
+                {r.signed_document_id ? "signed" : r.status}
               </span>
-              <Link href={`/documents/${r.id}`} className="btn-secondary" style={{ padding: "6px 10px", fontSize: 12 }}>
-                Open
-              </Link>
+              <span style={{ display: "flex", gap: 6 }}>
+                {r.rendered_document_id && (
+                  <a href={`/documents/${r.id}/file${r.signed_document_id ? "?which=signed" : ""}`} target="_blank" rel="noopener" className="btn-secondary" style={{ padding: "6px 10px", fontSize: 12, textDecoration: "none" }}>
+                    PDF
+                  </a>
+                )}
+                <Link href={`/documents/${r.id}`} className="btn-secondary" style={{ padding: "6px 10px", fontSize: 12 }}>
+                  Open
+                </Link>
+              </span>
             </li>
           );
         })}

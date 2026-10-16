@@ -8,6 +8,81 @@ _Last updated: 2026-10-16_
 
 ---
 
+## ARC A5 — FINALISE → PDF, FILED; SIGNED-COPY REGISTER (2026-10-16)
+
+Plan 019, slice A5. A draft can now be frozen into a PDF that is stored and
+filed on the property record, and the signed copy filed against it.
+
+### Shipped
+
+- **Migration `0073_document_finalise.sql`** — `document_draft.signed_document_id`,
+  `signed_at`, `signed_by`; fills `doc_template.doc_type_id` (0065 created the
+  column, nothing set it) so finalised PDFs file under the right
+  `document_type` (mandates → `mandate`, sale agreements → `agreement_of_sale`
+  / `land_freehold_agreement`, movables, addenda, condition report →
+  `ppra_disclosure`).
+- **`lib/documents/pdf.tsx`** — `renderDocumentPdf()` with `@react-pdf/renderer`
+  (new dependency, 3.4.4). Letterhead (logo + agency identity + FFC), the
+  resolved sections, PPRA line + reference + page numbers in the footer.
+  Built-in PDF fonts on purpose: no font fetch at render time, identical on
+  Vercel and locally. Heading kept with its first paragraph so a page never
+  ends on a bare clause number. The letterhead is the one place to restyle
+  once Bronwyn picks the new look.
+- **`lib/documents/derive.ts`** — `DERIVED` + `deriveContext()` pulled out of
+  `DraftEditor` so the editor preview and the PDF resolve identically.
+- **`lib/documents/finalise.ts`** — `finaliseDraft()`: resolve → PDF → upload
+  to `documents` bucket at `generated/<property>/<draft>-v<n>.pdf` → insert
+  `document` (status `final`, `doc_type_id` from the template) → `document_link`
+  rows (property / transfer / listing / mandate, role `generated`) → stamp the
+  draft `final` with `rendered_document_id`, `finalised_at/by` → set
+  `mandate.document_id`. `fileSignedCopy()`: PDF/JPEG/PNG/HEIC ≤ 25 MB →
+  `signed/<property>/<draft>-signed-<stamp>.<ext>` → `document` (status
+  `executed`, `supersedes_id` = the print) → links role `signed` → print marked
+  `superseded` → draft `signed_document_id/at/by`, mandate repointed.
+  Reads go through the caller's client (draft RLS decides who may); the
+  `document`/`document_link` writes use the service client because 0005 RLS
+  reserves those tables for admins — the agent's user id is on every row.
+- **`app/documents/[id]/actions.ts`** — `finaliseDraftAction`,
+  `fileSignedCopyAction` (FormData). `next.config.mjs`: server-action body
+  limit raised to 25 MB for the phone-photo upload.
+- **`app/documents/[id]/file/route.ts`** — `GET ?which=print|signed` → 302 to
+  a 5-minute signed storage URL. Addressed by draft id so links stay stable.
+- **`DraftEditor`** — *Finalise* (disabled while unsaved) opens an inline
+  confirm that says what freezing means and how many blanks will print;
+  *Download PDF* replaces *Print* once filed; *Signed copy* link; a
+  file-signed-copy panel on final drafts. Status line shows "signed" and the
+  finalised / signed timestamps.
+- **Hub + property register** — status pill reads Signed once the copy is on
+  file; property register rows get a PDF button (signed copy when present).
+- **`public/brand/dream-knysna-logo@2x.png` was a saved WordPress 404 page**,
+  not a PNG (the browser was silently falling back to 1x). Replaced with a
+  real 400×200 upscale of the 1x.
+
+### Verification
+
+- `tsc --noEmit` clean, eslint clean for touched files, `test:documents`
+  passes, `next build` clean in the container.
+- Rendered a 3-page sample through the real renderer and looked at every
+  page (letterhead, title, tab rows, headings, footer, page numbers).
+- NOT yet verified live: finalising the test movables draft on
+  dreamproperties.app — needs 0073 applied and the push. Do this first next
+  session; also check the signed-copy upload from a phone photo.
+
+### Loose ends
+
+- `next.config.mjs` warns `outputFileTracingIncludes` is unrecognised (Next
+  14 wants it under `experimental`) — pre-existing, means the pdfjs worker
+  include for valuation rolls is probably not applied. Separate fix.
+- Finalise is allowed with unfilled fields (they print as blanks to complete
+  by hand) — deliberate, the agent is warned in the confirm.
+- No "unfinalise"; a change after finalising means a new draft. Hub has no
+  "duplicate as new draft" yet — small A5 follow-up.
+- Admin-only `document` RLS is now bridged by the service client in one
+  place; if more agent-written registers appear, a staff insert policy with
+  `uploaded_by = auth.uid()` would be cleaner.
+
+---
+
 ## LANDING PAGE — "WHAT ARE YOU HERE TO DO?" (2026-10-16)
 
 Simon: *"when the agent lands on the page, what is it that they are trying

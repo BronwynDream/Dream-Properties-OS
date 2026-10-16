@@ -22,6 +22,7 @@ type DraftRow = {
   status: "draft" | "final" | "superseded";
   created_at: string;
   finalised_at: string | null;
+  signed_document_id: string | null;
   property_id: string | null;
   template: { code: string; label: string } | { code: string; label: string }[] | null;
   property: { primary_address: string | null } | { primary_address: string | null }[] | null;
@@ -54,7 +55,7 @@ export default async function DocumentsHub() {
   const [{ data: draftsData }, { data: templatesData }] = await Promise.all([
     supabase
       .from("document_draft")
-      .select("id, title, status, created_at, finalised_at, property_id, template:template_id(code, label), property:property_id(primary_address), author:created_by(full_name)")
+      .select("id, title, status, created_at, finalised_at, signed_document_id, property_id, template:template_id(code, label), property:property_id(primary_address), author:created_by(full_name)")
       .order("created_at", { ascending: false })
       .limit(200),
     supabase
@@ -125,7 +126,7 @@ export default async function DocumentsHub() {
                     <div style={{ ...mono, color: "var(--paper-mute)" }}>
                       {author?.full_name ?? "—"} · {fmtDate(d.created_at)}
                     </div>
-                    <StatusPill status={d.status} />
+                    <StatusPill status={d.signed_document_id ? "signed" : d.status} />
                     <Link href={`/documents/${d.id}`} className="btn-secondary" style={{ padding: "6px 10px", fontSize: 12 }}>
                       Open
                     </Link>
@@ -177,8 +178,9 @@ export default async function DocumentsHub() {
   );
 }
 
-function StatusPill({ status }: { status: DraftRow["status"] }) {
+function StatusPill({ status }: { status: DraftRow["status"] | "signed" }) {
   const map = {
+    signed: { label: "Signed", color: "var(--positive)" },
     draft: { label: "Draft", color: "var(--caution)" },
     final: { label: "Final", color: "var(--positive)" },
     superseded: { label: "Superseded", color: "var(--ink-400)" },

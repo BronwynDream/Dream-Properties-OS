@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import type { DocContext } from "@/lib/documents/resolve";
 import { buildDealContext } from "@/lib/documents/context-deal";
+import { finaliseDraft, fileSignedCopy } from "@/lib/documents/finalise";
 
 // Draft actions (plan 019 Arc A4).
 //
@@ -110,4 +111,37 @@ export async function createDraft(input: {
   revalidatePath(`/properties/${input.propertyId}`);
   revalidatePath("/documents");
   redirect(`/documents/${draft.id}`);
+}
+
+// A5: freeze the draft as a PDF and file it (lib/documents/finalise.ts).
+export async function finaliseDraftAction(draftId: string): Promise<{ ok: true; documentId: string } | { ok: false; error: string }> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "unauthorised" };
+  const res = await finaliseDraft(supabase, user.id, draftId);
+  if (res.ok) {
+    revalidatePath(`/documents/${draftId}`);
+    revalidatePath("/documents");
+    const { data: d } = await supabase.from("document_draft").select("property_id").eq("id", draftId).maybeSingle();
+    if (d?.property_id) revalidatePath(`/properties/${d.property_id}`);
+  }
+  return res;
+}
+
+// A5: the signed copy comes in as a form upload (file input → FormData).
+export async function fileSignedCopyAction(draftId: string, form: FormData): Promise<{ ok: true; documentId: string } | { ok: false; error: string }> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "unauthorised" };
+  const file = form.get("file");
+  if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Choose the signed copy first." };
+  const bytes = Buffer.from(await file.arrayBuffer());
+  const res = await fileSignedCopy(supabase, user.id, draftId, { bytes, mime: file.type, name: file.name });
+  if (res.ok) {
+    revalidatePath(`/documents/${draftId}`);
+    revalidatePath("/documents");
+    const { data: d } = await supabase.from("document_draft").select("property_id").eq("id", draftId).maybeSingle();
+    if (d?.property_id) revalidatePath(`/properties/${d.property_id}`);
+  }
+  return res;
 }

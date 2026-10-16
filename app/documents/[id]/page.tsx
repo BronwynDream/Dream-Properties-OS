@@ -23,6 +23,10 @@ type DraftRow = {
   clause_overrides: Record<string, string>;
   omitted_clauses: string[];
   created_at: string;
+  finalised_at: string | null;
+  signed_at: string | null;
+  rendered_document_id: string | null;
+  signed_document_id: string | null;
   template: { code: string; label: string } | { code: string; label: string }[] | null;
 };
 
@@ -33,7 +37,7 @@ export default async function DraftPage({ params }: { params: { id: string } }) 
 
   const { data } = await supabase
     .from("document_draft")
-    .select("id, title, status, version, property_id, transfer_id, field_values, clause_selections, clause_overrides, omitted_clauses, created_at, template:template_id(code, label)")
+    .select("id, title, status, version, property_id, transfer_id, field_values, clause_selections, clause_overrides, omitted_clauses, created_at, finalised_at, signed_at, rendered_document_id, signed_document_id, template:template_id(code, label)")
     .eq("id", params.id)
     .maybeSingle();
   const draft = data as unknown as DraftRow | null;
@@ -74,6 +78,10 @@ export default async function DraftPage({ params }: { params: { id: string } }) 
           clause_selections: draft.clause_selections ?? {},
           clause_overrides: draft.clause_overrides ?? {},
           omitted_clauses: draft.omitted_clauses ?? [],
+          finalised_at: draft.finalised_at,
+          signed_at: draft.signed_at,
+          has_pdf: !!draft.rendered_document_id,
+          has_signed: !!draft.signed_document_id,
         }}
         model={model}
         agency={agency}

@@ -5,17 +5,11 @@ import { useRouter } from "next/navigation";
 import { DocumentPage } from "@/app/documents/DocumentPage";
 import ClauseDocument from "@/app/documents/ClauseDocument";
 import type { AgencyIdentity } from "@/lib/agency";
-import {
-  resolveDocument,
-  numberToWords,
-  percentToWords,
-  formatZar,
-  type DocContext,
-  type TemplateModel,
-} from "@/lib/documents/resolve";
+import { resolveDocument, type DocContext, type TemplateModel } from "@/lib/documents/resolve";
+import { DERIVED, deriveContext } from "@/lib/documents/derive";
 import { TOKEN_LABELS } from "@/lib/documents/context";
 import { DEAL_TOKEN_LABELS } from "@/lib/documents/context-deal";
-import { saveDraft, type DraftState } from "./actions";
+import { saveDraft, finaliseDraftAction, fileSignedCopyAction, type DraftState } from "./actions";
 
 // The draft editor (plan 019 Arc A4). Works for any template in the clause
 // library because it is driven by the template, not written per document:
@@ -40,29 +34,14 @@ type Draft = {
   clause_selections: Record<string, string>;
   clause_overrides: Record<string, string>;
   omitted_clauses: string[];
+  finalised_at: string | null;
+  signed_at: string | null;
+  has_pdf: boolean;
+  has_signed: boolean;
 };
 
 const LABELS: Record<string, string> = { ...TOKEN_LABELS, ...DEAL_TOKEN_LABELS };
 const TOKEN_RE = /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g;
-
-/** Tokens whose value is computed from another field. */
-const DERIVED: Record<string, (ctx: DocContext) => string | null> = {
-  asking_price_words: (c) => wordsOfZar(c.asking_price),
-  purchase_price_words: (c) => wordsOfZar(c.purchase_price),
-  movables_price_words: (c) => wordsOfZar(c.movables_price),
-  commission_pct_words: (c) => (numOf(c.commission_pct) != null ? percentToWords(numOf(c.commission_pct)!) : null),
-  term_months_words: (c) => (numOf(c.term_months) != null ? numberToWords(numOf(c.term_months)!).toLowerCase() : null),
-};
-
-function numOf(v: unknown): number | null {
-  if (v == null || v === "") return null;
-  const n = Number(String(v).replace(/[R\s,]/gi, ""));
-  return Number.isFinite(n) ? n : null;
-}
-function wordsOfZar(v: unknown): string | null {
-  const n = numOf(v);
-  return n != null && n > 0 ? numberToWords(n) : null;
-}
 
 export default function DraftEditor({
   draft,
@@ -84,6 +63,10 @@ export default function DraftEditor({
   const [dirty, setDirty] = useState(false);
   const [saving, startSaving] = useTransition();
   const [msg, setMsg] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false);
+  const [finalising, startFinalising] = useTransition();
+  const [filing, startFiling] = useTransition();
+  const [signedFile, setSignedFile] = useState<File | null>(null);
   const readOnly = draft.status !== "draft";
 
   // Which tokens does this template actually use? Scan every variant body
@@ -97,20 +80,7 @@ export default function DraftEditor({
     return Array.from(set).filter((t) => !(t in DERIVED) && t !== "mandate_type");
   }, [model, overrides]);
 
-  const ctx = useMemo(() => {
-    const out: DocContext = { ...fields };
-    for (const [k, fn] of Object.entries(DERIVED)) {
-      const v = fn(out);
-      if (v != null) out[k] = v;
-      else delete out[k];
-    }
-    // Pretty ZAR figures in the document, however they were typed.
-    for (const k of ["asking_price", "purchase_price", "movables_price"]) {
-      const n = numOf(out[k]);
-      if (n != null && n > 0) out[k] = formatZar(n);
-    }
-    return out;
-  }, [fields]);
+  const ctx = useMemo(() => deriveContext(fields), [fields]);
 
   const doc = useMemo(
     () => resolveDocument(model, ctx, { clause_selections: selections, clause_overrides: overrides, omitted_clauses: omitted }),
@@ -163,6 +133,35 @@ export default function DraftEditor({
     });
   }
 
+  function handleFinalise() {
+    setConfirming(false);
+    startFinalising(async () => {
+      const res = await finaliseDraftAction(draft.id);
+      if (!res.ok) {
+        setMsg(`Finalise failed: ${res.error}`);
+        return;
+      }
+      setMsg("Finalised. The PDF is filed on the property.");
+      router.refresh();
+    });
+  }
+
+  function handleFileSigned() {
+    if (!signedFile) return;
+    const form = new FormData();
+    form.set("file", signedFile);
+    startFiling(async () => {
+      const res = await fileSignedCopyAction(draft.id, form);
+      if (!res.ok) {
+        setMsg(`Signed copy failed: ${res.error}`);
+        return;
+      }
+      setSignedFile(null);
+      setMsg("Signed copy filed.");
+      router.refresh();
+    });
+  }
+
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto", display: "grid", gridTemplateColumns: "minmax(280px, 340px) minmax(0, 1fr)", gap: 20 }} className="draft-editor">
       <aside className="no-print" style={{ position: "sticky", top: 16, alignSelf: "start", maxHeight: "calc(100vh - 32px)", overflow: "auto", display: "grid", gap: 14 }}>
@@ -172,17 +171,69 @@ export default function DraftEditor({
             <span style={mono}>v{draft.version}{dirty ? " · unsaved" : ""}</span>
           </div>
           <div style={{ ...mono, marginTop: 4, textTransform: "uppercase", letterSpacing: "0.1em", color: readOnly ? "var(--positive)" : "var(--caution)" }}>
-            {draft.status}
+            {draft.has_signed ? "signed" : draft.status}
           </div>
+          {(draft.finalised_at || draft.signed_at) && (
+            <div style={{ ...mono, marginTop: 4, color: "var(--paper-mute)" }}>
+              {draft.finalised_at ? `Finalised ${fmtWhen(draft.finalised_at)}` : ""}
+              {draft.signed_at ? ` · Signed copy ${fmtWhen(draft.signed_at)}` : ""}
+            </div>
+          )}
           <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
             <button type="button" className="btn-primary" onClick={handleSave} disabled={saving || readOnly || !dirty} style={btn}>
               {saving ? "Saving…" : "Save"}
             </button>
-            <button type="button" className="btn-secondary" onClick={() => typeof window !== "undefined" && window.print()} style={btn}>
-              Print
-            </button>
+            {!readOnly && (
+              <button type="button" className="btn-secondary" onClick={() => setConfirming(true)} disabled={saving || finalising || dirty || confirming} style={btn} title={dirty ? "Save first" : undefined}>
+                {finalising ? "Finalising…" : "Finalise"}
+              </button>
+            )}
+            {draft.has_pdf ? (
+              <a className="btn-secondary" href={`/documents/${draft.id}/file`} target="_blank" rel="noopener" style={{ ...btn, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>
+                Download PDF
+              </a>
+            ) : (
+              <button type="button" className="btn-secondary" onClick={() => typeof window !== "undefined" && window.print()} style={btn}>
+                Print
+              </button>
+            )}
+            {draft.has_signed && (
+              <a className="btn-secondary" href={`/documents/${draft.id}/file?which=signed`} target="_blank" rel="noopener" style={{ ...btn, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>
+                Signed copy
+              </a>
+            )}
           </div>
-          {msg && <p style={{ ...mono, margin: "10px 0 0", color: msg.startsWith("Save failed") ? "var(--critical)" : "var(--positive)" }}>{msg}</p>}
+          {confirming && (
+            <div style={{ marginTop: 12, padding: 12, border: "1px solid var(--caution)", borderRadius: 4, background: "#FFF8EA", fontSize: 13, lineHeight: 1.45 }}>
+              <strong>Finalise v{draft.version}?</strong>
+              <p style={{ margin: "6px 0 0" }}>
+                This freezes the document as a PDF on the property record. It can no longer be edited here — a change means a new document.
+                {stillNeeded.length > 0 && <> <span style={{ color: "#9c6b1a" }}>{stillNeeded.length} field{stillNeeded.length === 1 ? "" : "s"} will print as blanks to fill in by hand.</span></>}
+              </p>
+              <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                <button type="button" className="btn-primary" style={btn} onClick={handleFinalise}>Yes, finalise</button>
+                <button type="button" className="btn-secondary" style={btn} onClick={() => setConfirming(false)}>Not yet</button>
+              </div>
+            </div>
+          )}
+          {msg && <p style={{ ...mono, margin: "10px 0 0", color: /failed/.test(msg) ? "var(--critical)" : "var(--positive)" }}>{msg}</p>}
+          {readOnly && draft.status === "final" && !draft.has_signed && (
+            <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--hairline, #e2e8f5)" }}>
+              <div style={fieldLabel}>Signed copy</div>
+              <p style={{ fontSize: 12, color: "var(--paper-mute)", margin: "4px 0 8px" }}>Once the seller has signed, file the scan or a phone photo here.</p>
+              <input
+                type="file"
+                accept="application/pdf,image/jpeg,image/png,image/heic"
+                onChange={(e) => setSignedFile(e.target.files?.[0] ?? null)}
+                style={{ fontSize: 12, maxWidth: "100%" }}
+              />
+              <div style={{ marginTop: 8 }}>
+                <button type="button" className="btn-primary" style={btn} onClick={handleFileSigned} disabled={!signedFile || filing}>
+                  {filing ? "Filing…" : "File signed copy"}
+                </button>
+              </div>
+            </div>
+          )}
           {stillNeeded.length > 0 ? (
             <p style={{ fontSize: 12, color: "#9c6b1a", margin: "10px 0 0" }}>Still needed: {stillNeeded.join(" · ")}</p>
           ) : (
@@ -293,6 +344,10 @@ export default function DraftEditor({
       <style>{`@media (max-width: 900px) { .draft-editor { grid-template-columns: 1fr !important; } .draft-editor aside { position: static !important; max-height: none !important; } }`}</style>
     </div>
   );
+}
+
+function fmtWhen(iso: string): string {
+  return new Date(iso).toLocaleString("en-ZA", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Africa/Johannesburg" });
 }
 
 const panel: React.CSSProperties = {
