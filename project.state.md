@@ -58,6 +58,23 @@ _Last updated: 2026-10-17_
 - The website reader was run against the live site in the browser: page-1 and page-2 cards, the Jo + Avril agents parsed, and the agent photo is gone after the strip.
 - NOT yet verified: the real sync against production (next: run Dream refresh, dry-run sync-os, review, apply).
 
+**Applied (19:09–19:15):**
+- 0085 run by Simon; Dream refresh run (49 upserted, osSync gated off as designed).
+- First apply hit the 60 s limit after 35 of 49 listings. It resumed cleanly on a second run: 10 created, 2 attached, 2 listings added, no errors. A third dry run showed 49 unchanged.
+- Totals: 41 properties created, 4 listings attached (E105, 4 Waterfront, 6 Bowden Park, 12 Eagles Way at R 11.9m → R 11.5m), and 4 listings added (19 Eagles Way, Hudson Heights, 159 Sharples as under offer, 25 Ridge Drive as sold).
+- Properties page live: 53 current listings, 66 records.
+- **Fix after the timeout:** the OS sync no longer runs inside the Dream refresh (the feed alone is about 50–60 s). It's its own cron, GET /api/sources/dream/sync-os at 03:15 UTC (CRON_SECRET bearer), 15 minutes after the feed.
+
+**Follow-ups seen on a created record (Beyond Rare):**
+- The header says "No live deal" and the assigned-agent picker says "No listing on this property yet". Both read the older listing/transfer shape and don't see sync-created listings, which have no transfer.
+- `/dashboard` and `/mandates` scope on `listing.agent_user_id` (null until agents log in), so they need to read `listing_agent`.
+
+**Email intake vs the new records (Simon asked 19:10):**
+- POST /api/intake/email (Resend) only accepts senders that are app_user rows. Agents aren't invited, so their emails are refused.
+- Routing is by subject "Property: <address>", trigram-matched against primary_address at ≥ 0.55. Below that it CREATES a new property, so a placeholder-named record ("Beyond Rare, Pezula") must be addressed by that name or it duplicates.
+- Batches land in /triage for an admin.
+- With agents, intake must respect the access rule: an agent can only file onto records they're on.
+
 **ACCESS RULE (Simon, verbatim, 2026-10-17 — build BEFORE inviting any agent):**
 - "Agents should only see their own sellers details nobody else's"
 - "so Bronwyn should be able to see any of the property records, Vanessa should only see the deals that Bronwyn and her are working on."

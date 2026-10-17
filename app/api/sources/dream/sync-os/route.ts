@@ -6,15 +6,33 @@ import { syncWebsiteToOs } from "@/lib/dream/sync";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-// POST /api/sources/dream/sync-os[?dry=1]   (admin)
+// POST /api/sources/dream/sync-os[?dry=1]   (admin, or the nightly cron)
 //
 // Turns the saved Dream website listings into Dream OS properties,
 // listings and agents (lib/dream/sync.ts). Run the Dream website feed
 // first so the saved rows carry their index card and agents. ?dry=1
-// reports what would happen and writes nothing. After the first real run
-// the nightly website feed keeps it in step on its own.
+// reports what would happen and writes nothing. Vercel cron calls it with
+// GET at 03:15 UTC, 15 minutes after the website feed (vercel.json).
+
+function cronAuthorised(request: Request): boolean {
+  const secret = (process.env.CRON_SECRET ?? "").trim();
+  const auth = request.headers.get("authorization") ?? "";
+  if (!secret || !auth.startsWith("Bearer ")) return false;
+  const bearer = auth.slice(7).trim();
+  if (bearer.length !== secret.length) return false;
+  let diff = 0;
+  for (let i = 0; i < secret.length; i++) diff |= bearer.charCodeAt(i) ^ secret.charCodeAt(i);
+  return diff === 0;
+}
+
+export async function GET(request: Request) {
+  if (!cronAuthorised(request)) return NextResponse.json({ error: "unauthorised" }, { status: 401 });
+  const report = await syncWebsiteToOs(createServiceClient(), { dry: false });
+  return NextResponse.json({ ok: true, counts: report.counts, goneFromWebsite: report.goneFromWebsite, errors: report.errors });
+}
 
 export async function POST(request: Request) {
+  if (cronAuthorised(request)) return GET(request);
   const supabase = createClient();
   const {
     data: { user },

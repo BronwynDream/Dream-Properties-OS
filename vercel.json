@@ -11,6 +11,10 @@
     {
       "path": "/api/sources/dream/refresh",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/sources/dream/sync-os",
+      "schedule": "15 3 * * *"
     }
   ]
 }

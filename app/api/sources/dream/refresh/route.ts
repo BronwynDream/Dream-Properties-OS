@@ -14,7 +14,6 @@ import {
   type WebsiteAgent,
   type WebsiteCard,
 } from "@/lib/dream/website";
-import { syncWebsiteToOs, type SyncReport } from "@/lib/dream/sync";
 
 export const runtime = "nodejs";
 // Vercel Hobby silently clamps to 60s — anything higher gets truncated
@@ -379,27 +378,12 @@ async function run(request: Request) {
       errors.push(`dedup failed: ${(e as Error).message}`);
     }
 
-    // Website → Dream OS: properties, listings and agents. Runs nightly only
-    // once the first sync has been reviewed and applied by hand (POST
-    // /api/sources/dream/sync-os), so nothing is created unseen.
-    let osSync: Pick<SyncReport, "counts" | "agentsCreated" | "goneFromWebsite" | "errors"> | null = null;
-    try {
-      const { count } = await service
-        .from("listing")
-        .select("id", { count: "exact", head: true })
-        .not("website_slug", "is", null);
-      if ((count ?? 0) > 0) {
-        const r = await syncWebsiteToOs(service, { dry: false });
-        osSync = { counts: r.counts, agentsCreated: r.agentsCreated, goneFromWebsite: r.goneFromWebsite, errors: r.errors };
-        errors.push(...r.errors.map((e) => `os sync: ${e}`));
-      }
-    } catch (e) {
-      errors.push(`os sync failed: ${(e as Error).message}`);
-    }
+    // Website → Dream OS (properties, listings, agents) runs as its own
+    // nightly job 15 minutes later — /api/sources/dream/sync-os — because
+    // this feed alone uses most of the 60 s function limit.
 
     return NextResponse.json({
       ok: true,
-      osSync,
       upserted,
       geocoded,
       centroid_fallback: centroidFallback,
