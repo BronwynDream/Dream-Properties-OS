@@ -335,6 +335,9 @@ export default function DraftEditor({
                       rows={8}
                       style={{ ...inputStyle, fontSize: 12, fontFamily: "inherit", lineHeight: 1.4 }}
                     />
+                    <p style={{ margin: "4px 0 0", fontSize: 11, color: "var(--ink-3, #5F6883)" }}>
+                      Words between **double stars** print bold, as in Bronwyn&apos;s master.
+                    </p>
                     <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
                       <button type="button" className="btn-secondary" style={btnSm} onClick={() => setEditing(null)}>Done</button>
                       <button type="button" className="btn-secondary" style={btnSm} onClick={() => resetOverride(s.clauseId)}>Reset to library</button>

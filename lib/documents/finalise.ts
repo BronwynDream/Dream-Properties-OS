@@ -90,7 +90,7 @@ export async function finaliseDraft(userClient: SupabaseClient, userId: string, 
   const reference = `Dream OS · ${draft.id.slice(0, 8)} · v${draft.version}`;
   let pdf: Buffer;
   try {
-    pdf = await renderDocumentPdf({ doc, agency, logo, reference });
+    pdf = await renderDocumentPdf({ doc, agency, logo, reference, context: ctx });
   } catch (e) {
     return { ok: false, error: `Could not render the PDF: ${e instanceof Error ? e.message : String(e)}` };
   }

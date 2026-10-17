@@ -1,6 +1,7 @@
 import type { ResolvedDocument, ResolvedSection } from "@/lib/documents/resolve";
 import { BLANK } from "@/lib/documents/resolve";
 import { matchNumbered, matchLabelRow, isAllCaps, tidy } from "@/lib/documents/layout";
+import { parseRich, plain } from "@/lib/documents/rich";
 
 // Generic renderer for any clause-library document (plan 019 Arc A2).
 // Replaces the per-template React components: the skeleton is now the
@@ -16,6 +17,7 @@ import { matchNumbered, matchLabelRow, isAllCaps, tidy } from "@/lib/documents/l
 //   - short fill-in line   → signature row, pre-wrap so the underscores survive
 //   - {{token}} left blank → BLANK underscores; highlighted on screen when
 //                            `showGaps` is on, plain in print
+//   - **bold** / *italic*  → the master's emphasis inside a sentence (rich.ts)
 //
 // Optional slot headings (sale agreements) print as "12. HEADING" above the
 // body when the slot carries them.
@@ -49,7 +51,7 @@ export default function ClauseDocument({
 }
 
 function Section({ s, showGaps }: { s: ResolvedSection; showGaps: boolean }) {
-  const gap = (p: string) => (showGaps ? highlightGaps(p) : p);
+  const gap = (p: string) => rich(p, showGaps);
   let paras = s.body.split(/\n\s*\n/).map((p) => p.replace(/\s+$/, ""));
   // Some seeded bodies open with the clause heading itself (the masters
   // put it on its own line). Don't print it twice.
@@ -63,7 +65,8 @@ function Section({ s, showGaps }: { s: ResolvedSection; showGaps: boolean }) {
         </p>
       )}
       {paras.map((p, i) => {
-        const isTitle = i === 0 && !s.heading && isAllCaps(p) && p.length < 90;
+        const pp = plain(p);
+        const isTitle = i === 0 && !s.heading && isAllCaps(pp) && pp.length < 90;
         if (isTitle) return <p key={i} className="cd-title">{gap(p)}</p>;
         // Same conventions as the PDF (lib/documents/pdf.tsx): numbered
         // sub-clause, label/value row, short all-caps sub-heading.
@@ -73,7 +76,7 @@ function Section({ s, showGaps }: { s: ResolvedSection; showGaps: boolean }) {
           return (
             <div key={i} className="cd-num">
               <span>{num[0]}</span>
-              <span style={isAllCaps(text) && text.length < 80 ? { fontWeight: 700 } : undefined}>{gap(text)}</span>
+              <span style={isAllCaps(plain(text)) && plain(text).length < 80 ? { fontWeight: 700 } : undefined}>{gap(text)}</span>
             </div>
           );
         }
@@ -86,9 +89,9 @@ function Section({ s, showGaps }: { s: ResolvedSection; showGaps: boolean }) {
             </div>
           );
         }
-        const isRow = /_{6,}/.test(p) && p.length < 160 && !/[a-z]{4,}.*[a-z]{4,}.*[a-z]{4,}/.test(p);
+        const isRow = /_{6,}/.test(pp) && pp.length < 160 && !/[a-z]{4,}.*[a-z]{4,}.*[a-z]{4,}/.test(pp);
         if (isRow) return <p key={i} className="cd-row">{gap(p)}</p>;
-        if (isAllCaps(p) && p.length < 80) return <p key={i} className="cd-sub">{gap(p)}</p>;
+        if (isAllCaps(pp) && pp.length < 80) return <p key={i} className="cd-sub">{gap(p)}</p>;
         return <p key={i}>{gap(tidy(p))}</p>;
       })}
     </section>
@@ -96,9 +99,21 @@ function Section({ s, showGaps }: { s: ResolvedSection; showGaps: boolean }) {
 }
 
 function norm(t: string): string {
-  return t.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  return plain(t).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 
+
+/** Emphasis as <strong>/<em>; blanks highlighted when asked. */
+function rich(p: string, showGaps: boolean): React.ReactNode {
+  const runs = parseRich(p);
+  return runs.map((r, k) => {
+    const inner = showGaps ? highlightGaps(r.text) : r.text;
+    if (r.bold && r.italic) return <strong key={k}><em>{inner}</em></strong>;
+    if (r.bold) return <strong key={k}>{inner}</strong>;
+    if (r.italic) return <em key={k}>{inner}</em>;
+    return <span key={k}>{inner}</span>;
+  });
+}
 
 function highlightGaps(p: string): React.ReactNode {
   const parts = p.split(BLANK);

@@ -8,6 +8,75 @@ _Last updated: 2026-10-17_
 
 ---
 
+## EVERY DOCUMENT LAID OUT AS ITS MASTER (2026-10-17, later)
+
+**Feedback moment (verbatim, Simon):** "That's much better. I've sent it to Bron so hopefully she's happy. Let's make sure the rest of the agreements and documents render as the templates."
+
+**Shipped**
+- `lib/documents/pdf.tsx` uses a PROFILE per template (`PROFILES`), read off each master. A profile sets:
+  - letterhead, margins, body top on page 1 and later pages, line pitch (1.5 lines for agreements and movables, single for mandates and addenda), paragraph gap, clause indent, heading gap, page numbers on or off, signature spacing and title style.
+- New layout kinds:
+  - `centred` — the addendum parties block.
+  - `title` — mandate and movables titles: bold, underlined, centred.
+  - `sigtable` — the mandate signature table: label, line, "Date:", line.
+  - `definitions` — the three-column movables definitions.
+  - `annexure` — "ANNEXURE 'A'" closes the signing page and the list starts the next page, as in the master.
+- A clause heading now travels with its first paragraph (if that paragraph is ≤ 300 characters) as one unbreakable block. react-pdf's `minPresenceAhead` alone left headings orphaned.
+- The signature caption is left-aligned at 251 pt, as in the masters (it was centred).
+- Red guidance lines ("EXAMPLES:", "COMPULSORY:") are not printed. They are Bronwyn's notes to agents.
+- `lib/documents/letterhead.ts` has five variants:
+  - properties, knysna;
+  - mandate: page 2 has only the rule and directors line;
+  - open: the first page has no "Initial here" box;
+  - appendix: no header.
+- **PPRA disclosure** is now printed onto Bronwyn's own copy of the prescribed PPRA form, which is a Word-made PDF with the PPRA logo, Arial and the YES/NO/N/A table.
+  - `lib/documents/forms/ppra-form.ts` uses pdf-lib (new dependency, `pdf-lib@1.17.1`) with `forms/ppra-master.ts`, which holds the PDF byte for byte.
+  - It stamps the property description, an X per statement (columns measured off her vacant-land copy) and the additional information (one line per ruled row; overflow goes to an annexure page).
+  - `renderDocumentPdf` takes `context`; `finalise.ts` passes it.
+- **Emphasis**: wordings carry **bold** / *italic*. `lib/documents/rich.ts` parses them; the PDF and `ClauseDocument.tsx` render them. The "Edit wording" box says how.
+- **Migration 0082** (`scripts/mark-library-formatting.py`, generated from the .docx masters):
+  - Adds the movables title (new clause `movables.title`, slot ordinal 5).
+  - Adds paragraph numbers that Word auto-numbers and the extraction lost: movables 2.1–2.3 and 3.2, appendix 1–4, sectional 1.2.
+  - Sets movables 1.4 to "Erf ___;" as in the master.
+  - Changes the house signing lines to "202" / "202." as in the master.
+  - Writes the masters' inline bold into 58 paragraphs. 42 wordings change.
+  - Every update is guarded: stripping the markup gives back the words exactly.
+
+**Order matters: push the code FIRST, then run 0082.** The old renderer would print the ** markers.
+
+**Expected fingerprints after 0082** (`scripts/check-library.sql`):
+- addendum_movables 5 da45681008
+- addendum_sale 5 8fb72eb734
+- agreement_sale_house 53 249102ca5b
+- agreement_sale_land 33 2c31234fcd
+- agreement_sale_sectional 50 b8e40fb118
+- condition_report_appendix 1 731a2eff5d
+- mandate_exclusive 27 9a5f70f49a
+- mandate_joint 29 55c3ef0bd3
+- mandate_open 26 fa573803ce
+- movables_agreement 12 a21b05e714
+- ppra_disclosure 10 d1819e86cf
+
+**Verification**
+- Each master was rendered with LibreOffice and diffed word for word against our blank render (scratch `tdiff.py`). The only remaining differences are intentional:
+  - tokens in place of the 5% / I.D. text;
+  - variant choices;
+  - guidance lines;
+  - two of Bronwyn's typos ("(___," without ")", "20.2Such").
+- Page-by-page visual comparison of all 10 Word documents.
+- Page counts match her masters for: house 15, sectional 16, land 12, all three mandates (2/2/1), addendum 2, addendum movables 1 and appendix 1.
+- Movables renders 5 pages against her 4: the signing block falls one line short of fitting page 3.
+- The PPRA sample was checked on the form.
+- tsc, eslint, `test:documents` and `next build` are green. 0082 was applied locally to the engine stub.
+- NOT verified: a live finalise of each document on Vercel.
+
+**Loose ends**
+- Ask Bronwyn which letterhead to use on everything (DREAM PROPERTIES vs DREAM KNYSNA). Each document currently uses its own master's.
+- "COMPULSORY:" / "EXAMPLES:" are not printed. Confirm with Bronwyn.
+- Search snippets may show ** in clause text (cosmetic).
+
+---
+
 ## PDF REBUILT TO BRONWYN'S WORD LAYOUT (2026-10-17)
 
 **Feedback moment (verbatim, Simon relaying Bronwyn):** "Bronwyn is not happy… she's not happy with the way it's come out. … font, format, logos, and all the rest of it. We need to go back to her templates … that layout needs to be followed. You can't deviate from it. You might be able to change the font, but you certainly can't change the layout." And: "It's not about the font, it's literally about the layout … let's duplicate the layout. We don't have to have anything different than her layout."
