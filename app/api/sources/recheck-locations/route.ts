@@ -1,9 +1,15 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
-import { parseJsonLdCoords } from "@/lib/external-listings/property24";
-import { locateListing } from "@/lib/external-listings/locate";
-import { inGardenRoute, isHiddenAddress, isPlaceholderCoord } from "@/lib/external-listings/geocode";
+import { locateListing, trustMapbox } from "@/lib/external-listings/locate";
+import {
+  centroidForArea,
+  geocodeAddress,
+  isHiddenAddress,
+  isPlaceholderCoord,
+  kmBetween,
+  type LngLat,
+} from "@/lib/external-listings/geocode";
 import { rebuildDedupAndMatch } from "@/lib/external-listings/dedup";
 
 export const runtime = "nodejs";
@@ -12,24 +18,40 @@ export const maxDuration = 60;
 // POST /api/sources/recheck-locations   (admin, 2026-10-17)
 //
 // One-off backfill after the location rules were tightened
-// (lib/external-listings/locate.ts). Re-runs every active external
-// listing through the shared chain using what we already have — the
-// stored Property24 page (its JSON-LD coordinate), the erf lookup,
-// house-level Mapbox, then the area centroid — and moves the pins that
-// were wrong. Nothing is re-scraped.
+// (lib/external-listings/locate.ts). Deliberately conservative: the first
+// dry run of a "recompute everything" version wanted to move 163 of 262
+// pins, many of them good Property24 pins whose source the stored page
+// can't prove. So this only touches pins that are demonstrably wrong:
+//
+//   a. hidden address ("Contact agent…") or P24's placeholder point
+//      → the suburb / estate the listing names, area-only;
+//   b. already area-only, or sitting on an OLD centroid value
+//      → the corrected centroid;
+//   c. sitting on Mapbox's own answer for the address (so Mapbox put it
+//      there) when that answer is one we no longer trust — a street
+//      centre far from the named estate, or a suburb / town point
+//      → area-only (52 Woodbourne Dr → Fernwood Estate);
+//   d. no coordinate at all → the full chain.
+//
+// Hand-placed pins (geo_manual) are never touched. Everything else —
+// portal pins, erf pins, trusted Mapbox pins — is left exactly as it is.
 //
 //   ?dry=1         report what would move; write nothing
 //   ?after=<id>    resume after this id (the response's `next`)
-//
-// Works in pages of 25 within a 50 s budget; call again with `next`
-// until `done` is true. Rows whose stored coordinate already agrees
-// (within ~60 m — the erf snap moves pins to the parcel centre) are left
-// alone, as are pins placed by hand (geo_manual). Rows with a portal coordinate that does
-// NOT match the stored page are left alone too — a person or a later
-// scrape put them there, and this backfill has no better answer.
 
 const PAGE = 25;
 const BUDGET_MS = 50_000;
+
+// The hand-typed centroid table before 2026-10-17. A pin on one of these
+// was placed by the old fallback, whatever its geocode_source says.
+const OLD_CENTROIDS: LngLat[] = [
+  [23.0479, -34.0363], [23.048, -34.038], [23.0453, -34.0412], [23.038, -34.045], [23.028, -34.05],
+  [23.04, -34.045], [23.055, -34.038], [23.085, -34.058], [23.05, -34.025], [23.0725, -34.049],
+  [23.081, -34.081], [22.976, -34.03], [23.0227, -34.08], [23.108, -34.07], [23.1, -34.055],
+  [23.095, -34.055], [23.04, -33.982], [23.043, -34.048], [22.986, -34.008], [22.995, -34.018],
+  [22.81, -34.025], [23.376, -34.053], [22.46, -33.963], [22.58, -33.99],
+].map(([lng, lat]) => ({ lng, lat }));
+const onOldCentroid = (c: LngLat) => OLD_CENTROIDS.some((o) => kmBetween(o, c) < 0.005);
 
 async function isAdmin(): Promise<boolean> {
   const supabase = createClient();
@@ -67,13 +89,12 @@ export async function POST(request: Request) {
   const moves: Move[] = [];
   let scanned = 0;
   let unchanged = 0;
-  let keptPortal = 0;
-  let done = false;
+    let done = false;
 
   while (Date.now() - started < BUDGET_MS) {
     let q = supabase
       .from("external_listing")
-      .select("id, source, address_raw, suburb, headline, lat, lng, geocode_source, geo_manual, raw")
+      .select("id, source, address_raw, suburb, headline, lat, lng, geocode_source, geo_manual")
       .eq("active", true)
       .order("id", { ascending: true })
       .limit(PAGE);
@@ -95,29 +116,32 @@ export async function POST(request: Request) {
         continue;
       }
 
-      let portal: { lat: number; lng: number } | null = null;
-      if (r.source === "property24" && r.raw) {
-        const html = typeof r.raw.rawHtml === "string" ? r.raw.rawHtml : typeof r.raw.html === "string" ? r.raw.html : "";
-        if (html) portal = parseJsonLdCoords(html);
-      }
-
       const prev = r.lat != null && r.lng != null ? { lat: Number(r.lat), lng: Number(r.lng) } : null;
+      const area = (addr: string | null) => {
+        const c = centroidForArea(addr, r.suburb, r.headline);
+        return { coord: c, geocodeSource: "centroid" as const, via: c ? "area" : "none" };
+      };
 
-      // Stored coordinate differs from the stored page's: someone (a
-      // manual paste, the JSON-LD re-scrape) moved it since. Leave it.
-      const portalUsable =
-        portal != null && inGardenRoute(portal) && !isPlaceholderCoord(portal) && !isHiddenAddress(r.address_raw);
-      if (portalUsable && prev && km(portal!, prev) > 0.06) {
-        keptPortal++;
+      let located: { coord: LngLat | null; geocodeSource: "exact" | "centroid"; via: string } | null = null;
+      if (!prev) {
+        located = await locateListing({ address: r.address_raw, suburb: r.suburb, headline: r.headline });          // d
+      } else if (isHiddenAddress(r.address_raw) || isPlaceholderCoord(prev)) {
+        located = area(null);                                                                                         // a
+      } else if (r.geocode_source === "centroid" || onOldCentroid(prev)) {
+        located = area(r.address_raw);                                                                               // b
+      } else if (r.address_raw) {
+        const geo = await geocodeAddress(r.address_raw, { suburb: r.suburb });
+        // The stored pin is Mapbox's answer (allowing for the erf snap
+        // having nudged it to the parcel centre) and we no longer trust it.
+        if (geo && kmBetween(geo, prev) < 0.12 && !trustMapbox(geo, r.address_raw, r.suburb, r.headline)) {
+          located = area(r.address_raw);                                                                             // c
+        }
+      }
+      if (!located) {
+        unchanged++;
         continue;
       }
 
-      const located = await locateListing({
-        address: r.address_raw,
-        suburb: r.suburb,
-        headline: r.headline,
-        portalCoord: portal,
-      });
       const next = located.coord;
       const same =
         (prev == null && next == null) ||
@@ -168,7 +192,6 @@ export async function POST(request: Request) {
     next: done ? null : after,
     scanned,
     unchanged,
-    keptPortal,
     moved: moves.length,
     moves,
     ms: Date.now() - started,

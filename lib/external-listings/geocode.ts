@@ -124,12 +124,28 @@ function nameRe(name: string): RegExp {
   return new RegExp(`\\b${name.replace(/[-\s]+/g, "[-\\s]+")}\\b(?![\\s.]+${STREET_WORD})`, "i");
 }
 
+/** The most specific estate / suburb a listing names, if any. */
+export function namedArea(
+  address: string | null | undefined,
+  suburb: string | null | undefined,
+  headline?: string | null,
+): { name: string; coord: LngLat } | null {
+  const texts = [address, headline, suburb].filter((t): t is string => !!t && t.trim().length > 0);
+  for (const t of texts) {
+    for (const name of CENTROID_NAMES) {
+      if (nameRe(name).test(t)) return { name, coord: GARDEN_ROUTE_CENTROIDS[name] };
+    }
+  }
+  return null;
+}
+
 /** Where a listing goes when all we know is its area. Specific estates and
  *  suburbs first (address, then headline, then suburb), the town last. */
 export function centroidForArea(
   address: string | null | undefined,
   suburb: string | null | undefined,
   headline?: string | null,
+  opts?: { specificOnly?: boolean },
 ): LngLat | null {
   const texts = [address, headline, suburb].filter((t): t is string => !!t && t.trim().length > 0);
   for (const t of texts) {
@@ -137,6 +153,7 @@ export function centroidForArea(
       if (nameRe(name).test(t)) return GARDEN_ROUTE_CENTROIDS[name];
     }
   }
+  if (opts?.specificOnly) return null;
   if (texts.some((t) => NO_CENTROID.test(t))) return null;
   if (texts.some((t) => /\bKnysna\b/i.test(t))) return GARDEN_ROUTE_CENTROIDS["Knysna"];
   return null;
@@ -180,6 +197,20 @@ export function anchorForGardenRoute(
   return `${a}, Garden Route, Western Cape, South Africa`;
 }
 
+export function kmBetween(a: LngLat, b: LngLat): number {
+  const dLat = (a.lat - b.lat) * 111;
+  const dLng = (a.lng - b.lng) * 111 * Math.cos((a.lat * Math.PI) / 180);
+  return Math.sqrt(dLat * dLat + dLng * dLng);
+}
+
+/** How precise a Mapbox answer is. Mapbox rarely knows Knysna house
+ *  numbers, so most good answers are "street"; "area" means it fell back
+ *  to a suburb, town or postcode. */
+export type GeocodeLevel = "house" | "street" | "area";
+export type DetailedGeocode = LngLat & { level: GeocodeLevel };
+
+/** Mapbox's answer for an address plus how precise it is. Callers decide
+ *  what to trust (see lib/external-listings/locate.ts). */
 export async function geocodeAddress(
   address: string,
   opts?: {
@@ -187,7 +218,7 @@ export async function geocodeAddress(
     signal?: AbortSignal;
     suburb?: string | null;
   },
-): Promise<LngLat | null> {
+): Promise<DetailedGeocode | null> {
   const token = (opts?.token ?? mapboxToken()).trim();
   if (!token) return null;
   const trimmed = (address ?? "").trim();
@@ -217,22 +248,21 @@ export async function geocodeAddress(
       }[];
     };
     const f = json.features?.[0];
-    // Only a house-level answer counts. When Mapbox can't find the number
-    // it falls back to the middle of the street (or the suburb, or the
-    // town) — "52 Woodbourne Dr" came back as the middle of Woodbourne
-    // Drive, by the Leisure Isle causeway, 1.6 km from the house. Those
-    // answers are rejected here so the caller falls back to an honest
-    // area-only pin instead.
-    const type = f?.properties?.feature_type;
-    if (type !== "address" && type !== "secondary_address") return null;
-    const mc = f?.properties?.match_code;
-    if (mc?.address_number === "unmatched" || mc?.street === "unmatched") return null;
-    if (mc?.confidence === "low") return null;
     const coords = f?.geometry?.coordinates;
     if (!coords || coords.length < 2) return null;
     const [lng, lat] = coords;
     if (typeof lng !== "number" || typeof lat !== "number") return null;
-    return { lng, lat };
+    const type = f?.properties?.feature_type;
+    const mc = f?.properties?.match_code;
+    let level: GeocodeLevel;
+    if ((type === "address" || type === "secondary_address") && mc?.address_number !== "unmatched" && mc?.street !== "unmatched" && mc?.confidence !== "low") {
+      level = "house";
+    } else if (type === "street" || type === "address" || type === "secondary_address") {
+      level = "street";
+    } else {
+      level = "area";
+    }
+    return { lng, lat, level };
   } catch {
     return null;
   }

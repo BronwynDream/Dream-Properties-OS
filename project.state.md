@@ -44,6 +44,14 @@ _Last updated: 2026-10-17_
   - `MapListing.areaOnly` when every external on a market pin is centroid. It is drawn as a hollow slate dot, with an "Area only" legend item, an italic note on the hover card and an "Area only" tag in the list. Its erf is never highlighted.
   - A hidden address is shown as the suburb name.
 
+**Correction after the first dry run (same afternoon):**
+- The first version of recheck-locations recomputed every pin, and its dry run wanted to move 163 of 262. Many of those were good street pins going to suburb centres. Two causes:
+  - Mapbox rarely knows Knysna house numbers, so a house-only rule was too strict.
+  - Stored P24 raw pages don't yield the JSON-LD coordinate, so the backfill can't see which pins came from the portal.
+- Fixed in two places:
+  - `geocodeAddress` now returns `{lng, lat, level: house|street|area}`. `locate.trustMapbox` takes house answers, rejects area answers, and takes street answers unless the listing names an estate or suburb more than 1.2 km away (2.5 km for wide areas: Pezula, Simola, Brenton, Belvidere…).
+  - recheck-locations is now conservative. It touches only (a) hidden or placeholder pins, (b) area-only pins or pins on OLD centroid values, (c) pins sitting on Mapbox's own (now untrusted) answer, and (d) rows with no coordinate. Portal, erf and trusted pins are never moved.
+
 **Verification**
 - tsc and the production build are clean. 0084 was run against a stub-PostGIS Postgres: centroid rows are not snapped, exact rows are, and the bulk snap skips centroid rows.
 - Harness render: hollow dots draw (zoom kept as the top-level interpolate), and the hover card shows the note.
