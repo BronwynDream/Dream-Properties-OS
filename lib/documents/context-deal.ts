@@ -52,7 +52,7 @@ export async function buildDealContext(
   const propertyTypeLabel = ((Array.isArray(prop?.property_type) ? prop?.property_type[0] : prop?.property_type) as { label: string } | null | undefined)?.label ?? null;
   const { data: erf } = await supabase
     .from("erf")
-    .select("erf_number")
+    .select("erf_number, scheme_name, portion")
     .eq("property_id", propertyId)
     .order("created_at", { ascending: true })
     .limit(1)
@@ -64,6 +64,8 @@ export async function buildDealContext(
     property_address: prop?.primary_address ?? null,
     extent_sqm: prop?.extent_sqm != null ? formatZar(Number(prop.extent_sqm)) : null,
     title_deed_no: prop?.title_deed_no ?? null,
+    // Sectional title: the scheme lives on the erf row.
+    scheme_name: erf?.scheme_name ?? null,
     suburb: (one(prop?.suburb as { name: string } | { name: string }[] | null))?.name ?? null,
     estate_name: (one(prop?.estate as { name: string } | { name: string }[] | null))?.name ?? null,
     property_description:
@@ -231,7 +233,7 @@ export const DEAL_TOKEN_LABELS: Record<string, string> = {
   purchaser_marriage: "Purchaser — date and place of marriage",
   purchaser_email: "Purchaser — email",
   purchaser_phone: "Purchaser — contact numbers",
-  title_deed_no: "Title deed number",
+  title_deed_no: "Title deed / sectional title certificate number",
   deposit: "Deposit (ZAR)",
   bond_amount: "Bond amount (ZAR) — leave empty for a cash sale",
   guarantee_date: "Balance guaranteed on or before",
@@ -248,6 +250,13 @@ export const DEAL_TOKEN_LABELS: Record<string, string> = {
   purchaser_property_by: "…sold and transferred by",
   viewing_by: "Purchaser to view the property by",
   principal_name: "Accepting commission for Dream",
+  section_no: "Section number",
+  scheme_name: "Scheme name",
+  door_no: "Door number",
+  building_name: "Building known as",
+  section_plan_no: "Sectional plan number (the part after SS)",
+  parking_bay: "Exclusive-use parking bay",
+  deposit_by: "Deposit payable on or before",
   amendments: "The amendments (numbered, one per paragraph)",
   agent_disclosures: "Disclosures the agent made (if any)",
 };

@@ -10,8 +10,8 @@ import { createDraft } from "@/app/documents/[id]/actions";
 
 const TEMPLATES: { code: string; title: string; hint: string; needsTransfer: boolean; soon?: boolean }[] = [
   { code: "agreement_sale_house", title: "Agreement of sale — freehold house", hint: "Bronwyn's 2026 master, filled from the deal. Signed first, it is the offer.", needsTransfer: true },
-  { code: "agreement_sale_sectional", title: "Agreement of sale — sectional title", hint: "Being loaded next.", needsTransfer: true, soon: true },
-  { code: "agreement_sale_land", title: "Agreement of sale — vacant land", hint: "Being loaded next.", needsTransfer: true, soon: true },
+  { code: "agreement_sale_sectional", title: "Agreement of sale — sectional title", hint: "Section, scheme, sectional plan, levies and the body corporate.", needsTransfer: true },
+  { code: "agreement_sale_land", title: "Agreement of sale — vacant land", hint: "Freehold land: no occupation, fixtures or certificates.", needsTransfer: true },
   { code: "movables_agreement", title: "Movables agreement", hint: "Furniture and movables sold with the property.", needsTransfer: true },
   { code: "addendum_sale", title: "Addendum to agreement of sale", hint: "Amend named clauses of a signed agreement.", needsTransfer: true },
   { code: "addendum_movables", title: "Addendum to movables agreement", hint: "Amend a signed movables agreement.", needsTransfer: true },

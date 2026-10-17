@@ -8,6 +8,52 @@ _Last updated: 2026-10-17_
 
 ---
 
+## AGREEMENTS OF SALE — SECTIONAL TITLE AND FREEHOLD LAND (2026-10-17)
+
+### Shipped
+- **`scripts/seed-sale-agreements.py` → `0080_seed_sale_sectional_land.sql`**
+  (generated). Unlike the hand-laid house seed, this READS the masters: finds
+  the numbered clauses, fills every blank in order from a per-clause token
+  list, and splits "OR / DELETE / IF APPLICABLE" into variants. A blank it
+  can't account for, or a token list that doesn't match, stops generation —
+  so the output is verbatim or nothing.
+  * Sectional (`sale_st.*`, 37 clauses / 50 wordings): section, scheme,
+    door, building, sectional plan, parking bay, sectional title cert;
+    deposit "payable on or before"; 15.1–15.5 certificates; 19 controlling
+    body & levies with 19.5 "(Delete as applicable)" as a choice; 20
+    building plans; suspensive conditions; offer until 16h00.
+  * Land (`sale_land.*`, 27 clauses / 33 wordings): no occupation detail,
+    fixtures or certificates; 19 estate recordal pre-picked from the
+    property's estate; suspensive conditions; offer until 16h00.
+  Own clause keys per template: the masters differ in small wording (VAT
+  on transfer duty, when commission is due, his/her) and in clause numbers,
+  which live inside the bodies.
+- Context: `scheme_name` from the erf row; labels for section/scheme/door/
+  building/SS plan/parking/deposit-by. Prepare document… enables both.
+- Converter fixes found while reading the output: headings with a
+  lower-case bracketed instruction (clause 15) are headings; "LABEL: prose"
+  is not a table row unless a tab or wide gap follows the colon; a blank
+  hard against a word ("known as____") gets a space.
+
+### Verification
+- Engine chain 0065→0080 replays cleanly into a fresh harness DB.
+- Fidelity: every master paragraph is in the library bodies except
+  headings (slot headings), agent instructions, the expiry "___ day of ___"
+  (now `{{offer_expires}}`) and "21.1If" spacing.
+- Sample PDFs rendered: sectional 12 pages (only occupational rent left
+  open, by design of the test), land 9 pages, nothing unresolved.
+- NOT yet live: apply 0080, push, prepare each on a test deal.
+
+### Questions for Bronwyn (sectional master)
+- **19.1 and 19.3 are the same paragraph word for word.** Kept verbatim.
+- **19.5 reads "The developer/Body Corporate has / a Real right…"** — looks
+  like "has / has no" lost a word. Kept verbatim; offered as "As in the
+  master" / "Not applicable".
+- (All three) FFC number 20261501621 vs 2026-15016210000; clause 12.3 ends
+  mid-sentence.
+
+---
+
 ## LIVE CHECKS + TWO FIXES (2026-10-17)
 
 ### Found live
