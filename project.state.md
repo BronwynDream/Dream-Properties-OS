@@ -8,6 +8,38 @@ _Last updated: 2026-10-17_
 
 ---
 
+## PASTE DAMAGE FOUND AND REPAIRED (2026-10-17)
+
+**Feedback moment.** Simon pasted 0080 into the SQL editor; the text that
+arrived had characters dropped mid-word in ~60 places ("fulfillmeof",
+"propertcopy", "'manual', tr"). Syntax errors stopped it, so nothing ran.
+Cause: copying from the file preview, not the editor. A fingerprint check
+then showed the SAME damage had silently landed yesterday in 0076 (PPRA
+definitions) and 0078 (15 house-agreement wordings) — those had parsed.
+
+### Shipped
+- `scripts/check-library.sql` — per-template count + fingerprint of every
+  wording (whitespace-normalised, so editor tab→space conversion doesn't
+  count; a dropped character does). Expected values:
+  addendum_movables 5 3d4c4eff90 · addendum_sale 5 cbb2d98b5c ·
+  agreement_sale_house 53 c73fa2649a · agreement_sale_land 33 19eb661b8b ·
+  agreement_sale_sectional 50 3fa567b658 · condition_report_appendix 1
+  8dcf036e1b · mandate_exclusive 27 0dc2134aa8 · mandate_joint 29
+  9fae761b95 · mandate_open 26 cf7e08fe91 · movables_agreement 11
+  f901b73374 · ppra_disclosure 10 d1819e86cf.
+- `scripts/check-library-detail.sql` — names the damaged wordings for the
+  house agreement and PPRA (expected md5 per wording).
+- **`0081_repair_library_paste.sql`** — rewrites the 16 damaged wordings
+  from the repo text. Drafts resolve from the library on open, so they're
+  repaired too; nothing was finalised from damaged wordings.
+
+### New rule
+- **Migrations are copied with `pbcopy < file` in Terminal**, never from a
+  file preview, and `check-library.sql` is run after every library
+  migration. Write the paste command into the hand-off every time.
+
+---
+
 ## AGREEMENTS OF SALE — SECTIONAL TITLE AND FREEHOLD LAND (2026-10-17)
 
 ### Shipped
