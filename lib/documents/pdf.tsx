@@ -198,7 +198,9 @@ export async function renderDocumentPdf(args: {
   sections.forEach((sec, i) => {
     const kind = kindOf(sec, code);
     if (i > 0 && kindOf(sections[i - 1], code) !== "title") afterTitle = false;
-    const all = sec.body.split(/\n\s*\n/).map((p) => p.replace(/\s+$/, "")).filter((p) => p.trim() !== "");
+    // A no-break space in the master ("TIHOA.\u00a0 This") would glue two words
+    // into one and force a hyphenated break; Word treats it as a space here.
+    const all = sec.body.replace(/\u00a0/g, " ").split(/\n\s*\n/).map((p) => p.replace(/\s+$/, "")).filter((p) => p.trim() !== "");
     let paras = all.filter((p) => !GUIDANCE.test(plain(p).trim()));
     if (sec.heading && paras.length > 0 && norm(paras[0]) === norm(sec.heading) && (kind === "clauses" || kind === "definitions")) paras = paras.slice(1);
 
