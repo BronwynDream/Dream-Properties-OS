@@ -58,6 +58,19 @@ _Last updated: 2026-10-17_
 - The website reader was run against the live site in the browser: page-1 and page-2 cards, the Jo + Avril agents parsed, and the agent photo is gone after the strip.
 - NOT yet verified: the real sync against production (next: run Dream refresh, dry-run sync-os, review, apply).
 
+**ACCESS RULE (Simon, verbatim, 2026-10-17 — build BEFORE inviting any agent):**
+- "Agents should only see their own sellers details nobody else's"
+- "so Bronwyn should be able to see any of the property records, Vanessa should only see the deals that Bronwyn and her are working on."
+- "yes the map should show all listings to all agents. the OS should not show the sensitive details of the transaction or the owners or any buyers that are loaded for that particular property etc"
+
+What that means for the build:
+- Directors (admin) see everything.
+- An agent sees only the properties, listings and transfers they're on (`listing_agent`, or as transfer lead / co-agent). That covers Properties, Pipeline, Contacts, Documents and search. The parties (sellers, owners, buyers), FICA, documents, offers and communications on those records follow the same rule, and direct links to anything else are blocked.
+- The map shows every listing to every agent: dots and public listing facts only, with no link into another agent's record.
+- Agents add and edit sellers and documents only on their own records.
+- Today's RLS: `party`, `property`, `transfer`, `offer` and the rest are `is_staff()` read. Every logged-in agent would see everything, so this MUST change first.
+- Test with a stand-in agent login: it should open its own records, and a direct link to someone else's record must fail.
+
 **Loose ends**
 - Agents still can't add sellers, transfers, FICA or documents: those writes are admin-only in both the app and RLS. Simon wants agents to; I told him it would be its own careful step, scoped to their own records.
 - `/dashboard` and `/mandates` scope by `listing.agent_user_id` (lead only), so co-agents won't see their shared listings there until those screens read `listing_agent`.
