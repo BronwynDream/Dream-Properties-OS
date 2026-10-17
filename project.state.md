@@ -8,6 +8,43 @@ _Last updated: 2026-10-17_
 
 ---
 
+## PDF REBUILT TO BRONWYN'S WORD LAYOUT (2026-10-17)
+
+**Feedback moment (verbatim, Simon relaying Bronwyn):** "Bronwyn is not happy… she's not happy with the way it's come out. … font, format, logos, and all the rest of it. We need to go back to her templates … that layout needs to be followed. You can't deviate from it. You might be able to change the font, but you certainly can't change the layout." And: "It's not about the font, it's literally about the layout … let's duplicate the layout. We don't have to have anything different than her layout."
+**Correction:** the signed PDF is now laid out from her .docx masters, measure for measure. The Blueprint look is for the app only, never for documents she signs.
+
+**What was wrong (old `lib/documents/pdf.tsx`):** our DREAM KNYSNA block logo plus an address block, not her header; no cover page; contract information as a grey/blue key–value list; Helvetica 10.5 in blue/slate; left-aligned text; our footer ("PPRA line · reference · Page x of y") in place of her "Initial here" box and directors line; signature block flattened; 12 pages where her master has 15.
+
+**Shipped**
+- `lib/documents/pdf.tsx`, rewritten. A4; her margins (house/land 15/15.6 mm; sectional 15/10.2 mm); 10 pt at Word "1.5 lines" (18.15 pt); one empty line between paragraphs; justified; clause number at the margin with text at 10 mm (17.5 mm for x.y.z). It has four layouts, keyed by clause key:
+  - Cover page (`*.parties`, sale agreements only): the seven centred lines at the master's measured tops, then a page break.
+  - Contract information (`*.contract_info*`): bold labels with values at 50.8 mm; caps labels underlined; Domicilia italic; her blank-line grouping.
+  - Signatures (`signature*`, `*commission_acceptance`): one unbreakable block with the commission acceptance; witness lines; signature line and bold caption at 208 pt.
+  - Clauses: headings are never orphaned (`minPresenceAhead`); short list items run on (14.1–14.9); "15.1 ELECTRICAL" sub-headings sit tight on their body.
+  - Page number: centred in Times 12, from page 2.
+  - Per-template `GEOMETRY` (margins, body top, cover tops).
+  - The reference moved into the PDF metadata (subject/keywords), because her footer has no room for it.
+- `lib/documents/letterhead.ts` (generated): her header and footer as full-width strips cut from 300 dpi renders of the masters, placed at their exact page positions.
+  - Two letterheads exist in her set. "properties" (DREAM PROPERTIES) is on house, land, mandates, movables and addenda. "knysna" (DREAM KNYSNA, as in her "Letterhead & Page Numbers.docx") is on the sectional title master.
+  - Each template uses its own master's letterhead.
+- `lib/documents/fonts.ts` (generated): URW Gothic Book/Demi plus obliques, subset to Latin-1. This is the free metric twin of Century Gothic, the masters' face; Century Gothic is licensed. AGPL with the PDF-embedding font exception (noted in the file).
+- The `logo` argument of `renderDocumentPdf` is now unused and kept for the caller.
+
+**Verification**
+- Rendered all 11 templates.
+- Page counts match her masters (rendered with LibreOffice from `_contract_templates/2026-final/`): house 15/15, sectional 16/16, land 12/12, exclusive mandate 2/2, movables 4/4, addendum 2/2.
+- Compared side by side, page by page, for the cover, contract information, clause pages and signatures.
+- tsc, eslint, `npm run test:documents` and `next build` are green.
+- NOT verified: a live finalise on Vercel (fonts and images are inlined as data URIs, so there is no filesystem dependency).
+
+**Loose ends**
+- Mandates, movables, addenda, PPRA and the appendix get her letterhead and type, but not yet their own body layouts. The mandate master is single-spaced, with a centred underlined title, a tabled signature block and no "Initial here" on page 2. They need the same per-template pass.
+- The on-screen editor preview (`app/documents/ClauseDocument.tsx`) still uses the Blueprint styling. It is a preview only; the PDF is the record.
+- Ask Bronwyn: DREAM PROPERTIES or DREAM KNYSNA letterhead? Her masters mix both.
+- The sectional first-page footer carries her stray "INITIALS:____" line, reproduced as is.
+
+---
+
 ## PASTE DAMAGE FOUND AND REPAIRED (2026-10-17)
 
 **Feedback moment.** Simon pasted 0080 into the SQL editor; the text that
