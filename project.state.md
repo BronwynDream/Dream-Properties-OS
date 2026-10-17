@@ -49,8 +49,10 @@ _Last updated: 2026-10-17_
   - Mapbox rarely knows Knysna house numbers, so a house-only rule was too strict.
   - Stored P24 raw pages don't yield the JSON-LD coordinate, so the backfill can't see which pins came from the portal.
 - Fixed in two places:
-  - `geocodeAddress` now returns `{lng, lat, level: house|street|area}`. `locate.trustMapbox` takes house answers, rejects area answers, and takes street answers unless the listing names an estate or suburb more than 1.2 km away (2.5 km for wide areas: Pezula, Simola, Brenton, Belvidere…).
-  - recheck-locations is now conservative. It touches only (a) hidden or placeholder pins, (b) area-only pins or pins on OLD centroid values, (c) pins sitting on Mapbox's own (now untrusted) answer, and (d) rows with no coordinate. Portal, erf and trusted pins are never moved.
+  - `geocodeAddress` now returns `{lng, lat, level: house|street|area}`. `locate.trustMapbox` takes house answers, rejects area answers, and takes street answers unless the listing names an estate or suburb more than 1.5 km away (2.5 km for wide areas such as Pezula, Simola, Brenton and Belvidere; 8 km for Rheenendal and other towns).
+  - recheck-locations is now conservative. It touches only (a) hidden or placeholder pins, (b) area-only pins or pins on OLD centroid values, (c) pins sitting on Mapbox's own (now untrusted) answer, (d) rows with no coordinate, (e) pins further from the area their own address names than the tolerance, and (f) Dream-website house names with no number and no area, which go off the map. Hand-placed pins are never moved.
+- I simulated (e) and (f) in the browser against the live pins before shipping. Every hit I checked was a real error: Westford Bridge and Pezula listings on the town centre, a Pezula house 56 km away, a Paradise listing in the sea, and the Woodbourne house.
+- Added a Knysna River Club / River Club Road centroid (Sun Valley Drive); agents label those listings "Simola".
 
 **Verification**
 - tsc and the production build are clean. 0084 was run against a stub-PostGIS Postgres: centroid rows are not snapped, exact rows are, and the bulk snap skips centroid rows.

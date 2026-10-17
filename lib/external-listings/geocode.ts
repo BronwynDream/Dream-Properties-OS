@@ -90,6 +90,11 @@ export const GARDEN_ROUTE_CENTROIDS: Record<string, LngLat> = {
   "Estuary Heights":          { lng: 23.0185, lat: -34.0325 },
   "Westford Bridge":          { lng: 22.9872, lat: -34.0203 },
   "Costa Sarda":              { lng: 23.0600, lat: -34.0358 },
+  // The River Club's own road: "River Club Road" listings are often
+  // labelled Simola by agents, but the club is off Sun Valley Drive.
+  "Knysna River Club":        { lng: 23.0622, lat: -34.0386 },
+  "River Club Road":          { lng: 23.0622, lat: -34.0386 },
+  "River Club":               { lng: 23.0622, lat: -34.0386 },
   "Fisher Haven":             { lng: 23.0771, lat: -34.0502 },
   "Green Pastures":           { lng: 23.0357, lat: -34.0219 },
   "Greenfields":              { lng: 23.0674, lat: -34.0311 },

@@ -14,7 +14,7 @@
 //   2. The municipal erf lookup (address → cadastral centroid).
 //   3. Mapbox. A house-level answer is taken. A street-level answer (the
 //      usual case — Mapbox rarely knows Knysna house numbers) is taken
-//      unless the listing names an estate or suburb more than 1.2 km
+//      unless the listing names an estate or suburb more than 1.5 km
 //      away: that's the "middle of Woodbourne Drive" failure. Suburb- or
 //      town-level answers are not taken.
 //   4. The suburb / estate centroid, stored as geocode_source='centroid'
@@ -82,9 +82,12 @@ export async function locateListing(i: LocateInput): Promise<LocateResult> {
 /** Street-level answers further than this from the centre of the estate /
  *  suburb the listing names are the wrong place. Big estates and spread-out
  *  areas get more room. */
-export const STREET_TOLERANCE_KM = 1.2;
-const WIDE_AREAS = /^(Pezula|Pezula Golf Estate|Pezula Private Estate|Simola|Brenton on Sea|Brenton-on-Sea|Brenton on Lake|Belvidere|Belvedere|Belvidere Estate|Belvedere Estate|Welbedacht|Eastford|Rheenendal|Sedgefield|Plettenberg Bay|Plett|George|Wilderness|Centreville)$/i;
+export const STREET_TOLERANCE_KM = 1.5;
+const WIDE_AREAS = /^(Pezula|Pezula Golf Estate|Pezula Private Estate|Simola|Brenton on Sea|Brenton-on-Sea|Brenton on Lake|Belvidere|Belvedere|Belvidere Estate|Belvedere Estate|Welbedacht|Eastford|Centreville)$/i;
 const WIDE_TOLERANCE_KM = 2.5;
+// Farm districts and other towns: a pin anywhere nearby is plausible.
+const RURAL_AREAS = /^(Rheenendal|Sedgefield|Plettenberg Bay|Plett|George|Wilderness)$/i;
+const RURAL_TOLERANCE_KM = 8;
 
 export function trustMapbox(
   geo: DetailedGeocode,
@@ -96,6 +99,10 @@ export function trustMapbox(
   if (geo.level === "area") return false;
   const named = namedArea(address, suburb, headline);
   if (!named) return true;
-  const tol = WIDE_AREAS.test(named.name) ? WIDE_TOLERANCE_KM : STREET_TOLERANCE_KM;
-  return kmBetween(geo, named.coord) <= tol;
+  return kmBetween(geo, named.coord) <= toleranceFor(named.name);
+}
+
+export function toleranceFor(areaName: string): number {
+  if (RURAL_AREAS.test(areaName)) return RURAL_TOLERANCE_KM;
+  return WIDE_AREAS.test(areaName) ? WIDE_TOLERANCE_KM : STREET_TOLERANCE_KM;
 }

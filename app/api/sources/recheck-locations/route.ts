@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
-import { locateListing, trustMapbox } from "@/lib/external-listings/locate";
+import { locateListing, trustMapbox, toleranceFor } from "@/lib/external-listings/locate";
 import {
   centroidForArea,
   geocodeAddress,
   isHiddenAddress,
   isPlaceholderCoord,
   kmBetween,
+  namedArea,
   type LngLat,
 } from "@/lib/external-listings/geocode";
 import { rebuildDedupAndMatch } from "@/lib/external-listings/dedup";
@@ -31,7 +32,12 @@ export const maxDuration = 60;
 //      there) when that answer is one we no longer trust — a street
 //      centre far from the named estate, or a suburb / town point
 //      → area-only (52 Woodbourne Dr → Fernwood Estate);
-//   d. no coordinate at all → the full chain.
+//   d. no coordinate at all → the full chain;
+//   e. well outside the estate / suburb its own address names (further
+//      than the street tolerance) → that area, area-only. Catches the
+//      52 Woodbourne Dr pin whatever put it there;
+//   f. no house number and no area in the "address" (Dream-website house
+//      names: "Sandpoint", "Gael") → off the map; nothing places them.
 //
 // Hand-placed pins (geo_manual) are never touched. Everything else —
 // portal pins, erf pins, trusted Mapbox pins — is left exactly as it is.
@@ -129,6 +135,13 @@ export async function POST(request: Request) {
         located = area(null);                                                                                         // a
       } else if (r.geocode_source === "centroid" || onOldCentroid(prev)) {
         located = area(r.address_raw);                                                                               // b
+      } else if (r.address_raw && !/\d/.test(r.address_raw) && !namedArea(r.address_raw, r.suburb, r.headline)) {
+        located = { coord: null, geocodeSource: "centroid", via: "none" };                                           // f
+      } else if (r.address_raw && (() => {
+        const n = namedArea(r.address_raw, r.suburb, r.headline);
+        return n != null && kmBetween(prev, n.coord) > toleranceFor(n.name);
+      })()) {
+        located = area(r.address_raw);                                                                               // e
       } else if (r.address_raw) {
         const geo = await geocodeAddress(r.address_raw, { suburb: r.suburb });
         // The stored pin is Mapbox's answer (allowing for the erf snap
