@@ -2,6 +2,7 @@ import React from "react";
 import { Document, Page, Text, View, Image, StyleSheet, renderToBuffer } from "@react-pdf/renderer";
 import type { ResolvedDocument } from "./resolve";
 import type { AgencyIdentity } from "@/lib/agency";
+import { matchNumbered, matchLabelRow, isAllCaps, tidy } from "./layout";
 
 // Server-side PDF of a resolved document (plan 019 Arc A5).
 //
@@ -47,15 +48,9 @@ const s = StyleSheet.create({
 // "Seller:  ________" style fill-in lines; numbered sub-clauses with a
 // blank inside prose stay in the body face.
 const FILL_LINE_RE = /^[^\n]{0,40}:?\s*_{6,}\s*$/;
-const NUMBERED_RE = /^(\d+(?:\.\d+)*\.?)\t+([\s\S]+)$/;
-const LABEL_ROW_RE = /^([^\t\n]{1,40})\t+([\s\S]+)$/;
 /** A section this short never splits across a page. */
 const KEEP_TOGETHER_CHARS = 700;
 
-function isAllCaps(p: string): boolean {
-  const letters = p.replace(/[^A-Za-z]/g, "");
-  return letters.length > 3 && letters === letters.toUpperCase();
-}
 function norm(t: string): string {
   return t.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
@@ -95,27 +90,27 @@ export async function renderDocumentPdf(args: {
             const isTitle = i === 0 && j === 0 && !sec.heading && isAllCaps(p) && p.length < 90;
             if (isTitle) return <Text key={j} style={s.title}>{p}</Text>;
             if (FILL_LINE_RE.test(p)) return <Text key={j} style={s.row}>{p.replace(/\t+/g, "   ")}</Text>;
-            const num = p.match(NUMBERED_RE);
+            const num = matchNumbered(p);
             if (num) {
-              const text = num[2].replace(/\t+/g, "  ");
+              const text = num[1];
               return (
                 <View key={j} style={s.num}>
-                  <Text style={s.numLabel}>{num[1]}</Text>
+                  <Text style={s.numLabel}>{num[0]}</Text>
                   <Text style={[s.numText, isAllCaps(text) && text.length < 80 ? { fontFamily: "Helvetica-Bold" } : {}]}>{text}</Text>
                 </View>
               );
             }
-            const kv = p.match(LABEL_ROW_RE);
+            const kv = matchLabelRow(p);
             if (kv) {
               return (
                 <View key={j} style={s.kv} wrap={false}>
-                  <Text style={s.kvLabel}>{kv[1].trim()}</Text>
-                  <Text style={s.kvValue}>{kv[2].replace(/\t+/g, "  ")}</Text>
+                  <Text style={s.kvLabel}>{kv[0]}</Text>
+                  <Text style={s.kvValue}>{kv[1]}</Text>
                 </View>
               );
             }
             if (isAllCaps(p) && p.length < 80) return <Text key={j} style={s.subhead}>{p}</Text>;
-            return <Text key={j} style={s.para}>{p.replace(/\t+/g, "  ")}</Text>;
+            return <Text key={j} style={s.para}>{tidy(p)}</Text>;
           };
           // Keep a heading with its first paragraph so a page never ends on
           // a bare clause number.

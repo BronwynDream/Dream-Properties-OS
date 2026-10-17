@@ -102,7 +102,7 @@ export default function DraftEditor({
     [model, ctx, selections, overrides, omitted],
   );
   const unansweredStatements = doc.unresolved.filter((t) => t.startsWith(PPRA_ANSWER_PREFIX)).length;
-  const stillNeeded = Array.from(new Set(doc.unresolved.filter((t) => !t.startsWith(PPRA_ANSWER_PREFIX)).map((t) => LABELS[t] ?? t.replace(/_/g, " "))));
+  const stillNeeded = Array.from(new Set(doc.unresolved.filter((t) => !t.startsWith(PPRA_ANSWER_PREFIX)).map((t) => t.replace(/_words$/, "")).map((t) => LABELS[t] ?? t.replace(/_/g, " "))));
   if (unansweredStatements > 0) stillNeeded.unshift(`${unansweredStatements} statement answer${unansweredStatements === 1 ? "" : "s"} on the property record`);
 
   function setField(k: string, v: string) {

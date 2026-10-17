@@ -113,3 +113,18 @@ assert.equal(formatZar(6500000), "6 500 000");
 }
 
 console.log("resolve.test: all assertions passed");
+
+// ---------------------------------------------------------------------------
+// Layout conventions (lib/documents/layout.ts) — tabs, or the spaces the
+// Supabase SQL editor turns them into on paste.
+// ---------------------------------------------------------------------------
+import { matchNumbered, matchLabelRow } from "../layout";
+assert.deepEqual(matchNumbered("2.1\tThe purchase price"), ["2.1", "The purchase price"]);
+assert.deepEqual(matchNumbered("2.1   The purchase price"), ["2.1", "The purchase price"]);
+assert.deepEqual(matchNumbered("15.1 ELECTRICAL – Not applicable."), ["15.1", "ELECTRICAL – Not applicable."]);
+assert.equal(matchNumbered("1 ______________________________"), null, "witness line is not a sub-clause");
+assert.equal(matchNumbered("The purchase price"), null);
+assert.deepEqual(matchLabelRow("Full Names:\tJane Doe"), ["Full Names:", "Jane Doe"]);
+assert.deepEqual(matchLabelRow("Full Names:   Jane Doe"), ["Full Names:", "Jane Doe"]);
+assert.equal(matchLabelRow("The transfer.  Both parties shall sign"), null, "double space in prose is not a row");
+console.log("layout: all assertions passed");

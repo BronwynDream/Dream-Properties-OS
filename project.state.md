@@ -4,7 +4,39 @@ Running log of what's decided, built, and next. Updated at the end of each worki
 session. `PROJECT.md` remains the canonical business/design doc; this file is the
 "where are we right now" companion.
 
-_Last updated: 2026-10-16_
+_Last updated: 2026-10-17_
+
+---
+
+## LIVE CHECKS + TWO FIXES (2026-10-17)
+
+### Found live
+- Agreement of sale on 7 The Grove: prepares and fills from the record
+  (seller IDs, postal, domicilium, marital status all came through).
+- **The Supabase SQL editor turns pasted tabs into spaces.** Every clause
+  body pasted that way (0069 onward) has "Full Names:   value" / "2.1   The…"
+  instead of tabs, so the tab-driven layout rules didn't fire on screen.
+- Search live: works ("grove" → property, deal, drafts, filed docs, market,
+  erven; "1764" → property + roll). Same erf listed twice when the roll
+  holds several rows for it.
+- "Still needed" said "occupational rent words".
+
+### Shipped
+- `lib/documents/layout.ts` — `matchNumbered` / `matchLabelRow` /
+  `isAllCaps` / `tidy`, shared by `ClauseDocument.tsx` and `pdf.tsx`: a tab
+  OR a run of 2+ spaces separates number/label from text; a witness line
+  ("1 ____") is not a sub-clause; double spaces in prose aren't rows. Tests
+  added to `resolve.test.ts`.
+- `DraftEditor` — `*_words` gaps report under their base field's label.
+- **Migration `0079_search_dedupe_erven.sql`** — same function, erf branch
+  `distinct on (erf_number, street)`. Tested in the container with a
+  duplicate roll row.
+
+### Loose ends
+- Future seeds: consider emitting bodies with an explicit tab escape so a
+  paste keeps them; the renderers no longer need it.
+- Market listing hits for "grove" include three Simola plots — check what
+  in their address/headline matches before tuning the threshold.
 
 ---
 

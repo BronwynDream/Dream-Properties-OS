@@ -1,5 +1,6 @@
 import type { ResolvedDocument, ResolvedSection } from "@/lib/documents/resolve";
 import { BLANK } from "@/lib/documents/resolve";
+import { matchNumbered, matchLabelRow, isAllCaps, tidy } from "@/lib/documents/layout";
 
 // Generic renderer for any clause-library document (plan 019 Arc A2).
 // Replaces the per-template React components: the skeleton is now the
@@ -66,29 +67,29 @@ function Section({ s, showGaps }: { s: ResolvedSection; showGaps: boolean }) {
         if (isTitle) return <p key={i} className="cd-title">{gap(p)}</p>;
         // Same conventions as the PDF (lib/documents/pdf.tsx): numbered
         // sub-clause, label/value row, short all-caps sub-heading.
-        const num = p.match(/^(\d+(?:\.\d+)*\.?)\t+([\s\S]+)$/);
+        const num = matchNumbered(p);
         if (num) {
-          const text = num[2].replace(/\t+/g, "  ");
+          const text = num[1];
           return (
             <div key={i} className="cd-num">
-              <span>{num[1]}</span>
+              <span>{num[0]}</span>
               <span style={isAllCaps(text) && text.length < 80 ? { fontWeight: 700 } : undefined}>{gap(text)}</span>
             </div>
           );
         }
-        const kv = p.match(/^([^\t\n]{1,40})\t+([\s\S]+)$/);
+        const kv = matchLabelRow(p);
         if (kv) {
           return (
             <div key={i} className="cd-kv">
-              <span>{kv[1].trim()}</span>
-              <span>{gap(kv[2].replace(/\t+/g, "  "))}</span>
+              <span>{kv[0]}</span>
+              <span>{gap(kv[1])}</span>
             </div>
           );
         }
         const isRow = /_{6,}/.test(p) && p.length < 160 && !/[a-z]{4,}.*[a-z]{4,}.*[a-z]{4,}/.test(p);
         if (isRow) return <p key={i} className="cd-row">{gap(p)}</p>;
         if (isAllCaps(p) && p.length < 80) return <p key={i} className="cd-sub">{gap(p)}</p>;
-        return <p key={i}>{gap(p)}</p>;
+        return <p key={i}>{gap(tidy(p))}</p>;
       })}
     </section>
   );
@@ -98,10 +99,6 @@ function norm(t: string): string {
   return t.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 
-function isAllCaps(p: string): boolean {
-  const letters = p.replace(/[^A-Za-z]/g, "");
-  return letters.length > 3 && letters === letters.toUpperCase();
-}
 
 function highlightGaps(p: string): React.ReactNode {
   const parts = p.split(BLANK);
