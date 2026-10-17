@@ -3,7 +3,7 @@ import { recordFeedRun } from "@/lib/feeds/run";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { scrapeListingDetail } from "@/lib/external-listings/property24";
-import { inGardenRoute } from "@/lib/external-listings/geocode";
+import { inGardenRoute, isHiddenAddress, isPlaceholderCoord } from "@/lib/external-listings/geocode";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -200,10 +200,16 @@ async function handlePost(request: Request) {
     }
     hitJsonLd++;
 
-    const coordCloseEnough =
+    // A hidden address ships P24's one placeholder point for Knysna — not
+    // the house. Keep those rows on their area-only pin; refresh price only.
+    const placeholder =
+      isHiddenAddress(listing.addressRaw) ||
+      isPlaceholderCoord({ lng: listing.lng!, lat: listing.lat! });
+
+    const coordCloseEnough = placeholder || (
       prevLat != null && prevLng != null &&
       Math.abs(prevLat - listing.lat!) < 0.0002 &&
-      Math.abs(prevLng - listing.lng!) < 0.0002;
+      Math.abs(prevLng - listing.lng!) < 0.0002);
     const priceUnchanged = prevPrice === listing.price;
 
     if (coordCloseEnough && priceUnchanged) {
@@ -212,8 +218,8 @@ async function handlePost(request: Request) {
       continue;
     }
 
-    const dLat = prevLat != null ? Math.abs(listing.lat! - prevLat) : 0;
-    const dLng = prevLng != null ? Math.abs(listing.lng! - prevLng) : 0;
+    const dLat = !placeholder && prevLat != null ? Math.abs(listing.lat! - prevLat) : 0;
+    const dLng = !placeholder && prevLng != null ? Math.abs(listing.lng! - prevLng) : 0;
     const moved_km = Math.round(Math.sqrt(dLat * dLat + dLng * dLng) * 111 * 10) / 10;
 
     changes.push({
@@ -221,7 +227,9 @@ async function handlePost(request: Request) {
       source_ref: r.source_ref,
       url: r.url,
       before: { lat: prevLat, lng: prevLng, price: prevPrice },
-      after: { lat: listing.lat, lng: listing.lng, price: listing.price },
+      after: placeholder
+        ? { lat: prevLat, lng: prevLng, price: listing.price }
+        : { lat: listing.lat, lng: listing.lng, price: listing.price },
       moved_km,
       priceChanged: !priceUnchanged,
     });
@@ -237,12 +245,15 @@ async function handlePost(request: Request) {
       // chain's hallucinations. One-shot backfill: reset
       // regeocode_attempted_at for all P24 rows, then drain, so every row
       // gets re-evaluated under the new logic.
-      const patch: Record<string, unknown> = {
-        lat: listing.lat,
-        lng: listing.lng,
-        price: listing.price,
-        prcl_key: null,
-      };
+      const patch: Record<string, unknown> = placeholder
+        ? { price: listing.price }
+        : {
+            lat: listing.lat,
+            lng: listing.lng,
+            price: listing.price,
+            prcl_key: null,
+            geocode_source: "exact",
+          };
       const { error: upErr } = await supabase
         .from("external_listing")
         .update(patch)

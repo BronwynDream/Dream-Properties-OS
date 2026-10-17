@@ -86,6 +86,7 @@ export default function ResultsList({
             <span className="mx-card-body">
               <span className="mx-card-price">{shortPrice(l.price)}</span>
               <span className="mx-card-addr">{l.address}</span>
+              {l.areaOnly && <span className="mx-card-area">Area only</span>}
               <span className="mx-card-facts">{facts(l)}</span>
               <span className="mx-card-tags">
                 {l.kind === "ours" && l.state ? (

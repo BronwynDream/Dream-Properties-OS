@@ -23,6 +23,7 @@ export default function HoverCard({ listing, x, y, stageW }: { listing: MapListi
       <div className="mx-hover-body">
         <p className={`mx-hover-price${l.price == null ? " poa" : ""}`}>{fullPrice(l.price)}</p>
         <p className="mx-hover-addr">{l.address}</p>
+        {l.areaOnly && <p className="mx-hover-area">Area only: the exact spot isn&rsquo;t published</p>}
         <p className="mx-hover-facts">{facts(l) || (l.type ? TYPE_LABEL[l.type] : "")}</p>
         <p className="mx-hover-who">
           {l.kind === "ours" ? (

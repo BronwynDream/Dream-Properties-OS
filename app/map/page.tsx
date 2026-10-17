@@ -75,7 +75,7 @@ export default async function MapPage() {
   // last three columns arrive with migration 0083; until it has run, fall
   // back to the base columns so the map never breaks on deploy order.
   const BASE_COLS =
-    "id, source, source_ref, url, headline, address_raw, suburb, price, image_url, agency_name, lat, lng, prcl_key, matched_property_id, dedup_group_id, bedrooms, bathrooms, property_type";
+    "id, source, source_ref, url, headline, address_raw, suburb, price, image_url, agency_name, lat, lng, prcl_key, matched_property_id, dedup_group_id, bedrooms, bathrooms, property_type, geocode_source";
   let externalData: any[] | null = null;
   {
     const withFacts = await supabase
@@ -176,6 +176,7 @@ export default async function MapPage() {
       features: Array.isArray(e.features) ? e.features : [],
       erfSqm: e.erf_size_sqm != null ? Number(e.erf_size_sqm) : null,
       floorSqm: e.floor_size_sqm != null ? Number(e.floor_size_sqm) : null,
+      geocodeSource: e.geocode_source === "centroid" ? "centroid" : "exact",
     };
 
     // Case 1 — matched to one of our properties. A matched listing collapses

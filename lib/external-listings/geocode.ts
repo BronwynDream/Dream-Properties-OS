@@ -36,68 +36,124 @@ export function inGardenRoute(coords: LngLat): boolean {
   );
 }
 
-// Rough centroids for the estates and towns Dream sells across. Used as a
-// last-resort fallback when Mapbox can't resolve an estate-code address
-// like "F24 Thesen" or "B4 Pezula Private Estate" but the area is known.
-// Coordinates are approximate — good enough to land the pin in the right
-// polygon on the map; the geocode itself is exact when it succeeds.
-// Rough centroids for estates + towns Dream sells across. Aliased entries
-// (e.g. "Thesen" → same coords as "Thesen Islands") let the address-string
-// scanner catch filename-abbreviated forms like "F24 Thesen" without
-// needing the full estate name in the address.
+// Area centroids: where a listing goes when we only know its suburb or
+// estate. Re-verified 2026-10-17 against Google's own suburb / estate
+// points (the earlier hand-typed table had Leisure Isle 2.5 km off in the
+// lagoon and Fernwood 2 km off near Sparrebosch). A pin placed here is
+// stored with geocode_source = 'centroid' and drawn as a hollow "area
+// only" dot, so it never claims to be the house.
+//
+// Matching is longest-name-first (so "Pezula Private Estate" beats
+// "Pezula", "Knysna Heights" beats "Knysna"), across the address, the
+// headline ("4 Bedroom House for Sale in Fernwood Estate") and the
+// suburb. The bare town "Knysna" is the last resort. "Knysna Rural" has
+// no centroid on purpose: a farm somewhere in the district is not in town.
 export const GARDEN_ROUTE_CENTROIDS: Record<string, LngLat> = {
-  "Knysna":                { lng: 23.0479, lat: -34.0363 },
-  "Knysna Central":        { lng: 23.048,  lat: -34.038  },
-  "Knysna Quays":          { lng: 23.0453, lat: -34.0412 },
-  "Knysna Heights":        { lng: 23.038,  lat: -34.045  },
-  "Hunters Home":          { lng: 23.028,  lat: -34.050  },
-  "Old Place":             { lng: 23.040,  lat: -34.045  },
-  "Paradise":              { lng: 23.055,  lat: -34.038  },
-  "Rexford":               { lng: 23.085,  lat: -34.058  },
-  "Welbedacht":            { lng: 23.050,  lat: -34.025  },
-  "Hudson Heights":        { lng: 23.050,  lat: -34.025  },
-  "Leisure Isle":          { lng: 23.0725, lat: -34.049  },
-  "The Heads":             { lng: 23.081,  lat: -34.081  },
-  "Belvidere":             { lng: 22.976,  lat: -34.03   },
-  "Brenton on Sea":        { lng: 23.0227, lat: -34.08   },
-  "Brenton":               { lng: 23.0227, lat: -34.08   },
-  "Pezula Private Estate": { lng: 23.108,  lat: -34.07   },
-  "Pezula Golf Estate":    { lng: 23.108,  lat: -34.07   },
-  "Pezula":                { lng: 23.108,  lat: -34.07   },
-  "Sparrebosch":           { lng: 23.100,  lat: -34.055  },
-  "Fernwood Estate":       { lng: 23.095,  lat: -34.055  },
-  "Fernwood":              { lng: 23.095,  lat: -34.055  },
-  "Simola":                { lng: 23.04,   lat: -33.982  },
-  "Thesen Islands":        { lng: 23.043,  lat: -34.048  },
-  "Thesen":                { lng: 23.043,  lat: -34.048  },
-  "Eastford Glen":         { lng: 22.986,  lat: -34.008  },
-  "Eastford":              { lng: 22.986,  lat: -34.008  },
-  "Centreville":           { lng: 22.995,  lat: -34.018  },
-  "Sedgefield":            { lng: 22.81,   lat: -34.025  },
-  "Plettenberg Bay":       { lng: 23.376,  lat: -34.053  },
-  "Plett":                 { lng: 23.376,  lat: -34.053  },
-  "George":                { lng: 22.46,   lat: -33.963  },
-  "Wilderness":            { lng: 22.58,   lat: -33.99   },
+  "Knysna":                   { lng: 23.0465, lat: -34.0351 },
+  "Knysna Central":           { lng: 23.0503, lat: -34.0396 },
+  "Knysna Quays":             { lng: 23.0450, lat: -34.0406 },
+  "Knysna Heights":           { lng: 23.0302, lat: -34.0311 },
+  "Knysna Lifestyle Estate":  { lng: 23.0140, lat: -34.0275 },
+  "Hunters Home":             { lng: 23.0801, lat: -34.0575 },
+  "Hunters Estate":           { lng: 23.0783, lat: -34.0527 },
+  "Old Place":                { lng: 23.0712, lat: -34.0382 },
+  "Paradise":                 { lng: 23.0355, lat: -34.0347 },
+  "Rexford":                  { lng: 23.0779, lat: -34.0639 },
+  "Welbedacht Estate":        { lng: 23.0188, lat: -34.0371 },
+  "Welbedacht":               { lng: 23.0118, lat: -34.0298 },
+  "Hudson Heights":           { lng: 23.050,  lat: -34.025  },
+  "Leisure Isle":             { lng: 23.0597, lat: -34.0675 },
+  "Leisure Island":           { lng: 23.0597, lat: -34.0675 },
+  "The Heads":                { lng: 23.0623, lat: -34.0768 },
+  "Belvidere Estate":         { lng: 22.9967, lat: -34.0449 },
+  "Belvedere Estate":         { lng: 22.9967, lat: -34.0449 },
+  "Belvidere":                { lng: 22.9967, lat: -34.0449 },
+  "Belvedere":                { lng: 22.9967, lat: -34.0449 },
+  "Brenton on Sea":           { lng: 23.0252, lat: -34.0714 },
+  "Brenton-on-Sea":           { lng: 23.0252, lat: -34.0714 },
+  "Brenton on Lake":          { lng: 23.0291, lat: -34.0604 },
+  "Pezula Private Estate":    { lng: 23.1060, lat: -34.0656 },
+  "Pezula Golf Estate":       { lng: 23.0877, lat: -34.0721 },
+  "Pezula":                   { lng: 23.0877, lat: -34.0721 },
+  "Sparrebosch":              { lng: 23.0935, lat: -34.0720 },
+  "Fernwood Estate":          { lng: 23.0824, lat: -34.0696 },
+  "Fernwood":                 { lng: 23.0824, lat: -34.0696 },
+  "Simola":                   { lng: 23.0303, lat: -34.0040 },
+  "Thesen Islands":           { lng: 23.0535, lat: -34.0487 },
+  "Thesen Island":            { lng: 23.0535, lat: -34.0487 },
+  "Thesen":                   { lng: 23.0535, lat: -34.0487 },
+  "Eastford Country Estate":  { lng: 23.0202, lat: -34.0182 },
+  "Eastford Downs":           { lng: 23.0127, lat: -34.0188 },
+  "Eastford Glen":            { lng: 23.0286, lat: -34.0198 },
+  "Eastford Vale":            { lng: 23.0286, lat: -34.0199 },
+  "Eastford":                 { lng: 23.0220, lat: -34.0328 },
+  "Estuary Heights":          { lng: 23.0185, lat: -34.0325 },
+  "Westford Bridge":          { lng: 22.9872, lat: -34.0203 },
+  "Costa Sarda":              { lng: 23.0600, lat: -34.0358 },
+  "Fisher Haven":             { lng: 23.0771, lat: -34.0502 },
+  "Green Pastures":           { lng: 23.0357, lat: -34.0219 },
+  "Greenfields":              { lng: 23.0674, lat: -34.0311 },
+  "Heuwelkruin":              { lng: 23.0377, lat: -34.0309 },
+  "Hornlee West":             { lng: 23.0935, lat: -34.0509 },
+  "Hornlee":                  { lng: 23.0935, lat: -34.0509 },
+  "Kanonkop":                 { lng: 23.0213, lat: -34.0355 },
+  "Lelieskloof":              { lng: 23.0500, lat: -34.0286 },
+  "Narnia":                   { lng: 23.0202, lat: -34.0335 },
+  "Blaricum Heights":         { lng: 23.0562, lat: -34.0082 },
+  "Tides End":                { lng: 23.0640, lat: -34.0388 },
+  "Rheenendal":               { lng: 22.9344, lat: -33.9491 },
+  "Centreville":              { lng: 22.995,  lat: -34.018  },
+  "Sedgefield":               { lng: 22.8152, lat: -34.0185 },
+  "Plettenberg Bay":          { lng: 23.3714, lat: -34.0620 },
+  "Plett":                    { lng: 23.3714, lat: -34.0620 },
+  "George":                   { lng: 22.46,   lat: -33.963  },
+  "Wilderness":               { lng: 22.58,   lat: -33.99   },
 };
 
-// Look up a centroid by suburb name first (most reliable — the scraper has
-// already picked the closest match from KNYSNA_SUBURBS), then fall through
-// to scanning the address string for any known area name.
+// Names that must never fall through to the town centre.
+const NO_CENTROID = /\bKnysna\s+Rural\b/i;
+
+const CENTROID_NAMES = Object.keys(GARDEN_ROUTE_CENTROIDS)
+  .filter((n) => n !== "Knysna")
+  .sort((a, b) => b.length - a.length);
+
+// "Belvidere Street, Hornlee" is in Hornlee, not Belvidere: a name followed
+// by a street word is a street, not the area.
+const STREET_WORD = "(?:street|st|road|rd|drive|dr|avenue|ave|lane|ln|close|cl|crescent|cres|way|place|pl)\\b";
+function nameRe(name: string): RegExp {
+  return new RegExp(`\\b${name.replace(/[-\s]+/g, "[-\\s]+")}\\b(?![\\s.]+${STREET_WORD})`, "i");
+}
+
+/** Where a listing goes when all we know is its area. Specific estates and
+ *  suburbs first (address, then headline, then suburb), the town last. */
 export function centroidForArea(
   address: string | null | undefined,
   suburb: string | null | undefined,
+  headline?: string | null,
 ): LngLat | null {
-  if (suburb) {
-    const hit = GARDEN_ROUTE_CENTROIDS[suburb];
-    if (hit) return hit;
-  }
-  if (address) {
-    for (const [name, coords] of Object.entries(GARDEN_ROUTE_CENTROIDS)) {
-      const re = new RegExp(`\\b${name.replace(/\s+/g, "\\s+")}\\b`, "i");
-      if (re.test(address)) return coords;
+  const texts = [address, headline, suburb].filter((t): t is string => !!t && t.trim().length > 0);
+  for (const t of texts) {
+    for (const name of CENTROID_NAMES) {
+      if (nameRe(name).test(t)) return GARDEN_ROUTE_CENTROIDS[name];
     }
   }
+  if (texts.some((t) => NO_CENTROID.test(t))) return null;
+  if (texts.some((t) => /\bKnysna\b/i.test(t))) return GARDEN_ROUTE_CENTROIDS["Knysna"];
   return null;
+}
+
+/** "Contact agent for street address" and friends: the portal is hiding the
+ *  address, so any coordinate it ships is a placeholder, not the house. */
+export function isHiddenAddress(address: string | null | undefined): boolean {
+  const a = (address ?? "").trim();
+  if (!a) return true;
+  return /contact\s+(the\s+)?(agent|broker|seller|owner|agency)|not\s+specified|address\s+(withheld|on\s+request|available\s+on\s+request)|^(n\/?a|tba|tbc|-)$/i.test(a);
+}
+
+// Property24 pins every hidden-address Knysna listing on this one point.
+const PLACEHOLDER_COORDS: LngLat[] = [{ lat: -34.026746, lng: 23.084946 }];
+export function isPlaceholderCoord(c: LngLat): boolean {
+  return PLACEHOLDER_COORDS.some((p) => Math.abs(p.lat - c.lat) < 0.00005 && Math.abs(p.lng - c.lng) < 0.00005);
 }
 
 export function mapboxToken(): string {
@@ -152,9 +208,27 @@ export async function geocodeAddress(
     const res = await fetch(url, { cache: "no-store", signal: opts?.signal });
     if (!res.ok) return null;
     const json = (await res.json()) as {
-      features?: { geometry?: { coordinates?: [number, number] } }[];
+      features?: {
+        geometry?: { coordinates?: [number, number] };
+        properties?: {
+          feature_type?: string;
+          match_code?: { address_number?: string; street?: string; confidence?: string };
+        };
+      }[];
     };
-    const coords = json.features?.[0]?.geometry?.coordinates;
+    const f = json.features?.[0];
+    // Only a house-level answer counts. When Mapbox can't find the number
+    // it falls back to the middle of the street (or the suburb, or the
+    // town) — "52 Woodbourne Dr" came back as the middle of Woodbourne
+    // Drive, by the Leisure Isle causeway, 1.6 km from the house. Those
+    // answers are rejected here so the caller falls back to an honest
+    // area-only pin instead.
+    const type = f?.properties?.feature_type;
+    if (type !== "address" && type !== "secondary_address") return null;
+    const mc = f?.properties?.match_code;
+    if (mc?.address_number === "unmatched" || mc?.street === "unmatched") return null;
+    if (mc?.confidence === "low") return null;
+    const coords = f?.geometry?.coordinates;
     if (!coords || coords.length < 2) return null;
     const [lng, lat] = coords;
     if (typeof lng !== "number" || typeof lat !== "number") return null;

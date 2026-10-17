@@ -3,8 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 
-import { geocodeAddress, centroidForArea, inGardenRoute } from "@/lib/external-listings/geocode";
-import { findErfCentroidByAddress } from "@/lib/external-listings/erfLookup";
+import { locateListing } from "@/lib/external-listings/locate";
 
 const MAPBOX_GEOCODE = "https://api.mapbox.com/search/geocode/v6/forward";
 
@@ -325,7 +324,7 @@ export async function setExternalListingCoords(
   // update, snapping to the new containing parcel.
   const { error } = await supabase
     .from("external_listing")
-    .update({ lat, lng, prcl_key: null })
+    .update({ lat, lng, prcl_key: null, geocode_source: "exact", geo_manual: true })
     .eq("id", externalListingId);
   if (error) return { ok: false, error: error.message };
   revalidatePath("/map");
@@ -350,7 +349,7 @@ export async function regeocodeExternalListing(
 
   const { data: row } = await supabase
     .from("external_listing")
-    .select("id, address_raw, suburb, lat, lng")
+    .select("id, address_raw, suburb, headline, lat, lng")
     .eq("id", externalListingId)
     .single();
   if (!row) return { ok: false, error: "listing not found" };
@@ -358,31 +357,11 @@ export async function regeocodeExternalListing(
   const address = ((row as any).address_raw ?? "").trim();
   const suburb = (row as any).suburb ?? null;
 
-  let coord: { lng: number; lat: number } | null = null;
-  let source: "address" | "centroid" | "erf" = "address";
-
-  // 1. Try Muni ERF-lookup first (cadastrally correct by construction).
-  if (address.length > 2) {
-    const combined = suburb ? `${address}, ${suburb}` : address;
-    const erfHit = await findErfCentroidByAddress(combined);
-    if (erfHit && inGardenRoute({ lng: erfHit.lng, lat: erfHit.lat })) {
-      coord = { lng: erfHit.lng, lat: erfHit.lat };
-      source = "erf";
-    }
-  }
-  // 2. Mapbox geocode.
-  if (!coord && address.length > 2) {
-    const geo = await geocodeAddress(address, { suburb });
-    if (geo && inGardenRoute(geo)) coord = geo;
-  }
-  // 3. Suburb centroid fallback.
-  if (!coord) {
-    const centroid = centroidForArea(address, suburb);
-    if (centroid) {
-      coord = centroid;
-      source = "centroid";
-    }
-  }
+  // Shared chain: erf → house-level Mapbox → area centroid.
+  const located = await locateListing({ address, suburb, headline: (row as any).headline ?? null });
+  const coord = located.coord;
+  const source: "address" | "centroid" | "erf" =
+    located.via === "erf" ? "erf" : located.via === "area" ? "centroid" : "address";
   if (!coord) return { ok: false, error: "geocode failed — no address, no suburb centroid" };
 
   const prevLat = (row as any).lat != null ? Number((row as any).lat) : null;
@@ -401,7 +380,7 @@ export async function regeocodeExternalListing(
   // the parcel, not from the raw lat/lng.
   const { error: updErr } = await supabase
     .from("external_listing")
-    .update({ lat: coord.lat, lng: coord.lng, prcl_key: null })
+    .update({ lat: coord.lat, lng: coord.lng, prcl_key: null, geocode_source: located.geocodeSource })
     .eq("id", externalListingId);
   if (updErr) return { ok: false, error: updErr.message };
 

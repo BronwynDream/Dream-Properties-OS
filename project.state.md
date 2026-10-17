@@ -8,6 +8,55 @@ _Last updated: 2026-10-17_
 
 ---
 
+## MAP PINS: HOUSE-LEVEL OR AREA-ONLY, NEVER THE MIDDLE OF A STREET (2026-10-17, afternoon)
+
+**Feedback moment (verbatim, Simon):** "whats this property doing on Leisure Island ?" It was 52 Woodbourne Dr, Fernwood Estate (P24 116997184, RE/MAX). The stored coordinate (-34.0691, 23.0649) is exactly Google's point for Woodbourne Drive, the middle of the road by the Leisure Isle causeway. Fernwood Estate is ~1.6 km east, on the northern slopes of the Eastern Head (-34.0696, 23.0824). Simon then said "you choose" on the fix; I chose a hollow "area only" dot over leaving those listings off the map.
+
+**Diagnosis:**
+- Mapbox returns street / locality / place answers when it can't find the house number, and every path accepted them as exact.
+- I swept the live pins for identical coordinates and found:
+  - 29 "Contact agent for street address" P24 listings stacked on P24's one placeholder point (-34.026746, 23.084946), from every suburb.
+  - 7 Dream-website rows with house-name "addresses" ("Sandpoint", "Avril", "Gael") piled by the causeway.
+- The hand-typed centroid table was off: Leisure Isle by about 2.5 km, Fernwood by about 2 km, Simola and The Heads also off.
+- Area pins were then erf-snapped to whatever erf contains the area centre.
+
+**Shipped**
+- `lib/external-listings/geocode.ts`:
+  - `geocodeAddress` accepts only Mapbox `feature_type` address / secondary_address, and rejects an unmatched number or street or low confidence.
+  - The centroid table was re-verified against Google points (2026-10-17) for all ~50 suburbs and estates in the data.
+  - `centroidForArea(address, suburb, headline)` matches the longest name first, ignores "<name> Street/Rd/…", gives "Knysna Rural" no centroid and uses the bare town last.
+  - New: `isHiddenAddress`, `isPlaceholderCoord`.
+- New `lib/external-listings/locate.ts`: one chain for every path. Portal JSON-LD (unless the address is hidden or the coordinate is a placeholder) → erf lookup → house-level Mapbox → area centroid (`geocode_source='centroid'`) → off the map.
+- Wired in:
+  - P24 refresh;
+  - P24 regeocode (Mapbox-only, as before);
+  - Dream refresh;
+  - the map's per-listing re-geocode action, which now also writes `geocode_source`;
+  - the manual-coordinate action, which now sets `geo_manual=true`;
+  - regeocode-jsonld: on a hidden / placeholder address it refreshes the price only, and sets `geocode_source='exact'` on real hits.
+- New `POST /api/sources/recheck-locations?dry=1&after=<id>` (admin):
+  - Re-runs every active row through the chain from what is already stored (P24 rawHtml JSON-LD, no re-scrape), in 50 s pages.
+  - Skips `geo_manual` rows, and rows whose stored coordinate differs from the stored page (moved since).
+  - Rebuilds dedup on the final page.
+- Migration `0084_area_only_pins_never_snap.sql`: the erf-snap trigger and `snap_all_to_parcels` skip `geocode_source='centroid'`; existing snaps on area-only rows are cleared.
+- Map:
+  - `ExternalRef.geocodeSource` (page selects `geocode_source`).
+  - `MapListing.areaOnly` when every external on a market pin is centroid. It is drawn as a hollow slate dot, with an "Area only" legend item, an italic note on the hover card and an "Area only" tag in the list. Its erf is never highlighted.
+  - A hidden address is shown as the suburb name.
+
+**Verification**
+- tsc and the production build are clean. 0084 was run against a stub-PostGIS Postgres: centroid rows are not snapped, exact rows are, and the bulk snap skips centroid rows.
+- Harness render: hollow dots draw (zoom kept as the top-level interpolate), and the hover card shows the note.
+- `centroidForArea` was spot-checked (Woodbourne → Fernwood; "Belvidere St, Hornlee" → Hornlee; Knysna Rural → null).
+- NOT verified: Mapbox v6 `feature_type`/`match_code` on real responses (no token in the container); the recheck endpoint against production (to run after deploy, dry first).
+
+**Loose ends**
+- After deploy: run 0084, then dry-run recheck-locations, review the moves, then apply.
+- `app/map/actions.ts` still has its own Mapbox geocoder for OUR properties (`property` table); it is not touched here.
+- `dedup.ts:430` unused `updateErrors` (pre-existing).
+
+---
+
 ## MAP REDESIGN — DOTS, SEARCH BAR, LIST (2026-10-17, evening)
 
 **Feedback moment (verbatim, Simon):** "I just would like the map to be just better than it is. It's just too busy… Maybe what's irritating me the most is the price and the little white flags for each property. Maybe it's better to have little dots, and then you hover over the dot to see some detail of the property. Maybe there's a little search engine… 'Find me properties in this suburb, this price range, with this many bedrooms, whether it's got a garden or not.'"

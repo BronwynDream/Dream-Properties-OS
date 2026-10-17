@@ -8,6 +8,14 @@
 
 import type { MergedPin, SourceKey } from "./MapView";
 
+/** Mirrors lib/external-listings/geocode.ts — kept here so the client
+ *  bundle doesn't pull in the server geocoder. */
+export function isHiddenAddress(a: string | null | undefined): boolean {
+  const s = (a ?? "").trim();
+  if (!s) return false;
+  return /contact\s+(the\s+)?(agent|broker|seller|owner|agency)|not\s+specified|address\s+(withheld|on\s+request|available\s+on\s+request)/i.test(s);
+}
+
 export type ListingKind = "ours" | "market";
 export type OurState = "exclusive" | "joint" | "open" | "none" | "under_offer" | "sold";
 export type TypeKey = "house" | "townhouse" | "apartment" | "land" | "farm" | "commercial";
@@ -50,6 +58,8 @@ export type MapListing = {
   agency: string | null;
   sources: SourceKey[];
   prclKey: string | null;
+  /** We know the suburb or estate, not the house: drawn as a hollow dot. */
+  areaOnly: boolean;
   pin: MergedPin;
 };
 
@@ -86,6 +96,10 @@ export function toListing(pin: MergedPin): MapListing {
   const features = new Set<FeatureKey>();
   for (const e of ext) for (const f of e.features ?? []) features.add(f as FeatureKey);
   const kind: ListingKind = pin.our ? "ours" : "market";
+  const areaOnly = !pin.our && ext.length > 0 && ext.every((e) => e.geocodeSource === "centroid");
+  const suburb = pin.representative.suburb ?? first((e) => e.suburb);
+  // "Contact agent for street address" is not an address.
+  const hidden = isHiddenAddress(pin.representative.address);
   return {
     key: pin.key,
     lng: pin.lng,
@@ -93,8 +107,9 @@ export function toListing(pin: MergedPin): MapListing {
     kind,
     state: pin.our ? ourState(pin) : null,
     price: pin.our?.askingPrice ?? pin.representative.price ?? first((e) => e.price),
-    address: pin.representative.address,
-    suburb: pin.representative.suburb ?? first((e) => e.suburb),
+    // The area-only note on the card says the rest.
+    address: hidden ? suburb ?? "Knysna" : pin.representative.address,
+    suburb,
     beds: first((e) => e.bedrooms),
     baths: first((e) => e.bathrooms),
     type: normaliseType(pin.our?.propertyType, first((e) => e.propertyType), first((e) => e.headline), pin.our?.listingHeadline),
@@ -104,7 +119,10 @@ export function toListing(pin: MergedPin): MapListing {
     image: first((e) => e.imageUrl),
     agency: pin.our ? "Dream Knysna" : first((e) => e.agencyName),
     sources: pin.sources,
-    prclKey: pin.our?.prclKey ?? first((e) => e.prclKey),
+    // An area-only pin sits on the suburb's centre, which is somebody
+    // else's erf — never highlight it.
+    prclKey: areaOnly ? null : pin.our?.prclKey ?? first((e) => e.prclKey),
+    areaOnly,
     pin,
   };
 }

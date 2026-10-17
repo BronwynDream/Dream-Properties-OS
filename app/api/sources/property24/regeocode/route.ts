@@ -2,11 +2,7 @@ import { NextResponse } from "next/server";
 import { recordFeedRun } from "@/lib/feeds/run";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
-import {
-  geocodeAddress,
-  centroidForArea,
-  inGardenRoute,
-} from "@/lib/external-listings/geocode";
+import { locateListing } from "@/lib/external-listings/locate";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -66,7 +62,7 @@ async function handlePost(request: Request) {
   try {
     const { data: rows, error } = await supabase
       .from("external_listing")
-      .select("id, address_raw, suburb, lat, lng")
+      .select("id, address_raw, suburb, headline, lat, lng")
       .eq("source", "property24");
     if (error) {
       return NextResponse.json(
@@ -87,19 +83,17 @@ async function handlePost(request: Request) {
       }
       scanned++;
 
-      let coord: { lng: number; lat: number } | null = null;
-      if (row.address_raw) {
-        const geo = await geocodeAddress(row.address_raw, { suburb: row.suburb });
-        if (geo && inGardenRoute(geo)) coord = geo;
-      }
-      let usedCentroid = false;
-      if (!coord) {
-        const centroid = centroidForArea(row.address_raw, row.suburb);
-        if (centroid) {
-          coord = centroid;
-          usedCentroid = true;
-        }
-      }
+      // Mapbox-only by design (no portal coordinate): this endpoint is the
+      // "start again from the address" button. Same rules as everywhere
+      // else — see lib/external-listings/locate.ts.
+      const located = await locateListing({
+        address: row.address_raw,
+        suburb: row.suburb,
+        headline: row.headline,
+        skipErf: true,
+      });
+      const coord = located.coord;
+      const usedCentroid = located.geocodeSource === "centroid";
 
       if (!coord) {
         noResolution++;

@@ -84,6 +84,8 @@ export type ExternalRef = {
   features?: string[];
   erfSqm?: number | null;
   floorSqm?: number | null;
+  /** exact = the house; centroid = only the suburb / estate is known. */
+  geocodeSource?: "exact" | "centroid";
 };
 
 // For-sale erf (kept for the page's data contract; the map now highlights
@@ -406,7 +408,6 @@ export default function MapView({
     if (!map.getSource("listings")) {
       map.addSource("listings", { type: "geojson", data: { type: "FeatureCollection", features: [] }, promoteId: "key" });
 
-      const z = (a: number, b: number, c: number) => ["interpolate", ["linear"], ["zoom"], 10, a, 13, b, 17, c] as mapboxgl.Expression;
       // Zoom must stay the top-level interpolate, so the hover / selected
       // growth multiplies each stop.
       const focused = ["case", ["any", ["boolean", ["feature-state", "hover"], false], ["boolean", ["feature-state", "selected"], false]], 1.45, 1];
@@ -421,9 +422,12 @@ export default function MapView({
         filter: ["==", ["get", "kind"], "market"],
         paint: {
           "circle-radius": grow(2.6, 3.6, 5.5),
-          "circle-color": ["case", ["boolean", ["feature-state", "hover"], false], C.estuary, C.slate],
-          "circle-stroke-color": C.white,
-          "circle-stroke-width": z(0.8, 1.2, 1.6),
+          // Area-only listings (we know the suburb, not the house) are hollow:
+          // the dot marks the area, not a claim about the address.
+          "circle-color": ["case", ["boolean", ["feature-state", "hover"], false], C.estuary, ["==", ["get", "area"], 1], C.white, C.slate],
+          "circle-stroke-color": ["case", ["==", ["get", "area"], 1], C.slate, C.white],
+          // Zoom stays the top-level interpolate (Mapbox rule); the case sits in each stop.
+          "circle-stroke-width": ["interpolate", ["linear"], ["zoom"], 10, ["case", ["==", ["get", "area"], 1], 1.4, 0.8], 13, ["case", ["==", ["get", "area"], 1], 1.6, 1.2], 17, ["case", ["==", ["get", "area"], 1], 1.8, 1.6]],
           "circle-opacity": 0.92,
         },
       });
@@ -500,6 +504,7 @@ export default function MapView({
           key: l.key,
           kind: l.kind,
           state: l.state ?? "market",
+          area: l.areaOnly ? 1 : 0,
           label: shortPrice(l.price),
           sort: l.kind === "ours" ? 0 : l.price == null ? 2 : 1,
         },
@@ -810,6 +815,7 @@ export default function MapView({
             <span><i className="dot joint" /> Joint</span>
             <span><i className="dot offer" /> Under offer</span>
             <span><i className="dot market" /> Other agencies</span>
+            <span><i className="dot area" /> Area only</span>
           </div>
 
           {hovered && hoverFromMap && hoverXY && hovered.key !== selectedKey && <HoverCard listing={hovered} x={hoverXY.x} y={hoverXY.y} stageW={stageW} />}

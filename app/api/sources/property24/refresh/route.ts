@@ -6,12 +6,7 @@ import {
   scrapeListingIndex,
   scrapeListingDetail,
 } from "@/lib/external-listings/property24";
-import {
-  geocodeAddress,
-  centroidForArea,
-  inGardenRoute,
-} from "@/lib/external-listings/geocode";
-import { findErfCentroidByAddress } from "@/lib/external-listings/erfLookup";
+import { locateListing } from "@/lib/external-listings/locate";
 import { rebuildDedupAndMatch } from "@/lib/external-listings/dedup";
 
 export const runtime = "nodejs";
@@ -227,50 +222,18 @@ async function run(request: Request) {
       //   4. Suburb centroid fallback (Belvidere, Pezula, Leisure Isle,
       //      etc.) so the pin lands roughly where the listing sits even
       //      when we can't pin an exact address.
-      let coord: { lng: number; lat: number } | null = null;
-      let usedCentroid = false;
-      let usedErfLookup = false;
-      let usedJsonLd = false;
-
-      if (
-        listing.lat != null &&
-        listing.lng != null &&
-        inGardenRoute({ lng: listing.lng, lat: listing.lat })
-      ) {
-        coord = { lng: listing.lng, lat: listing.lat };
-        usedJsonLd = true;
-      }
-
-      const addressForLookup = listing.addressRaw
-        ? listing.suburb
-          ? `${listing.addressRaw}, ${listing.suburb}`
-          : listing.addressRaw
-        : null;
-      if (!coord && addressForLookup) {
-        const erfHit = await findErfCentroidByAddress(addressForLookup);
-        if (erfHit && inGardenRoute({ lng: erfHit.lng, lat: erfHit.lat })) {
-          coord = { lng: erfHit.lng, lat: erfHit.lat };
-          usedErfLookup = true;
-        }
-      }
-      if (!coord && listing.addressRaw) {
-        const geo = await geocodeAddress(listing.addressRaw, {
-          suburb: listing.suburb,
-        });
-        if (geo && inGardenRoute(geo)) coord = geo;
-      }
-      if (!coord) {
-        const centroid = centroidForArea(listing.addressRaw, listing.suburb);
-        if (centroid) {
-          coord = centroid;
-          usedCentroid = true;
-        }
-      }
-      if (usedJsonLd) {
-        console.log(`[property24] ${listing.sourceRef}: pinned via JSON-LD (P24 canonical)`);
-      } else if (usedErfLookup) {
-        console.log(`[property24] ${listing.sourceRef}: pinned via Muni ERF-lookup`);
-      }
+      // The chain lives in lib/external-listings/locate.ts (shared with the
+      // re-geocode paths): portal JSON-LD → erf → house-level Mapbox →
+      // area centroid (drawn as "area only") → off the map.
+      const located = await locateListing({
+        address: listing.addressRaw,
+        suburb: listing.suburb,
+        headline: listing.headline,
+        portalCoord: listing.lat != null && listing.lng != null ? { lat: listing.lat, lng: listing.lng } : null,
+      });
+      const coord = located.coord;
+      const usedCentroid = located.geocodeSource === "centroid";
+      console.log(`[property24] ${listing.sourceRef}: located via ${located.via}`);
 
       const now = new Date().toISOString();
       const { error } = await supabase.from("external_listing").upsert(

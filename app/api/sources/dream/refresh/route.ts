@@ -3,12 +3,8 @@ import { recordFeedRun } from "@/lib/feeds/run";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { rebuildDedupAndMatch } from "@/lib/external-listings/dedup";
-import {
-  centroidForArea,
-  geocodeAddress,
-  inGardenRoute,
-  mapboxToken,
-} from "@/lib/external-listings/geocode";
+import { inGardenRoute, mapboxToken } from "@/lib/external-listings/geocode";
+import { locateListing } from "@/lib/external-listings/locate";
 
 export const runtime = "nodejs";
 // Vercel Hobby silently clamps to 60s — anything higher gets truncated
@@ -301,26 +297,24 @@ async function run(request: Request) {
       const toGeocode = geocodeQueue.slice(0, MAX_GEOCODES_PER_RUN);
       deferredGeocode = Math.max(0, geocodeQueue.length - toGeocode.length);
       for (const g of toGeocode) {
-        let coords = await geocodeAddress(g.address, {
-          token,
+        // Shared chain (lib/external-listings/locate.ts). Dream's website
+        // titles are often house names ("Avril", "Sandpoint"), which never
+        // resolve to a house — they land as area-only or stay off the map.
+        const located = await locateListing({
+          address: g.address,
           suburb: g.suburb,
+          token,
+          skipErf: true,
         });
-        let usedCentroid = false;
-        if (coords && !inGardenRoute(coords)) coords = null;
-        if (!coords) {
-          const fallback = centroidForArea(g.address, g.suburb);
-          if (fallback) {
-            coords = fallback;
-            usedCentroid = true;
-          }
-        }
+        const coords = located.coord;
+        const usedCentroid = located.geocodeSource === "centroid";
 
         if (!coords) {
           // Explicit null so a stale in-box pin from a prior run can't
           // survive a changed / tightened result.
           const { error: nErr } = await service
             .from("external_listing")
-            .update({ lat: null, lng: null, geocode_source: "exact" })
+            .update({ lat: null, lng: null, geocode_source: "centroid" })
             .eq("id", g.id);
           if (nErr) errors.push(`park nullify ${g.id}: ${nErr.message}`);
           parked++;
