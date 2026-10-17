@@ -1,14 +1,45 @@
 "use client";
 
 import "mapbox-gl/dist/mapbox-gl.css";
+import "./map.css";
 import type { Light } from "@/lib/feeds/registry";
 import mapboxgl from "mapbox-gl";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { savePropertyPin } from "./actions";
-import MarketListingAttach from "./MarketListingAttach";
-import RegeocodeListingButton from "./RegeocodeListingButton";
+import PreviewPanel from "./PreviewPanel";
+import FilterBar from "./FilterBar";
+import ResultsList, { type SortKey } from "./ResultsList";
+import HoverCard from "./HoverCard";
+import { type Filters, type MapListing, DEFAULT_FILTERS, groupDigits, matches, shortPrice, toListing } from "./listing";
+
+// =============================================================================
+// The map (redesigned 2026-10-17).
+//
+// Simon: "it's just too busy … maybe it's better to have little dots, and
+// then you hover over the dot to see some detail … a little search engine:
+// this suburb, this price range, this many bedrooms, garden or not."
+//
+// What changed, and why (research: Airbnb's map-pin paper, Baymard on
+// split list + map views, Mapbox's markers-vs-layers guidance):
+//   * Every listing is a DOT in a Mapbox layer — not one DOM price flag per
+//     listing (hundreds of DOM markers is what made the map feel heavy).
+//     Ours are larger, in Dream blue, ringed white; other agencies' are
+//     small slate dots. Shape and size, not only colour, tell them apart:
+//     a joint mandate is a hollow ring.
+//   * Detail on hover: a card with photo, price, rooms, size, who lists it.
+//   * Prices on the map are a switch, off by default; when on, labels that
+//     would collide are dropped and ours win.
+//   * A search bar across the top: area, price (with a bar chart of where
+//     prices sit), beds & baths, type, garden / pool, and which listings.
+//   * The list beside the map shows what is in view, "N in view of M", and
+//     stays in step: hover a card → its dot lights; click a dot → its card.
+//   * A calm basemap by default ("Map"), satellite one click away.
+//   * Erf outlines only for the listing you hover or select (plus the
+//     existing all-erven switch). Every listing now shows at every zoom —
+//     before, erf-matched listings vanished below zoom 14.
+// =============================================================================
 
 export type MapProperty = {
   id: string;
@@ -16,25 +47,22 @@ export type MapProperty = {
   suburb: string | null;
   lng: number | null;
   lat: number | null;
-  geoManual: boolean;              // pin was hand-placed by an admin
+  geoManual: boolean; // pin was hand-placed by an admin
   extentSqm: number | null;
   titleDeed: string | null;
   askingPrice: number | null;
   listingStatus: string | null;
   listingHeadline: string | null;
-  mandateType: string; // exclusive | sole | joint | open | none
+  mandateType: string; // exclusive | joint | open | none
   mandateRaw: string | null;
   transferStatus: string | null;
   transferDate: string | null;
   transferCount: number;
-  prclKey: string | null;          // cadastral parcel key for polygon rendering
+  prclKey: string | null; // cadastral parcel key
+  propertyType?: string | null;
 };
 
-export type SourceKey =
-  | "dream_os"
-  | "dream_website"
-  | "property24"
-  | "private_property";
+export type SourceKey = "dream_os" | "dream_website" | "property24" | "private_property";
 
 export type ExternalRef = {
   id: string;
@@ -49,18 +77,20 @@ export type ExternalRef = {
   agencyName: string | null;
   lat: number | null;
   lng: number | null;
-  prclKey: string | null;          // cadastral parcel key; null = ungeocoded to parcel
+  prclKey: string | null;
+  bedrooms?: number | null;
+  bathrooms?: number | null;
+  propertyType?: string | null;
+  features?: string[];
+  erfSqm?: number | null;
+  floorSqm?: number | null;
 };
 
-// For-sale property rendered as a coloured cadastral polygon at z≥14.
+// For-sale erf (kept for the page's data contract; the map now highlights
+// erven per listing via prclKey instead of painting every one).
 export type ForSalePolygon = {
   prclKey: string;
   state: "os_exclusive" | "os_joint" | "os_sold" | "os_under_offer" | "os_other" | "market";
-  // Which source put this polygon on the map. OS-owned erven are "dream_os";
-  // market polygons carry the portal the listing came from. Without this the
-  // Sources chips can't filter the polygon layer — a user with every source
-  // off still saw coloured parcel fills and could click through to the
-  // market-listing panel (Simon, 2026-08-01).
   source: SourceKey;
   propertyId?: string;
   listingId?: string;
@@ -68,7 +98,6 @@ export type ForSalePolygon = {
   headline?: string;
 };
 
-// External listing with lat/lng but no prcl_key — rendered as a discreet dot.
 export type UngeocodedExternal = {
   id: string;
   source: "property24" | "private_property";
@@ -78,11 +107,7 @@ export type UngeocodedExternal = {
   headline: string | null;
 };
 
-// One merged pin = one physical listing, potentially spanning multiple sources.
-// `our` is set when we own the underlying property; `externals` lists every
-// portal / feed row that resolved to this same listing. Every merged pin has
-// a stable key (prop-<id> / grp-<uuid> / ext-<id>) so the map can maintain
-// its markers across re-renders.
+// One merged pin = one physical listing, potentially on several sources.
 export type MergedPin = {
   key: string;
   lng: number;
@@ -95,7 +120,7 @@ export type MergedPin = {
     address: string;
     price: number | null;
     suburb: string | null;
-    mandateType: string; // exclusive|sole|joint|open|none|market
+    mandateType: string; // exclusive|joint|open|none|market
   };
 };
 
@@ -113,173 +138,578 @@ export type BudgetSummary = {
 
 const KNYSNA_CENTRE: [number, number] = [23.0479, -34.0363];
 
-// Default framing on map open: Buffalo Bay (SW) → Noetzie (NE). Chosen by
-// Simon to always show the full Knysna coastal strip — lagoon, Leisure Isle,
-// The Heads, Pezula — no matter which OS listings exist. mapbox.fitBounds
-// auto-adapts to viewport size so mobile/desktop both frame it sensibly.
+// Default framing: Buffalo Bay (SW) → Noetzie (NE), the whole coastal strip.
 const INITIAL_BOUNDS: [[number, number], [number, number]] = [
-  [22.98, -34.10], // SW: past Buffalo Bay
-  [23.16, -33.99], // NE: past Noetzie / Pezula
+  [22.98, -34.1],
+  [23.16, -33.99],
 ];
-
-const MANDATE_ORDER = ["exclusive", "joint", "under_offer", "open", "none"] as const;
-
-const SOURCE_ORDER: SourceKey[] = [
-  "dream_os",
-  "dream_website",
-  "property24",
-  "private_property",
-];
-
-// Label + short code for each source. `code` shows on the pin's source stack
-// (compact letters/dots); `label` shows in the rail chips and preview panel.
-const SOURCE_META: Record<SourceKey, { label: string; code: string }> = {
-  dream_os:         { label: "Our listings",       code: "OS" },
-  dream_website:    { label: "Dream website",      code: "DW" },
-  property24:       { label: "Property24",         code: "P24" },
-  private_property: { label: "Private Property",   code: "PP" },
-};
 
 const BASEMAPS = [
-  {
-    id: "satellite",
-    label: "Satellite",
-    style: "mapbox://styles/mapbox/satellite-streets-v12",
-  },
-  { id: "streets", label: "Streets", style: "mapbox://styles/mapbox/streets-v12" },
-  { id: "light",   label: "Light",   style: "mapbox://styles/mapbox/light-v11" },
+  { id: "map", label: "Map", style: "mapbox://styles/mapbox/light-v11" },
+  { id: "satellite", label: "Satellite", style: "mapbox://styles/mapbox/satellite-streets-v12" },
 ] as const;
-
 type BasemapId = (typeof BASEMAPS)[number]["id"];
 
-// Plan 005: colour map for for-sale cadastral polygon fills.
-// Keys match ForSalePolygon.state values.
-const STATE_COLORS: Record<string, string> = {
-  os_exclusive:   "#C8A032", // gold
-  os_joint:       "#132B84", // navy
-  os_sold:        "#1C5B3A", // forest
-  os_under_offer: "#D17E22", // amber
-  os_other:       "#6B78A0", // slate
-  market:         "#8090B5", // grey
+// Blueprint palette for the dots (globals.css tokens, as literal values
+// because Mapbox paint properties can't read CSS variables).
+const C = {
+  navy: "#122E87",
+  estuary: "#0B1D5A",
+  slate: "#7A849E",
+  caution: "#9A6A1A",
+  positive: "#3D7A4E",
+  white: "#FFFFFF",
+  ink: "#1B2236",
 };
 
-// Build a Mapbox 'match' expression that assigns a fill colour per prcl_key.
-function buildMatchExpr(rows: ForSalePolygon[]): mapboxgl.Expression {
-  const pairs: (string | number)[] = [];
-  for (const r of rows) {
-    pairs.push(r.prclKey, STATE_COLORS[r.state] ?? STATE_COLORS.os_other);
-  }
-  return ["match", ["get", "prcl_key"], ...pairs, "#8090B5"] as mapboxgl.Expression;
+const LS_BASEMAP = "dreamos.map.basemap";
+const LS_PRICES = "dreamos.map.prices";
+
+function esc(s: unknown): string {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 }
 
-function formatPrice(n: number | null): string {
-  if (n == null) return "POR";
-  if (n >= 1_000_000) return `R ${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `R ${(n / 1_000).toFixed(0)}k`;
-  return `R ${n}`;
+function readLS(key: string): string | null {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
 }
-function formatFullPrice(n: number | null): string {
-  if (n == null) return "Price on request";
-  return `R ${n.toLocaleString("en-ZA")}`;
+function writeLS(key: string, v: string) {
+  try {
+    window.localStorage.setItem(key, v);
+  } catch {
+    /* private window: the choice just isn't remembered */
+  }
+}
+
+/** A rounded-rectangle image for price labels (stretched to fit the text). */
+function pillImage(fill: string, stroke: string): { width: number; height: number; data: Uint8ClampedArray } {
+  const r = 2; // pixel ratio
+  const w = 24 * r;
+  const h = 20 * r;
+  const c = document.createElement("canvas");
+  c.width = w;
+  c.height = h;
+  const g = c.getContext("2d")!;
+  const rad = 10 * r - 1;
+  g.beginPath();
+  g.moveTo(rad + 1, 1);
+  g.arcTo(w - 1, 1, w - 1, h - 1, rad);
+  g.arcTo(w - 1, h - 1, 1, h - 1, rad);
+  g.arcTo(1, h - 1, 1, 1, rad);
+  g.arcTo(1, 1, w - 1, 1, rad);
+  g.closePath();
+  g.fillStyle = fill;
+  g.fill();
+  g.lineWidth = 1.5 * r;
+  g.strokeStyle = stroke;
+  g.stroke();
+  const img = g.getImageData(0, 0, w, h);
+  return { width: w, height: h, data: img.data };
 }
 
 export default function MapView({
   properties,
   mergedPins,
-  forSalePolygons,
-  ungeocoded,
   isAdmin,
   mapboxToken,
   stats,
   externalCounts,
   sourceHealth,
-  budget,
+  styleOverride,
 }: {
+  /** Dev harness only: a style to use instead of the Mapbox basemaps. */
+  styleOverride?: mapboxgl.StyleSpecification;
   properties: MapProperty[];
   mergedPins: MergedPin[];
-  forSalePolygons: ForSalePolygon[];
-  ungeocoded: UngeocodedExternal[];
+  forSalePolygons?: ForSalePolygon[];
+  ungeocoded?: UngeocodedExternal[];
   isAdmin: boolean;
   mapboxToken: string;
   stats: Stats;
-  // Raw DB counts per external source. Passed straight through to the
-  // "Sources" chip so the number matches what SQL says, not what merging
-  // + dedup collapses down to. Optional so an older caller doesn't 500;
-  // when absent the chips fall back to merged-pin counts.
-  externalCounts?: {
-    dream_website: number;
-    property24: number;
-    private_property: number;
-  };
-  /** Feed light per source, from /admin/health's registry. Read-only here. */
+  externalCounts?: { dream_website: number; property24: number; private_property: number };
   sourceHealth?: Partial<Record<SourceKey, Light>>;
   budget?: BudgetSummary | null;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const stageRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
-  const markersRef = useRef<Record<string, mapboxgl.Marker>>({});
+  const [mapReady, setMapReady] = useState(0); // bumps on every style load
+  const [mapError, setMapError] = useState<string | null>(null);
 
-  // Refs let the dragend handler (registered ONCE per marker at creation)
-  // read the current drag mode + trigger the save without stale closures.
-  const dragKeyRef = useRef<string | null>(null);
-  const pinPropertyIdRef = useRef<Record<string, string>>({}); // mergedKey → property.id
-  const didInitialFitRef = useRef(false);
-  const didUrlTargetRef = useRef(false); // one-shot: honour ?property=/lng/lat exactly once per mount
-  const handlePinDropRef = useRef<(propertyId: string, lng: number, lat: number) => void>(
-    () => {},
-  );
-
-  // The for-sale-fill / ungeocoded-dots click handlers are bound to the layer
-  // ONCE and read their data through these refs. Binding them inside the
-  // install routine (as we did before) meant every re-install stacked another
-  // listener — harmless while the deps only changed on a data refetch, but a
-  // real leak now that toggling a source chip re-installs the layers.
-  const polyLookupRef = useRef<Map<string, ForSalePolygon>>(new Map());
-  const mergedPinsRef = useRef<MergedPin[]>(mergedPins);
-  const forSaleHandlersBoundRef = useRef(false);
-  useEffect(() => {
-    mergedPinsRef.current = mergedPins;
-  }, [mergedPins]);
-
-  const [selectedKey, setSelectedKey] = useState<string | null>(null);
-  const [enabledMandates, setEnabledMandates] = useState<Set<string>>(
-    () => new Set(MANDATE_ORDER),
-  );
-  // Sources filter — all four available. dream_website is off by default:
-  // the WordPress scraper produces unreliable titles/coords (image-filename
-  // address extraction, centroid-collapsed pins) and we've settled on P24 as
-  // source of truth for market data. The chip stays togglable so a director
-  // can spot-check DW when a portal listing looks suspicious.
-  const [enabledSources, setEnabledSources] = useState<Set<SourceKey>>(
-    () => new Set<SourceKey>(["dream_os", "property24", "private_property"]),
-  );
-  const [splitDupes, setSplitDupes] = useState(false);
-  // Erf boundaries overlay — off by default. Vector tiles are served from
-  // /api/tiles/parcels/{z}/{x}/{y}; source-layer name matches parcel_mvt's
-  // ST_AsMVT layer arg ('parcels').
+  const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
+  const [sort, setSort] = useState<SortKey>("ours");
+  const [basemap, setBasemap] = useState<BasemapId>("map");
+  const [showPrices, setShowPrices] = useState(false);
   const [showErf, setShowErf] = useState(false);
-  const [basemap, setBasemap] = useState<BasemapId>("satellite");
-  // Mobile-only: rail as a bottom sheet. Desktop CSS makes this state a no-op
-  // (the rail is always visible at ≥901px), but it's cheap to keep both
-  // branches driven from one flag.
-  const [mobileRailOpen, setMobileRailOpen] = useState(false);
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [hoverKey, setHoverKey] = useState<string | null>(null); // from the map or the list
+  const [hoverFromMap, setHoverFromMap] = useState(false);
+  const [hoverXY, setHoverXY] = useState<{ x: number; y: number } | null>(null);
+  const [bounds, setBounds] = useState<mapboxgl.LngLatBounds | null>(null);
+  const [listOpen, setListOpen] = useState(false); // phones: the list is a sheet
 
-  // Admin-only manual pin move. dragKey is the mergedKey of the pin currently
-  // in drag mode. Ref mirror lets marker-level dragend read it without a
-  // stale closure. pinMsg/pinErr surface success/failure in the preview panel.
+  // Admin "move pin".
   const [dragKey, setDragKey] = useState<string | null>(null);
   const [pinPending, setPinPending] = useState(false);
   const [pinMsg, setPinMsg] = useState<string | null>(null);
   const [pinErr, setPinErr] = useState<string | null>(null);
-  useEffect(() => { dragKeyRef.current = dragKey; }, [dragKey]);
-  const [mapError, setMapError] = useState<string | null>(null);
+  const dragMarkerRef = useRef<mapboxgl.Marker | null>(null);
+  const appliedBasemap = useRef<BasemapId>("map");
 
   const cleanToken = (mapboxToken ?? "").trim();
 
-  // Selecting a different pin cancels any in-flight drag mode so the state
-  // machine can't get stuck showing "Drop pin to save" on a stale target.
+  // Remembered per viewer: basemap and the prices switch.
+  useEffect(() => {
+    const b = readLS(LS_BASEMAP);
+    if (b === "map" || b === "satellite") setBasemap(b);
+    if (readLS(LS_PRICES) === "1") setShowPrices(true);
+  }, []);
+
+  // ---------------------------------------------------------------------------
+  // Data
+  // ---------------------------------------------------------------------------
+
+  const listings = useMemo(() => mergedPins.map(toListing), [mergedPins]);
+  const byKey = useMemo(() => new Map(listings.map((l) => [l.key, l])), [listings]);
+  const filtered = useMemo(() => listings.filter((l) => matches(l, filters)), [listings, filters]);
+  const featuresKnown = useMemo(() => listings.some((l) => l.features.length > 0), [listings]);
+
+  const counts = useMemo(() => {
+    const bySource: Partial<Record<SourceKey, number>> = {
+      property24: externalCounts?.property24,
+      private_property: externalCounts?.private_property,
+      dream_website: externalCounts?.dream_website,
+    };
+    return { ours: listings.filter((l) => l.kind === "ours").length, bySource };
+  }, [listings, externalCounts]);
+
+  const inView = useMemo(() => {
+    const vis = bounds ? filtered.filter((l) => bounds.contains([l.lng, l.lat])) : filtered;
+    const byPrice = (a: MapListing, b: MapListing, dir: 1 | -1) => {
+      if (a.price == null && b.price == null) return 0;
+      if (a.price == null) return 1;
+      if (b.price == null) return -1;
+      return (a.price - b.price) * dir;
+    };
+    return [...vis].sort((a, b) => {
+      if (sort === "ours" && a.kind !== b.kind) return a.kind === "ours" ? -1 : 1;
+      return byPrice(a, b, sort === "price_asc" ? 1 : -1);
+    });
+  }, [filtered, bounds, sort]);
+
+  const selected = selectedKey ? byKey.get(selectedKey) ?? null : null;
+  const hovered = hoverKey ? byKey.get(hoverKey) ?? null : null;
+
+  // ---------------------------------------------------------------------------
+  // Map setup
+  // ---------------------------------------------------------------------------
+
+  useEffect(() => {
+    if (!containerRef.current || !cleanToken) return;
+    if (!mapboxgl.supported()) {
+      setMapError("This browser doesn't support WebGL (Mapbox requires it).");
+      return;
+    }
+    mapboxgl.accessToken = cleanToken;
+    const startId: BasemapId = readLS(LS_BASEMAP) === "satellite" ? "satellite" : "map";
+    appliedBasemap.current = startId;
+    const startStyle = styleOverride ?? BASEMAPS.find((b) => b.id === startId)!.style;
+    let map: mapboxgl.Map;
+    try {
+      map = new mapboxgl.Map({
+        container: containerRef.current,
+        style: startStyle,
+        center: KNYSNA_CENTRE,
+        zoom: 11,
+        bounds: INITIAL_BOUNDS,
+        fitBoundsOptions: { padding: 32 },
+        attributionControl: false,
+      });
+    } catch (e) {
+      setMapError(`Mapbox init failed: ${(e as Error).message}`);
+      return;
+    }
+    map.on("error", (evt) => {
+      const msg = (evt.error as Error | undefined)?.message ?? "unknown mapbox error";
+      // eslint-disable-next-line no-console
+      console.error("[mapbox]", msg, evt);
+      setMapError(msg);
+    });
+    map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "bottom-right");
+    map.addControl(new mapboxgl.AttributionControl({ compact: true, customAttribution: "Dream Knysna" }), "bottom-right");
+
+    const ro = new ResizeObserver(() => map.resize());
+    ro.observe(containerRef.current);
+    const onMoveEnd = () => setBounds(map.getBounds());
+    map.on("moveend", onMoveEnd);
+    map.on("load", onMoveEnd);
+    map.on("style.load", () => setMapReady((n) => n + 1));
+
+    mapRef.current = map;
+    return () => {
+      ro.disconnect();
+      map.remove();
+      mapRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- styleOverride is a dev-harness constant
+  }, [cleanToken]);
+
+  // Basemap switch: setStyle drops our layers; style.load re-installs them.
+  // appliedBasemap is what the map is actually showing (it starts on the
+  // remembered choice), so only a real change calls setStyle.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || basemap === appliedBasemap.current) return;
+    appliedBasemap.current = basemap;
+    const target = BASEMAPS.find((b) => b.id === basemap)?.style;
+    if (target && !styleOverride) map.setStyle(target);
+    writeLS(LS_BASEMAP, basemap);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- styleOverride is a dev-harness constant
+  }, [basemap]);
+
+  // Install sources + layers after every style load.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+
+    if (!map.hasImage("pill-ours")) {
+      // 48×40 px at pixel ratio 2: stretch the flat middle, keep the round ends.
+      const pr = { pixelRatio: 2, stretchX: [[19, 29]] as [number, number][], stretchY: [[18, 22]] as [number, number][], content: [12, 6, 36, 34] as [number, number, number, number] };
+      map.addImage("pill-ours", pillImage(C.navy, C.white), pr);
+      map.addImage("pill-market", pillImage(C.white, "#C5CDE3"), pr);
+    }
+
+    // Erven: vector tiles from our own endpoint, z ≥ 14.
+    if (!map.getSource("parcels")) {
+      map.addSource("parcels", { type: "vector", tiles: [`${window.location.origin}/api/tiles/parcels/{z}/{x}/{y}`], minzoom: 14, maxzoom: 22 });
+      map.addLayer({ id: "parcels-fill", type: "fill", source: "parcels", "source-layer": "parcels", minzoom: 14, paint: { "fill-color": C.navy, "fill-opacity": 0.06 }, layout: { visibility: "none" } });
+      map.addLayer({ id: "parcels-line", type: "line", source: "parcels", "source-layer": "parcels", minzoom: 14, paint: { "line-color": C.navy, "line-width": ["interpolate", ["linear"], ["zoom"], 14, 0.6, 18, 1.6], "line-opacity": 0.55 }, layout: { visibility: "none" } });
+      map.addLayer({
+        id: "parcels-labels",
+        type: "symbol",
+        source: "parcels",
+        "source-layer": "parcels",
+        minzoom: 17,
+        layout: { "text-field": ["get", "tag_value"], "text-size": 11, "text-font": ["DIN Pro Medium", "Arial Unicode MS Regular"], visibility: "none" },
+        paint: { "text-color": C.navy, "text-halo-color": C.white, "text-halo-width": 1.4 },
+      });
+      // The hovered / selected listing's erf.
+      map.addLayer({ id: "erf-focus-fill", type: "fill", source: "parcels", "source-layer": "parcels", minzoom: 14, filter: ["in", ["get", "prcl_key"], ["literal", []]], paint: { "fill-color": C.navy, "fill-opacity": 0.16 } });
+      map.addLayer({ id: "erf-focus-line", type: "line", source: "parcels", "source-layer": "parcels", minzoom: 14, filter: ["in", ["get", "prcl_key"], ["literal", []]], paint: { "line-color": C.navy, "line-width": 2.2 } });
+    }
+
+    if (!map.getSource("listings")) {
+      map.addSource("listings", { type: "geojson", data: { type: "FeatureCollection", features: [] }, promoteId: "key" });
+
+      const z = (a: number, b: number, c: number) => ["interpolate", ["linear"], ["zoom"], 10, a, 13, b, 17, c] as mapboxgl.Expression;
+      // Zoom must stay the top-level interpolate, so the hover / selected
+      // growth multiplies each stop.
+      const focused = ["case", ["any", ["boolean", ["feature-state", "hover"], false], ["boolean", ["feature-state", "selected"], false]], 1.45, 1];
+      const grow = (a: number, b: number, c: number) =>
+        ["interpolate", ["linear"], ["zoom"], 10, ["*", a, focused], 13, ["*", b, focused], 17, ["*", c, focused]] as mapboxgl.Expression;
+
+      // Other agencies: small slate dots.
+      map.addLayer({
+        id: "dots-market",
+        type: "circle",
+        source: "listings",
+        filter: ["==", ["get", "kind"], "market"],
+        paint: {
+          "circle-radius": grow(2.6, 3.6, 5.5),
+          "circle-color": ["case", ["boolean", ["feature-state", "hover"], false], C.estuary, C.slate],
+          "circle-stroke-color": C.white,
+          "circle-stroke-width": z(0.8, 1.2, 1.6),
+          "circle-opacity": 0.92,
+        },
+      });
+      // Ours: larger, Dream blue; joint = hollow ring; deal states recoloured.
+      const fill: mapboxgl.Expression = ["match", ["get", "state"], "joint", C.white, "under_offer", C.caution, "sold", C.positive, C.navy];
+      map.addLayer({
+        id: "dots-ours",
+        type: "circle",
+        source: "listings",
+        filter: ["==", ["get", "kind"], "ours"],
+        paint: {
+          "circle-radius": grow(4.5, 6, 8.5),
+          "circle-color": fill,
+          "circle-stroke-color": ["match", ["get", "state"], "joint", C.navy, C.white],
+          "circle-stroke-width": ["match", ["get", "state"], "joint", 2.6, 2],
+        },
+      });
+      // A ring around whatever is hovered or selected.
+      map.addLayer({
+        id: "dots-ring",
+        type: "circle",
+        source: "listings",
+        paint: {
+          "circle-radius": ["interpolate", ["linear"], ["zoom"], 10, ["case", ["==", ["get", "kind"], "ours"], 10, 7], 13, ["case", ["==", ["get", "kind"], "ours"], 12, 8.5], 17, ["case", ["==", ["get", "kind"], "ours"], 15, 11]],
+          "circle-color": "rgba(0,0,0,0)",
+          "circle-stroke-color": C.navy,
+          "circle-stroke-width": 2,
+          "circle-stroke-opacity": ["case", ["boolean", ["feature-state", "selected"], false], 1, ["boolean", ["feature-state", "hover"], false], 0.55, 0],
+        },
+      });
+      // Prices — a switch. Collisions drop labels; ours are placed first.
+      map.addLayer({
+        id: "prices",
+        type: "symbol",
+        source: "listings",
+        // No pill for "price on application": it says nothing a dot doesn't.
+        filter: ["all", ["!=", ["get", "label"], "POA"], ["any", ["==", ["get", "kind"], "ours"], [">=", ["zoom"], 13]]],
+        layout: {
+          visibility: "none",
+          "text-field": ["get", "label"],
+          "text-font": ["DIN Pro Medium", "Arial Unicode MS Regular"],
+          "text-size": ["case", ["==", ["get", "kind"], "ours"], 12, 11],
+          "text-anchor": "bottom",
+          "text-offset": [0, -1.1],
+          "icon-image": ["case", ["==", ["get", "kind"], "ours"], "pill-ours", "pill-market"],
+          "icon-text-fit": "both",
+          "icon-text-fit-padding": [2, 7, 2, 7],
+          "symbol-sort-key": ["get", "sort"],
+          "text-allow-overlap": false,
+          "icon-allow-overlap": false,
+        },
+        paint: { "text-color": ["case", ["==", ["get", "kind"], "ours"], C.white, C.ink] },
+      });
+      // An invisible, generous hit area: small dots are hard to hover.
+      map.addLayer({ id: "dots-hit", type: "circle", source: "listings", paint: { "circle-radius": 11, "circle-opacity": 0 } });
+    }
+    pushData();
+    applyToggles();
+    applyFocus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapReady]);
+
+  // Data → the listings source.
+  const pushData = useCallback(() => {
+    const map = mapRef.current;
+    const src = map?.getSource("listings") as mapboxgl.GeoJSONSource | undefined;
+    if (!src) return;
+    src.setData({
+      type: "FeatureCollection",
+      features: filtered.map((l) => ({
+        type: "Feature" as const,
+        geometry: { type: "Point" as const, coordinates: [l.lng, l.lat] },
+        properties: {
+          key: l.key,
+          kind: l.kind,
+          state: l.state ?? "market",
+          label: shortPrice(l.price),
+          sort: l.kind === "ours" ? 0 : l.price == null ? 2 : 1,
+        },
+      })),
+    });
+    // feature-state survives setData for keys that remain.
+  }, [filtered]);
+  useEffect(() => pushData(), [pushData]);
+
+  const applyToggles = useCallback(() => {
+    const map = mapRef.current;
+    if (!map || !map.getLayer("prices")) return;
+    map.setLayoutProperty("prices", "visibility", showPrices ? "visible" : "none");
+    for (const id of ["parcels-fill", "parcels-line", "parcels-labels"]) map.setLayoutProperty(id, "visibility", showErf ? "visible" : "none");
+  }, [showPrices, showErf]);
+  useEffect(() => {
+    applyToggles();
+    writeLS(LS_PRICES, showPrices ? "1" : "0");
+  }, [applyToggles, showPrices]);
+
+  // Hover / selected → feature-state on the dots, and the erf outline.
+  const prevHover = useRef<string | null>(null);
+  const prevSel = useRef<string | null>(null);
+  const applyFocus = useCallback(() => {
+    const map = mapRef.current;
+    if (!map || !map.getSource("listings")) return;
+    const set = (key: string | null, state: Record<string, boolean>) => {
+      if (key) map.setFeatureState({ source: "listings", id: key }, state);
+    };
+    if (prevHover.current !== hoverKey) set(prevHover.current, { hover: false });
+    if (prevSel.current !== selectedKey) set(prevSel.current, { selected: false });
+    set(hoverKey, { hover: true });
+    set(selectedKey, { selected: true });
+    prevHover.current = hoverKey;
+    prevSel.current = selectedKey;
+    const erfs = [hovered?.prclKey, selected?.prclKey].filter(Boolean) as string[];
+    for (const id of ["erf-focus-fill", "erf-focus-line"]) {
+      if (map.getLayer(id)) map.setFilter(id, ["in", ["get", "prcl_key"], ["literal", erfs]]);
+    }
+  }, [hoverKey, selectedKey, hovered, selected]);
+  useEffect(() => applyFocus(), [applyFocus, filtered]);
+
+  // Pointer events on the dots (bound once per map).
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const onMove = (e: mapboxgl.MapMouseEvent & { features?: mapboxgl.MapboxGeoJSONFeature[] }) => {
+      // Ours win where dots overlap.
+      const feats = map.queryRenderedFeatures(e.point, { layers: ["dots-hit"] });
+      if (!feats.length) return;
+      const pick = feats.find((f) => f.properties?.kind === "ours") ?? feats[0];
+      const key = pick.properties?.key as string;
+      map.getCanvas().style.cursor = "pointer";
+      setHoverKey(key);
+      setHoverFromMap(true);
+    };
+    const onLeave = () => {
+      map.getCanvas().style.cursor = "";
+      setHoverKey(null);
+      setHoverFromMap(false);
+    };
+    const onClick = (e: mapboxgl.MapMouseEvent) => {
+      const feats = map.queryRenderedFeatures(e.point, { layers: ["dots-hit"] });
+      if (!feats.length) return;
+      const pick = feats.find((f) => f.properties?.kind === "ours") ?? feats[0];
+      setSelectedKey(pick.properties?.key as string);
+      setListOpen(false);
+    };
+    map.on("mousemove", "dots-hit", onMove);
+    map.on("mouseleave", "dots-hit", onLeave);
+    map.on("click", "dots-hit", onClick);
+    return () => {
+      map.off("mousemove", "dots-hit", onMove);
+      map.off("mouseleave", "dots-hit", onLeave);
+      map.off("click", "dots-hit", onClick);
+    };
+  }, [mapReady]);
+
+  // Erven switch on: click an erf (not a listing) for its municipal record.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    let popup: mapboxgl.Popup | null = null;
+    const onClick = async (e: mapboxgl.MapMouseEvent & { features?: mapboxgl.MapboxGeoJSONFeature[] }) => {
+      if (map.queryRenderedFeatures(e.point, { layers: ["dots-hit"] }).length) return;
+      const props = (e.features?.[0]?.properties ?? {}) as { prcl_key?: string; tag_value?: string; maj_region?: string };
+      if (!props.prcl_key && !props.tag_value) return;
+      popup?.remove();
+      popup = new mapboxgl.Popup({ closeButton: true, maxWidth: "300px", className: "mx-erf-pop" })
+        .setLngLat(e.lngLat)
+        .setHTML(`<p class="mx-erf-loading">Loading municipal record…</p>`)
+        .addTo(map);
+      try {
+        const qs = new URLSearchParams();
+        if (props.tag_value) qs.set("erf", props.tag_value);
+        if (props.maj_region) qs.set("town", props.maj_region);
+        const seg = encodeURIComponent(props.prcl_key ?? props.tag_value ?? "unknown");
+        const res = await fetch(qs.toString() ? `/api/muni/at-erf/${seg}?${qs}` : `/api/muni/at-erf/${seg}`);
+        const j = await res.json();
+        if (!res.ok || j.error) {
+          popup.setHTML(`<p class="mx-erf-loading">${esc(j.error ?? "No municipal record for this erf.")}</p>`);
+          return;
+        }
+        const r = (n: number | null | undefined) => (n == null ? "—" : `R ${groupDigits(n)}`);
+        popup.setHTML(`
+<div class="mx-erf">
+  <p class="mx-erf-eyebrow">Erf ${esc(j.erfNumber ?? "?")} · ${esc(j.town ?? j.suburb ?? "")}</p>
+  <p class="mx-erf-addr">${esc(j.address ?? "No address on file")}</p>
+  <p class="mx-erf-val">${r(j.muniValuationTotal)}<span> municipal valuation</span></p>
+  <p class="mx-erf-meta">${[j.extentSqm ? `${j.extentSqm} m²` : null, j.zoning, j.use].filter(Boolean).map(esc).join(" · ")}</p>
+  ${j.purchDate ? `<p class="mx-erf-meta">Last sale ${esc(j.purchDate)}${j.purchPrice ? ` · ${r(j.purchPrice)}` : ""}</p>` : ""}
+  <a class="mx-erf-link" href="/erf-lookup?q=${encodeURIComponent(j.erfNumber ?? "")}${j.town ? `&suburb=${encodeURIComponent(j.town)}` : ""}">Full erf record →</a>
+</div>`);
+      } catch (err) {
+        popup?.setHTML(`<p class="mx-erf-loading">${esc((err as Error).message)}</p>`);
+      }
+    };
+    const onEnter = () => (map.getCanvas().style.cursor = "pointer");
+    const onLeave = () => (map.getCanvas().style.cursor = "");
+    map.on("click", "parcels-fill", onClick);
+    map.on("mouseenter", "parcels-fill", onEnter);
+    map.on("mouseleave", "parcels-fill", onLeave);
+    return () => {
+      map.off("click", "parcels-fill", onClick);
+      map.off("mouseenter", "parcels-fill", onEnter);
+      map.off("mouseleave", "parcels-fill", onLeave);
+      popup?.remove();
+    };
+  }, [mapReady]);
+
+  // Keep the hover card glued to its dot while the map moves.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !hovered || !hoverFromMap) {
+      setHoverXY(null);
+      return;
+    }
+    const place = () => {
+      const p = map.project([hovered.lng, hovered.lat]);
+      setHoverXY({ x: p.x, y: p.y });
+    };
+    place();
+    map.on("move", place);
+    return () => {
+      map.off("move", place);
+    };
+  }, [hovered, hoverFromMap]);
+
+  // Picking an area fits the map to its listings.
+  const lastAreas = useRef<string>("");
+  useEffect(() => {
+    const sig = filters.areas.join("|") + "#" + filters.query;
+    if (sig === lastAreas.current) return;
+    lastAreas.current = sig;
+    const map = mapRef.current;
+    if (!map || (!filters.areas.length && !filters.query.trim())) return;
+    if (!filtered.length) return;
+    // Fit to where the area's listings actually are: a stray mis-geocoded
+    // pin kilometres away shouldn't drag the view out to sea.
+    const med = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
+    const cx = med(filtered.map((l) => l.lng));
+    const cy = med(filtered.map((l) => l.lat));
+    const d = (l: MapListing) => Math.hypot(l.lng - cx, l.lat - cy);
+    const md = med(filtered.map(d));
+    const core = filtered.length > 4 ? filtered.filter((l) => d(l) <= Math.max(md * 3, 0.004)) : filtered;
+    const b = new mapboxgl.LngLatBounds();
+    for (const l of core) b.extend([l.lng, l.lat]);
+    map.fitBounds(b, { padding: 80, maxZoom: 16, duration: 600 });
+  }, [filters.areas, filters.query, filtered]);
+
+  // Selecting from the list flies there if the dot is off screen.
+  const selectFromList = (key: string) => {
+    setSelectedKey(key);
+    setListOpen(false);
+    const map = mapRef.current;
+    const l = byKey.get(key);
+    const vb = map?.getBounds();
+    if (map && l && vb && !vb.contains([l.lng, l.lat])) {
+      map.easeTo({ center: [l.lng, l.lat], zoom: Math.max(map.getZoom(), 14), duration: 500 });
+    }
+  };
+
+  // ?property=<id>[&lng&lat]: fly there and open its panel, once.
+  const didUrlTarget = useRef(false);
+  useEffect(() => {
+    if (didUrlTarget.current || !mapReady) return;
+    const map = mapRef.current;
+    const propId = searchParams?.get("property");
+    const lngStr = searchParams?.get("lng");
+    const latStr = searchParams?.get("lat");
+    if (!map || (!propId && !lngStr)) return;
+    didUrlTarget.current = true;
+    let lng = lngStr ? Number(lngStr) : null;
+    let lat = latStr ? Number(latStr) : null;
+    if ((lng == null || !Number.isFinite(lng)) && propId) {
+      const p = properties.find((pp) => pp.id === propId);
+      if (p) {
+        lng = p.lng;
+        lat = p.lat;
+      }
+    }
+    if (lng != null && lat != null && Number.isFinite(lng) && Number.isFinite(lat)) map.flyTo({ center: [lng, lat], zoom: 17, essential: true });
+    const hit = propId ? mergedPins.find((p) => p.matchedPropertyId === propId || p.our?.id === propId) : null;
+    if (hit) setSelectedKey(hit.key);
+  }, [mapReady, searchParams, mergedPins, properties]);
+
+  // ---------------------------------------------------------------------------
+  // Admin: move a pin. A temporary draggable marker over the dot; saves on drop.
+  // ---------------------------------------------------------------------------
+
   useEffect(() => {
     if (dragKey && dragKey !== selectedKey) {
       setDragKey(null);
@@ -288,19 +718,27 @@ export default function MapView({
     }
   }, [selectedKey, dragKey]);
 
-  // On drop, immediately save + exit drag mode. The marker retains its new
-  // position because Mapbox has already moved it; router.refresh() then
-  // pulls the persisted coords + geo_manual flag on the next render.
   useEffect(() => {
-    handlePinDropRef.current = (propertyId, lng, lat) => {
+    const map = mapRef.current;
+    dragMarkerRef.current?.remove();
+    dragMarkerRef.current = null;
+    if (!map || !dragKey) return;
+    const l = byKey.get(dragKey);
+    const propertyId = l?.pin.matchedPropertyId ?? l?.pin.our?.id;
+    if (!l || !propertyId) return;
+    const el = document.createElement("div");
+    el.className = "mx-drag-pin";
+    el.setAttribute("aria-label", "Drag to the correct spot");
+    const marker = new mapboxgl.Marker({ element: el, draggable: true }).setLngLat([l.lng, l.lat]).addTo(map);
+    marker.on("dragend", () => {
+      const ll = marker.getLngLat();
       setPinErr(null);
       setPinMsg(null);
       setPinPending(true);
-      savePropertyPin(propertyId, lng, lat)
+      savePropertyPin(propertyId, ll.lng, ll.lat)
         .then((res) => {
-          if (!res.ok) {
-            setPinErr(res.error ?? "save failed");
-          } else {
+          if (!res.ok) setPinErr(res.error ?? "save failed");
+          else {
             setPinMsg("Pin saved. Automated geocoders will skip this property.");
             setDragKey(null);
             router.refresh();
@@ -309,1601 +747,125 @@ export default function MapView({
         })
         .catch((e) => setPinErr((e as Error).message))
         .finally(() => setPinPending(false));
-    };
-  }, [router]);
-
-  // Counts for the rail chips.
-  const mandateCounts = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const p of properties) {
-      m.set(p.mandateType, (m.get(p.mandateType) ?? 0) + 1);
-    }
-    return m;
-  }, [properties]);
-
-  const sourceCounts = useMemo(() => {
-    const m = new Map<SourceKey, number>();
-    for (const s of SOURCE_ORDER) m.set(s, 0);
-    for (const pin of mergedPins) {
-      for (const s of pin.sources) m.set(s, (m.get(s) ?? 0) + 1);
-    }
-    return m;
-  }, [mergedPins]);
-
-  // A merged pin is visible if:
-  //   - AT LEAST ONE of its sources is enabled, AND
-  //   - if it has an `our` record, its mandate is enabled (so mandate chips
-  //     still work as a filter on our own stock);
-  //   - if it has no `our` record (market-only), the mandate filter doesn't
-  //     apply (there's nothing to filter on).
-  const visiblePins = useMemo(() => {
-    return mergedPins.filter((pin) => {
-      const anySource = pin.sources.some((s) => enabledSources.has(s));
-      if (!anySource) return false;
-      if (pin.our && !enabledMandates.has(pin.our.mandateType)) return false;
-      return true;
     });
-  }, [mergedPins, enabledMandates, enabledSources]);
-
-  // Mandate lookup so OS polygons can honour the Mandate chips the same way
-  // OS pins do.
-  const mandateByPropertyId = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const p of properties) m.set(p.id, p.mandateType);
-    return m;
-  }, [properties]);
-
-  // The polygon + dot layers are driven by these filtered arrays, NOT the raw
-  // props. Same visibility contract as visiblePins: source chip must be on,
-  // and for our own stock the mandate chip must be on too. Filtering the data
-  // (rather than adding a Mapbox filter expression) also disarms the click
-  // handlers for free — a hidden polygon isn't in the lookup, so clicking
-  // where it used to be can't open the market-listing panel.
-  const visibleForSalePolygons = useMemo(
-    () =>
-      forSalePolygons.filter((poly) => {
-        if (!enabledSources.has(poly.source)) return false;
-        if (poly.source === "dream_os" && poly.propertyId) {
-          const mandate = mandateByPropertyId.get(poly.propertyId);
-          if (mandate && !enabledMandates.has(mandate)) return false;
-        }
-        return true;
-      }),
-    [forSalePolygons, enabledSources, enabledMandates, mandateByPropertyId],
-  );
-
-  const visibleUngeocoded = useMemo(
-    () => ungeocoded.filter((u) => enabledSources.has(u.source)),
-    [ungeocoded, enabledSources],
-  );
-
-  const visibleProperties = useMemo(
-    () => properties.filter((p) => enabledMandates.has(p.mandateType)),
-    [properties, enabledMandates],
-  );
-
-  const selectedPin =
-    mergedPins.find((p) => p.key === selectedKey) ?? null;
-
-  // Honour ?property=<id> [&lng=X&lat=Y] on first-render: fly to the
-  // property's coord and open its panel if it matches a rendered pin.
-  // Runs once per mount — a pin re-render (mandate filter change etc.)
-  // shouldn't yank the view back. Fires after mergedPins are settled
-  // and after the map has completed its initial fitBounds so the flyTo
-  // isn't overridden by the coastal-strip framing.
-  useEffect(() => {
-    if (didUrlTargetRef.current) return;
-    const map = mapRef.current;
-    if (!map) return;
-    const propId = searchParams?.get("property");
-    const lngStr = searchParams?.get("lng");
-    const latStr = searchParams?.get("lat");
-    if (!propId && !lngStr) return;
-
-    // Resolve target coord — from URL params if present, else look the
-    // property up in the props array. A property with no coord can't be
-    // flown-to but we still open its panel where possible.
-    let lng: number | null = lngStr ? Number(lngStr) : null;
-    let lat: number | null = latStr ? Number(latStr) : null;
-    if ((lng == null || !Number.isFinite(lng)) && propId) {
-      const p = properties.find((pp) => pp.id === propId);
-      if (p) { lng = p.lng; lat = p.lat; }
-    }
-
-    const fly = () => {
-      if (lng != null && lat != null && Number.isFinite(lng) && Number.isFinite(lat)) {
-        map.flyTo({ center: [lng, lat], zoom: 17, essential: true });
-      }
-      // Match a mergedPin either by explicit property id or by nearest coord.
-      const matched = propId ? mergedPins.find((p) => p.matchedPropertyId === propId || p.our?.id === propId) : null;
-      if (matched) setSelectedKey(matched.key);
-      didUrlTargetRef.current = true;
-    };
-
-    // Wait until the map has done its initial fitBounds before flying.
-    if (didInitialFitRef.current) {
-      fly();
-    } else {
-      const t = setTimeout(fly, 400);
-      return () => clearTimeout(t);
-    }
-  }, [searchParams, mergedPins, properties]);
-
-  // Map init.
-  useEffect(() => {
-    if (!containerRef.current) return;
-    if (!cleanToken) return;
-    if (!mapboxgl.supported()) {
-      setMapError("This browser doesn't support WebGL (Mapbox requires it).");
-      return;
-    }
-    mapboxgl.accessToken = cleanToken;
-
-    const initialStyle =
-      BASEMAPS.find((b) => b.id === basemap)?.style ?? BASEMAPS[0].style;
-    let map: mapboxgl.Map;
-    try {
-      map = new mapboxgl.Map({
-        container: containerRef.current,
-        style: initialStyle,
-        // INITIAL_BOUNDS gives the same coastal-strip framing across viewports.
-        // center + zoom are needed as a first paint before the style loads;
-        // fitBounds runs immediately on load below and takes over.
-        center: KNYSNA_CENTRE,
-        zoom: 11,
-        bounds: INITIAL_BOUNDS,
-        fitBoundsOptions: { padding: 40 },
-        attributionControl: false,
-        cooperativeGestures: false,
-      });
-    } catch (e) {
-      setMapError(`Mapbox init failed: ${(e as Error).message}`);
-      return;
-    }
-
-    map.on("error", (evt) => {
-      const msg = (evt.error as Error | undefined)?.message ?? "unknown mapbox error";
-      // eslint-disable-next-line no-console
-      console.error("[mapbox]", msg, evt);
-      setMapError(msg);
-    });
-
-    map.resize();
-    requestAnimationFrame(() => map.resize());
-    const resizeTimer = setTimeout(() => map.resize(), 200);
-    const ro = new ResizeObserver(() => map.resize());
-    if (containerRef.current) ro.observe(containerRef.current);
-
-    map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-left");
-    map.addControl(
-      new mapboxgl.AttributionControl({ compact: true, customAttribution: "Dream Knysna" }),
-      "bottom-right",
-    );
-
-    mapRef.current = map;
+    dragMarkerRef.current = marker;
+    map.easeTo({ center: [l.lng, l.lat], zoom: Math.max(map.getZoom(), 17), duration: 500 });
     return () => {
-      clearTimeout(resizeTimer);
-      ro.disconnect();
-      map.remove();
-      mapRef.current = null;
-      markersRef.current = {};
+      marker.remove();
     };
-  }, [cleanToken]);
+  }, [dragKey, byKey, router]);
 
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    const target = BASEMAPS.find((b) => b.id === basemap)?.style;
-    if (!target) return;
-    map.setStyle(target);
-  }, [basemap]);
+  // ---------------------------------------------------------------------------
 
-  // Erf boundary vector layer. Sits behind the price pins (HTML markers
-  // are always on top) but visually distinct from the basemap. Because
-  // map.setStyle() drops all custom sources/layers, we re-install on the
-  // 'styledata' event too.
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-
-    function installErfLayer(m: mapboxgl.Map) {
-      if (m.getSource("parcels")) return;
-      // Absolute tile URL — Mapbox picks it up more reliably than a
-      // path-only string, and CDN edge caching keys off the full origin.
-      const origin =
-        typeof window !== "undefined" ? window.location.origin : "";
-      m.addSource("parcels", {
-        type: "vector",
-        tiles: [`${origin}/api/tiles/parcels/{z}/{x}/{y}`],
-        minzoom: 14,
-        maxzoom: 22,
-      });
-      m.addLayer({
-        id: "parcels-fill",
-        type: "fill",
-        source: "parcels",
-        "source-layer": "parcels",
-        minzoom: 14,
-        paint: {
-          "fill-color": "#132B84",
-          "fill-opacity": 0.12,
-        },
-        layout: { visibility: showErf ? "visible" : "none" },
-      });
-      m.addLayer({
-        id: "parcels-line",
-        type: "line",
-        source: "parcels",
-        "source-layer": "parcels",
-        minzoom: 14,
-        paint: {
-          "line-color": "#132B84",
-          "line-width": ["interpolate", ["linear"], ["zoom"], 14, 1, 18, 3],
-          "line-opacity": 0.95,
-        },
-        layout: { visibility: showErf ? "visible" : "none" },
-      });
-      m.addLayer({
-        id: "parcels-labels",
-        type: "symbol",
-        source: "parcels",
-        "source-layer": "parcels",
-        minzoom: 17,
-        layout: {
-          "text-field": ["get", "tag_value"],
-          "text-size": ["interpolate", ["linear"], ["zoom"], 17, 11, 20, 14],
-          "text-font": ["Open Sans Semibold", "Arial Unicode MS Regular"],
-          "text-allow-overlap": false,
-          visibility: showErf ? "visible" : "none",
-        },
-        paint: {
-          "text-color": "#ffffff",
-          "text-halo-color": "#132B84",
-          "text-halo-width": 1.6,
-        },
-      });
-    }
-
-    // Local non-null alias so async / event closures below satisfy the
-    // TypeScript narrowing without repeat null-checks.
-    const mapRefLocal = map;
-
-    if (mapRefLocal.isStyleLoaded()) installErfLayer(mapRefLocal);
-    const onStyleData = () => installErfLayer(mapRefLocal);
-    mapRefLocal.on("styledata", onStyleData);
-
-    // Click any bare erf polygon (no OS / P24 overlay) → fetch its muni
-    // data and show a compact popup at the click point. Guarded by
-    // queryRenderedFeatures against the OS/P24 layer so clicks on a
-    // matched pin still go through the existing preview panel path.
-    let currentPopup: mapboxgl.Popup | null = null;
-    async function parcelsClick(e: mapboxgl.MapMouseEvent & { features?: mapboxgl.MapboxGeoJSONFeature[] }) {
-      const overlaid = mapRefLocal.queryRenderedFeatures(e.point, {
-        layers: [
-          ...(mapRefLocal.getLayer("for-sale-fill") ? ["for-sale-fill"] : []),
-          ...(mapRefLocal.getLayer("ungeocoded-dots") ? ["ungeocoded-dots"] : []),
-        ] as string[],
-      });
-      if (overlaid.length > 0) return;
-      const feat = e.features?.[0];
-      const props = (feat?.properties ?? {}) as {
-        prcl_key?: string;
-        tag_value?: string;
-        maj_region?: string;
-      };
-      const prclKey = props.prcl_key;
-      const tagValue = props.tag_value;
-      const majRegion = props.maj_region;
-      if (!prclKey && !tagValue) return;
-      currentPopup?.remove();
-      currentPopup = new mapboxgl.Popup({ closeButton: true, maxWidth: "320px" })
-        .setLngLat(e.lngLat)
-        .setHTML(`<div style="font-family:var(--font-mono);font-size:11px;color:#6a7692;padding:4px 8px">loading muni data…</div>`)
-        .addTo(mapRefLocal);
-      try {
-        // Primary match: erf number (tag_value) + town (maj_region) — works
-        // for both ArcGIS and Full-GV-synthetic sg_numbers. Falls back to
-        // digits-only match on the prcl_key path segment when unavailable.
-        const qs = new URLSearchParams();
-        if (tagValue) qs.set("erf", tagValue);
-        if (majRegion) qs.set("town", majRegion);
-        const seg = encodeURIComponent(prclKey ?? tagValue ?? "unknown");
-        const path = qs.toString() ? `/api/muni/at-erf/${seg}?${qs}` : `/api/muni/at-erf/${seg}`;
-        const res = await fetch(path);
-        const j = await res.json();
-        if (!res.ok || j.error) {
-          currentPopup.setHTML(`<div style="font-family:var(--font-mono);font-size:11px;color:#a24700;padding:8px">${j.error ?? "no muni data"}</div>`);
-          return;
-        }
-        const fmtR = (n: number | null | undefined) => n == null ? "—" : n >= 1_000_000 ? `R ${(n/1_000_000).toFixed(2)}m` : `R ${Math.round(n).toLocaleString("en-ZA")}`;
-        const html = `
-<div style="font-family:var(--font-body);padding:2px 4px;min-width:240px">
-  <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:#C8A032;margin-bottom:4px">Municipal erf ${j.erfNumber ?? "?"} · ${j.town ?? j.suburb ?? ""}</div>
-  <div style="font-family:var(--font-display);font-size:15px;color:#132B84;font-weight:500;margin-bottom:6px">${j.address ?? "(no address on file)"}</div>
-  <div style="font-family:var(--font-mono);font-size:16px;color:#132B84;font-weight:600;margin-bottom:6px">${fmtR(j.muniValuationTotal)}${j.valuations.length > 1 ? ` <span style="font-size:9px;color:#C8A032">×${j.valuations.length}</span>` : ""}</div>
-  <div style="font-family:var(--font-mono);font-size:11px;color:#6a7692;line-height:1.6">
-    ${j.extentSqm ? `${j.extentSqm} m² · ` : ""}${j.zoning ?? ""}${j.use ? ` · ${j.use}` : ""}<br/>
-    ${j.owner ? `Owner: ${j.owner}<br/>` : ""}
-    ${j.titleDeed ? `Deed: ${j.titleDeed}<br/>` : ""}
-    ${j.purchDate ? `Last sale ${j.purchDate}${j.purchPrice ? ` · ${fmtR(j.purchPrice)}` : ""}` : ""}
-  </div>
-  <a href="/erf-lookup?q=${j.erfNumber ?? ""}${j.town ? `&suburb=${encodeURIComponent(j.town)}` : ""}" style="display:inline-block;margin-top:8px;font-family:var(--font-mono);font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:#132B84;text-decoration:none;font-weight:600">Full detail →</a>
-</div>`;
-        currentPopup.setHTML(html);
-      } catch (err) {
-        currentPopup?.setHTML(`<div style="color:#a24700;padding:8px">${(err as Error).message}</div>`);
-      }
-    }
-    mapRefLocal.on("click", "parcels-fill", parcelsClick);
-    mapRefLocal.on("mouseenter", "parcels-fill", () => { mapRefLocal.getCanvas().style.cursor = "pointer"; });
-    mapRefLocal.on("mouseleave", "parcels-fill", () => { mapRefLocal.getCanvas().style.cursor = ""; });
-
-    return () => {
-      mapRefLocal.off("styledata", onStyleData);
-      mapRefLocal.off("click", "parcels-fill", parcelsClick);
-      currentPopup?.remove();
-    };
-  }, [showErf]);
-
-  // Toggle visibility without tearing the layers down — cheap and preserves
-  // the browser's tile cache.
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    const vis = showErf ? "visible" : "none";
-    for (const id of ["parcels-fill", "parcels-line", "parcels-labels"]) {
-      if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", vis);
-    }
-  }, [showErf]);
-
-  // Plan 005: for-sale cadastral polygon fill + ungeocoded-external dots.
-  // Installed on 'styledata' (re-fires when basemap changes) and whenever
-  // forSalePolygons or ungeocoded arrays change. Layers are torn down and
-  // re-added on each update so colour assignments stay in sync.
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-
-    const forSalePrclKeys = visibleForSalePolygons.map((r) => r.prclKey);
-
-    // Keep the click-handler lookup in step with what's actually rendered.
-    polyLookupRef.current = new Map<string, ForSalePolygon>(
-      visibleForSalePolygons.map((r) => [r.prclKey, r]),
-    );
-
-    function installForSaleLayers(m: mapboxgl.Map) {
-      // Parcels source must already be present (added by installErfLayer).
-      // If the style hasn't loaded the parcel source yet, installErfLayer's
-      // 'styledata' handler will fire again and re-install; we piggyback.
-      if (!m.getSource("parcels")) return;
-
-      // Tear down previous for-sale layers so we can re-add with fresh data.
-      for (const id of ["for-sale-outline", "for-sale-fill"]) {
-        if (m.getLayer(id)) m.removeLayer(id);
-      }
-
-      if (visibleForSalePolygons.length > 0) {
-        m.addLayer(
-          {
-            id: "for-sale-fill",
-            type: "fill",
-            source: "parcels",
-            "source-layer": "parcels",
-            minzoom: 14,
-            filter: ["in", ["get", "prcl_key"], ["literal", forSalePrclKeys]],
-            paint: {
-              "fill-color": buildMatchExpr(visibleForSalePolygons),
-              "fill-opacity": 0.35,
-            },
-          },
-          "parcels-line", // insert BEFORE outline so line renders above fill
-        );
-
-        m.addLayer({
-          id: "for-sale-outline",
-          type: "line",
-          source: "parcels",
-          "source-layer": "parcels",
-          minzoom: 14,
-          filter: ["in", ["get", "prcl_key"], ["literal", forSalePrclKeys]],
-          paint: {
-            "line-color": buildMatchExpr(visibleForSalePolygons),
-            "line-width": ["interpolate", ["linear"], ["zoom"], 14, 1.5, 18, 3],
-            "line-opacity": 1.0,
-          },
-        });
-      }
-
-      // Click + hover on the fill layer — bound once, then left alone. A
-      // layer-scoped Mapbox listener whose layer is absent simply never
-      // fires, so it survives the teardown/re-add cycle above.
-      if (!forSaleHandlersBoundRef.current) {
-        forSaleHandlersBoundRef.current = true;
-        m.on("click", "for-sale-fill", (e) => {
-          const feature = e.features?.[0];
-          if (!feature) return;
-          const pk = feature.properties?.prcl_key as string | undefined;
-          if (!pk) return;
-          // Lookup holds only the polygons currently allowed by the chips, so
-          // a filtered-out source can't open the preview panel.
-          const poly = polyLookupRef.current.get(pk);
-          if (!poly) return;
-          // Resolve to the merged pin key so the existing preview panel works.
-          const pins = mergedPinsRef.current;
-          const matchedPin = poly.propertyId
-            ? pins.find((p) => p.matchedPropertyId === poly.propertyId || p.our?.id === poly.propertyId)
-            : poly.listingId
-            ? pins.find((p) => p.externals.some((ex) => ex.id === poly.listingId))
-            : null;
-          if (matchedPin) setSelectedKey(matchedPin.key);
-        });
-        m.on("mouseenter", "for-sale-fill", () => {
-          m.getCanvas().style.cursor = "pointer";
-        });
-        m.on("mouseleave", "for-sale-fill", () => {
-          m.getCanvas().style.cursor = "";
-        });
-      }
-
-      // Ungeocoded externals: GeoJSON circle layer.
-      if (m.getSource("ungeocoded-externals")) {
-        (m.getSource("ungeocoded-externals") as mapboxgl.GeoJSONSource).setData({
-          type: "FeatureCollection",
-          features: visibleUngeocoded.map((u) => ({
-            type: "Feature" as const,
-            geometry: { type: "Point" as const, coordinates: [u.lng, u.lat] },
-            properties: { id: u.id, source: u.source, price: u.price, headline: u.headline },
-          })),
-        });
-      } else {
-        m.addSource("ungeocoded-externals", {
-          type: "geojson",
-          data: {
-            type: "FeatureCollection",
-            features: visibleUngeocoded.map((u) => ({
-              type: "Feature" as const,
-              geometry: { type: "Point" as const, coordinates: [u.lng, u.lat] },
-              properties: { id: u.id, source: u.source, price: u.price, headline: u.headline },
-            })),
-          },
-        });
-        m.addLayer({
-          id: "ungeocoded-dots",
-          type: "circle",
-          source: "ungeocoded-externals",
-          paint: {
-            "circle-radius": ["interpolate", ["linear"], ["zoom"], 10, 3, 16, 6],
-            "circle-color": "#8090B5",
-            "circle-opacity": 0.5,
-            "circle-stroke-width": 1,
-            "circle-stroke-color": "#132B84",
-            "circle-stroke-opacity": 0.6,
-          },
-        });
-
-        m.on("click", "ungeocoded-dots", (e) => {
-          const feature = e.features?.[0];
-          if (!feature) return;
-          const extId = feature.properties?.id as string | undefined;
-          if (!extId) return;
-          const matchedPin = mergedPinsRef.current.find((p) =>
-            p.externals.some((ex) => ex.id === extId),
-          );
-          if (matchedPin) setSelectedKey(matchedPin.key);
-        });
-        m.on("mouseenter", "ungeocoded-dots", () => {
-          m.getCanvas().style.cursor = "pointer";
-        });
-        m.on("mouseleave", "ungeocoded-dots", () => {
-          m.getCanvas().style.cursor = "";
-        });
-      }
-    }
-
-    // Install ONCE on style load (real style change, not every tile load).
-    // Mapbox fires 'styledata' many times per second during tile fetches;
-    // re-adding layers on each fire creates a teardown-during-render race
-    // that manifests as `TypeError: undefined is not an object (evaluating
-    // 'n.layout.get')` and stops the basemap from painting. `style.load`
-    // fires only on actual basemap-style changes.
-    //
-    // When forSalePolygons / ungeocoded change (this effect's deps), we
-    // re-run install synchronously here — no styledata subscription needed.
-    if (map.isStyleLoaded()) {
-      installForSaleLayers(map);
-    } else {
-      map.once("style.load", () => installForSaleLayers(map));
-    }
-
-    // Re-install on genuine basemap swap only.
-    const onStyleLoad = () => installForSaleLayers(map);
-    map.on("style.load", onStyleLoad);
-    return () => {
-      map.off("style.load", onStyleLoad);
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visibleForSalePolygons, visibleUngeocoded]);
-
-  // Split-duplicates mode: expand each merged pin into one pin per source.
-  // The split rows sit at the same coord with a tiny angular offset so the
-  // clicks don't overlap perfectly.
-  type RenderPin = {
-    id: string;                 // marker id (merged key, or key + source)
-    lng: number;
-    lat: number;
-    mergedKey: string;          // for selection: always the merged pin's key
-    propertyId: string | null;  // our property.id when this pin is us / merged with us
-    geoManual: boolean;         // pin was hand-placed by an admin
-    label: string;              // price string
-    styleClass: string;         // CSS class for the price-pin
-    sourcesShown: SourceKey[];  // which source stack to render
-  };
-
-  // Plan 005: strip out pins for properties / externals that have a prcl_key
-  // and will render as cadastral polygons. Only properties with NO prcl_key on
-  // both their OS record and all externals still need a pin.
-  const pinnedPins = useMemo(
-    () =>
-      visiblePins.filter(
-        (p) => !p.our?.prclKey && !p.externals.some((e) => !!e.prclKey),
-      ),
-    [visiblePins],
-  );
-
-  const renderPins: RenderPin[] = useMemo(() => {
-    const out: RenderPin[] = [];
-    for (const pin of pinnedPins) {
-      const activeSources = pin.sources.filter((s) => enabledSources.has(s));
-      if (activeSources.length === 0) continue;
-
-      // Priority: any pin (singleton or merged) that includes dream_website
-      // wears Dream navy — the dw class trumps mandate colouring on merged
-      // pins so a listing that appears on dreamknysna.co.za reads as
-      // "on Dream's site" at a glance regardless of mandate type.
-      const hasDW = activeSources.includes("dream_website");
-
-      if (!splitDupes || activeSources.length === 1) {
-        const styleClass = hasDW
-          ? "dw"
-          : pin.our
-            ? `mandate-${pin.our.mandateType}`
-            : "market";
-        out.push({
-          id: pin.key,
-          lng: pin.lng,
-          lat: pin.lat,
-          mergedKey: pin.key,
-          propertyId: pin.matchedPropertyId ?? pin.our?.id ?? null,
-          geoManual: pin.our?.geoManual === true,
-          label: formatPrice(pin.representative.price),
-          styleClass,
-          sourcesShown: activeSources,
-        });
-        continue;
-      }
-
-      // Split mode — render one pin per active source, fanned around the coord.
-      const n = activeSources.length;
-      const radius = 0.00025;   // ~28 m at Knysna latitude
-      activeSources.forEach((s, i) => {
-        const angle = (i / n) * Math.PI * 2;
-        const dLng = Math.cos(angle) * radius;
-        const dLat = Math.sin(angle) * radius;
-        let price: number | null = null;
-        let styleClass = "market";
-        if (s === "dream_website") {
-          const ext = pin.externals.find((e) => e.source === "dream_website");
-          price = ext?.price ?? null;
-          styleClass = "dw";
-        } else if (s === "dream_os" && pin.our) {
-          price = pin.our.askingPrice;
-          styleClass = `mandate-${pin.our.mandateType}`;
-        } else {
-          const ext = pin.externals.find((e) => e.source === s);
-          price = ext?.price ?? null;
-          styleClass = "market";
-        }
-        out.push({
-          id: `${pin.key}::${s}`,
-          lng: pin.lng + dLng,
-          lat: pin.lat + dLat,
-          mergedKey: pin.key,
-          propertyId: pin.matchedPropertyId ?? pin.our?.id ?? null,
-          geoManual: pin.our?.geoManual === true,
-          label: formatPrice(price),
-          styleClass,
-          sourcesShown: [s],
-        });
-      });
-    }
-    return out;
-  }, [pinnedPins, enabledSources, splitDupes]);
-
-  // Sync markers to renderPins.
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-
-    const wantIds = new Set(renderPins.map((r) => r.id));
-    for (const [id, marker] of Object.entries(markersRef.current)) {
-      if (!wantIds.has(id)) {
-        marker.remove();
-        delete markersRef.current[id];
-      }
-    }
-
-    for (const rp of renderPins) {
-      // Keep the propertyId lookup fresh — the dragend handler needs it.
-      if (rp.propertyId) pinPropertyIdRef.current[rp.mergedKey] = rp.propertyId;
-
-      if (markersRef.current[rp.id]) {
-        // Reposition existing marker (split-mode fan may have moved it).
-        markersRef.current[rp.id].setLngLat([rp.lng, rp.lat]);
-        // Adjusted-mark can flip if the row's geo_manual changes after a save.
-        const el = markersRef.current[rp.id].getElement();
-        if (rp.geoManual) el.classList.add("adjusted");
-        else el.classList.remove("adjusted");
-        continue;
-      }
-
-      const el = document.createElement("div");
-      el.className = `price-pin ${rp.styleClass}${rp.label === "POR" ? " por" : ""}${rp.geoManual ? " adjusted" : ""}`;
-
-      const badge = document.createElement("span");
-      badge.className = "badge";
-      badge.textContent = rp.label;
-      el.appendChild(badge);
-
-      // Source stack (small letters) — only rendered when >1 source and not in split mode.
-      if (rp.sourcesShown.length > 1) {
-        const stack = document.createElement("span");
-        stack.className = "source-stack";
-        for (const s of rp.sourcesShown) {
-          const dot = document.createElement("span");
-          dot.className = `source-dot source-${s}`;
-          dot.textContent = SOURCE_META[s].code;
-          dot.title = SOURCE_META[s].label;
-          stack.appendChild(dot);
-        }
-        el.appendChild(stack);
-      }
-
-      const pointer = document.createElement("span");
-      pointer.className = "pointer";
-      el.appendChild(pointer);
-
-      el.addEventListener("click", () => {
-        // Suppress the click that immediately follows a drag release — Mapbox
-        // fires both events and we don't want the panel to re-select on drop.
-        if (dragKeyRef.current === rp.mergedKey) return;
-        setSelectedKey(rp.mergedKey);
-      });
-
-      const marker = new mapboxgl.Marker({ element: el, anchor: "bottom" })
-        .setLngLat([rp.lng, rp.lat])
-        .addTo(map);
-
-      // Registered once at marker creation, this handler reads the CURRENT
-      // dragKey via the ref — so a marker created in "static" mode still
-      // saves correctly when the admin later drags it.
-      marker.on("dragend", () => {
-        if (dragKeyRef.current !== rp.mergedKey) return;
-        const propertyId = pinPropertyIdRef.current[rp.mergedKey];
-        if (!propertyId) return;
-        const ll = marker.getLngLat();
-        handlePinDropRef.current(propertyId, ll.lng, ll.lat);
-      });
-
-      markersRef.current[rp.id] = marker;
-    }
-
-    // Initial framing is set by INITIAL_BOUNDS on map creation. The
-    // pin-fit-to-bounds only fires as a fallback if the initial bounds
-    // somehow ended up outside where any pins actually are (should
-    // basically never happen for Knysna) — this keeps the "Buffalo Bay to
-    // Noetzie" default framing stable across sessions instead of
-    // re-fitting to whatever Dream's current stock happens to be.
-    didInitialFitRef.current = true;
-  }, [renderPins]);
-
-  // Toggle draggability + drag-mode class as dragKey changes. Runs after any
-  // marker sync so the class always reflects the latest state.
-  //
-  // Side effect: when drag mode ACTIVATES, zoom + centre the map on the pin.
-  // Two reasons: (1) the pin might be barely visible at wide zoom levels, so
-  // dragging it precisely is impossible; (2) auto-zooming makes it obvious
-  // WHICH pin is now moveable, especially when multiple pins overlap.
-  useEffect(() => {
-    for (const [id, marker] of Object.entries(markersRef.current)) {
-      const rp = renderPins.find((r) => r.id === id);
-      if (!rp) continue;
-      const shouldDrag = dragKey === rp.mergedKey;
-      marker.setDraggable(shouldDrag);
-      const el = marker.getElement();
-      if (shouldDrag) el.classList.add("dragging");
-      else el.classList.remove("dragging");
-    }
-    if (dragKey && mapRef.current) {
-      const target = renderPins.find((r) => r.mergedKey === dragKey);
-      if (target) {
-        mapRef.current.easeTo({
-          center: [target.lng, target.lat],
-          zoom: Math.max(mapRef.current.getZoom(), 17),
-          duration: 500,
-        });
-      }
-    }
-  }, [dragKey, renderPins]);
-
-  // Active pin styling.
-  useEffect(() => {
-    for (const [id, marker] of Object.entries(markersRef.current)) {
-      const el = marker.getElement();
-      const rp = renderPins.find((r) => r.id === id);
-      if (rp && rp.mergedKey === selectedKey) el.classList.add("active");
-      else el.classList.remove("active");
-    }
-    if (selectedPin && mapRef.current) {
-      mapRef.current.easeTo({
-        center: [selectedPin.lng, selectedPin.lat],
-        duration: 350,
-      });
-    }
-  }, [selectedKey, renderPins, selectedPin]);
-
-  function toggleMandate(m: string) {
-    setEnabledMandates((prev) => {
-      const next = new Set(prev);
-      if (next.has(m)) next.delete(m);
-      else next.add(m);
-      return next;
-    });
-  }
-
-  function toggleSource(s: SourceKey) {
-    setEnabledSources((prev) => {
-      const next = new Set(prev);
-      if (next.has(s)) next.delete(s);
-      else next.add(s);
-      return next;
-    });
-  }
-
-
+  const stageW = stageRef.current?.clientWidth ?? 800;
 
   return (
-    <div className="map-shell">
-      <aside className={`map-rail${mobileRailOpen ? " mobile-open" : ""}`}>
-        {/* Mobile-only bottom-sheet handle. Hidden on desktop via CSS. */}
-        <button
-          type="button"
-          className="map-rail-handle"
-          aria-expanded={mobileRailOpen}
-          aria-label={mobileRailOpen ? "Close controls" : "Open controls"}
-          onClick={() => setMobileRailOpen((v) => !v)}
-        >
-          <span className="map-rail-handle-grip" aria-hidden />
-          <span className="map-rail-handle-text">
-            {mobileRailOpen ? "Close" : "Filters & listings"}
-          </span>
-        </button>
-        <section>
-          <h3>Basemap</h3>
-          <div className="basemap-tabs">
-            {BASEMAPS.map((b) => (
-              <button
-                key={b.id}
-                type="button"
-                className={basemap === b.id ? "on" : ""}
-                onClick={() => setBasemap(b.id)}
-              >
-                {b.label}
-              </button>
-            ))}
-          </div>
-        </section>
+    <div className="mx-shell">
+      <FilterBar filters={filters} setFilters={setFilters} listings={listings} counts={counts} sourceHealth={sourceHealth} featuresKnown={featuresKnown} />
 
-        {/* SpendMeter hidden 2026-07-22 — orphaned by the Lightstone API pivot.
-            Will return as "External data spend" once WinDeed / CIPC costs land. */}
-
-        <section>
-          <h3>Sources</h3>
-          <div className="source-chips">
-            {SOURCE_ORDER.map((s) => {
-              const on = enabledSources.has(s);
-              // For external sources, prefer the raw DB count from the
-              // server — "how many rows are we tracking" is the number
-              // Bronwyn will trust against a portal spot-check. The
-              // merged-pin count collapses many-externals-per-property
-              // to one and undercounts (Simon spotted 186 vs 342 for
-              // P24 on 2026-07-31). dream_os stays on merged-pin count
-              // because it's a count of our own records, not externals.
-              const count =
-                s === "dream_os"
-                  ? sourceCounts.get(s) ?? 0
-                  : externalCounts?.[s as "dream_website" | "property24" | "private_property"] ??
-                    sourceCounts.get(s) ??
-                    0;
-              return (
-                <button
-                  key={s}
-                  className={`source-chip source-${s} ${on ? "on" : ""}`}
-                  onClick={() => toggleSource(s)}
-                  type="button"
-                  title={SOURCE_META[s].label}
-                >
-                  <span className="code">{SOURCE_META[s].code}</span>
-                  <span>{SOURCE_META[s].label}</span>
-                  <span style={{ color: "#8090b5", marginLeft: 2 }}>{count}</span>
-                  {sourceHealth?.[s] && sourceHealth[s] !== "grey" && (
-                    <span
-                      className={`source-health source-health-${sourceHealth[s]}`}
-                      title={
-                        sourceHealth[s] === "green"
-                          ? "Feed up to date"
-                          : sourceHealth[s] === "amber"
-                          ? "Feed late or finished with warnings"
-                          : "Feed failed or not built"
-                      }
-                      aria-label="feed health"
-                    />
-                  )}
-                </button>
-              );
-            })}
-          </div>
-          <label
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              marginTop: 10,
-              fontSize: 12,
-              color: "var(--estuary)",
-              cursor: "pointer",
-              fontWeight: 500,
-              margin: 0,
-              paddingTop: 8,
+      <div className="mx-main">
+        <aside className={`mx-side${listOpen ? " open" : ""}`} aria-label="Listings in view">
+          <ResultsList
+            items={inView}
+            total={filtered.length}
+            sort={sort}
+            setSort={setSort}
+            hoverKey={hoverKey}
+            selectedKey={selectedKey}
+            onHover={(k) => {
+              setHoverKey(k);
+              setHoverFromMap(false);
             }}
-          >
-            <input
-              type="checkbox"
-              checked={splitDupes}
-              onChange={(e) => setSplitDupes(e.target.checked)}
-            />
-            Split duplicate pins by source
-          </label>
-
-          <label
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              marginTop: 6,
-              fontSize: 12,
-              color: "var(--estuary)",
-              cursor: "pointer",
-              fontWeight: 500,
-              margin: 0,
-              paddingTop: 4,
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={showErf}
-              onChange={(e) => setShowErf(e.target.checked)}
-            />
-            Cadastral outlines
-            <span
-              style={{
-                marginLeft: "auto",
-                fontFamily: "var(--font-mono)",
-                fontSize: 10,
-                color: "#8090b5",
-                letterSpacing: "0.04em",
-              }}
-            >
-              z ≥ 14
-            </span>
-          </label>
-          {/* The cadastre is a survey layer, not listing data: it draws every
-              erf in the deeds/GIS extract whether or not anything is for sale,
-              and clicking one returns municipal valuation data. Saying so
-              inline stops the "what are these polygons?" question that came up
-              when a director had every source chip off and still saw fills. */}
-          <p
-            style={{
-              margin: "4px 0 0 24px",
-              fontSize: 10,
-              lineHeight: 1.45,
-              color: "#8090b5",
-              fontFamily: "var(--font-mono)",
-            }}
-          >
-            Every surveyed erf + muni valuation. Not listings — unaffected by
-            the Sources filter.
-          </p>
-
-        </section>
-
-        <section>
-          <h3>Mandate</h3>
-          <div className="mandate-chips">
-            {MANDATE_ORDER.filter((m) => (mandateCounts.get(m) ?? 0) > 0).map((m) => {
-              const on = enabledMandates.has(m);
-              return (
-                <button
-                  key={m}
-                  className={`mandate-chip mandate-${m} ${on ? "on" : ""}`}
-                  onClick={() => toggleMandate(m)}
-                  type="button"
-                  title={m}
-                >
-                  <span className="sw" />
-                  <span style={{ textTransform: "capitalize" }}>{m.replace("_", " ")}</span>
-                  <span style={{ color: "#8090b5", marginLeft: 2 }}>{mandateCounts.get(m)}</span>
-                </button>
-              );
-            })}
-          </div>
-        </section>
-
-        <section style={{ padding: "10px 0 0", borderBottom: "none" }}>
-          <h3 style={{ padding: "0 16px" }}>Our listings ({visibleProperties.length})</h3>
-        </section>
-
-        <div className="listing-scroll">
-          {visibleProperties.length === 0 && (
-            <p style={{ padding: 16, fontSize: 13, color: "#8090b5" }}>
-              Nothing matches the current filter.
-            </p>
-          )}
-          {visibleProperties.map((p) => (
-            <button
-              key={p.id}
-              className={`listing-item mandate-${p.mandateType} ${selectedKey === `prop-${p.id}` ? "active" : ""}`}
-              onClick={() => setSelectedKey(`prop-${p.id}`)}
-              style={{ background: selectedKey === `prop-${p.id}` ? "#EEF0F8" : undefined, border: 0, textAlign: "left", width: "100%" }}
-            >
-              <span className="bar" />
-              <span>
-                <span className="nm">{p.address}</span>
-                <span className="pr">{formatFullPrice(p.askingPrice)}</span>
-                <span className="meta">
-                  {p.suburb ?? "—"}
-                  {p.mandateRaw ? ` · ${p.mandateRaw}` : ""}
-                  {p.lng == null ? " · no coords" : ""}
-                </span>
-              </span>
-            </button>
-          ))}
-        </div>
-      </aside>
-
-      <div className="map-stage">
-        <div ref={containerRef} className="map-canvas" />
-
-
-        {renderPins.length > 0 && (
-          <div className="map-legend">
-            {/* Plan 005: cadastral polygon legend — 6 fill states + 1 dot entry */}
-            <div className="row" style={{ "--m-fill": STATE_COLORS.os_exclusive } as React.CSSProperties}>
-              <span className="sw" style={{ background: STATE_COLORS.os_exclusive, borderRadius: 3 }} />
-              <span>Exclusive</span>
-            </div>
-            <div className="row" style={{ "--m-fill": STATE_COLORS.os_joint } as React.CSSProperties}>
-              <span className="sw" style={{ background: STATE_COLORS.os_joint, borderRadius: 3 }} />
-              <span>Joint</span>
-            </div>
-            <div className="row" style={{ "--m-fill": STATE_COLORS.os_sold } as React.CSSProperties}>
-              <span className="sw" style={{ background: STATE_COLORS.os_sold, borderRadius: 3 }} />
-              <span>Sold</span>
-            </div>
-            <div className="row" style={{ "--m-fill": STATE_COLORS.os_under_offer } as React.CSSProperties}>
-              <span className="sw" style={{ background: STATE_COLORS.os_under_offer, borderRadius: 3 }} />
-              <span>Under Offer</span>
-            </div>
-            <div className="row" style={{ "--m-fill": STATE_COLORS.os_other } as React.CSSProperties}>
-              <span className="sw" style={{ background: STATE_COLORS.os_other, borderRadius: 3 }} />
-              <span>Open / None</span>
-            </div>
-            <div className="row" style={{ "--m-fill": STATE_COLORS.market } as React.CSSProperties}>
-              <span className="sw" style={{ background: STATE_COLORS.market, borderRadius: 3 }} />
-              <span>Market (P24 / PP)</span>
-            </div>
-            <div className="row">
-              <span className="sw" style={{
-                background: "#8090B5",
-                borderRadius: "50%",
-                opacity: 0.5,
-                border: "1px solid #132B84",
-                width: 10,
-                height: 10,
-              }} />
-              <span>Market — location only</span>
-            </div>
-          </div>
-        )}
-
-        {!cleanToken && (
-          <div className="map-empty">
-            <div className="map-empty-card">
-              <h2>Mapbox token needed</h2>
-              <p>
-                Set <code>NEXT_PUBLIC_MAPBOX_TOKEN</code> in Vercel (Project → Settings →
-                Environment Variables) to a public Mapbox access token, then redeploy.
-                A free Mapbox account covers this easily.
-              </p>
-              <p style={{ fontSize: 11, color: "#8090b5" }}>
-                Received token length: <b>{mapboxToken.length}</b>
-              </p>
-            </div>
-          </div>
-        )}
-        {mapError && (
-          <div
-            style={{
-              position: "absolute", left: 16, bottom: 90, zIndex: 30,
-              background: "#fdecec", color: "#a12020",
-              border: "1px solid #f3c2c2", borderRadius: 10,
-              padding: "10px 14px", fontSize: 12, maxWidth: 420,
-              boxShadow: "0 6px 20px rgba(15,22,52,0.14)",
-            }}
-          >
-            <b>Mapbox error:</b> {mapError}
-          </div>
-        )}
-        {mapboxToken && stats.total === 0 && mergedPins.length === 0 && (
-          <div className="map-empty">
-            <div className="map-empty-card">
-              <h2>No properties or market listings yet</h2>
-              <p>
-                Commit a batch from Triage, or wait for tonight&apos;s scraper run to
-                surface market listings.
-              </p>
-              <Link href="/triage" className="btn-primary" style={{ display: "inline-block" }}>
-                Open Triage →
-              </Link>
-            </div>
-          </div>
-        )}
-        {stats.total > 0 && renderPins.length === 0 && stats.missing === stats.total && (
-          <div className="map-empty">
-            <div className="map-empty-card">
-              <h2>No coordinates on file</h2>
-              <p>
-                {stats.total} properties in the database, none geocoded yet.
-                {isAdmin ? " Run Geocode + snap on Admin → Data health to plot them." : ""}
-              </p>
-              {!isAdmin && (
-                <p style={{ fontSize: 12, color: "#8090b5" }}>
-                  Ask an admin to run it once — pins stick after that.
-                </p>
-              )}
-            </div>
-          </div>
-        )}
-
-        <aside className={`map-preview ${selectedPin ? "on" : ""}`}>
-          {selectedPin && (
-            <PreviewPanel
-              pin={selectedPin}
-              onClose={() => setSelectedKey(null)}
-              isAdmin={isAdmin}
-              inDragMode={dragKey === selectedPin.key}
-              onStartDrag={() => {
-                setPinMsg(null);
-                setPinErr(null);
-                setDragKey(selectedPin.key);
-              }}
-              onCancelDrag={() => setDragKey(null)}
-              pinPending={pinPending}
-              pinMsg={pinMsg}
-              pinErr={pinErr}
-            />
-          )}
+            onSelect={selectFromList}
+          />
         </aside>
+
+        <div className="mx-stage" ref={stageRef}>
+          <div ref={containerRef} className="mx-canvas" />
+
+          <div className="mx-tools">
+            <div className="mx-seg" role="group" aria-label="Basemap">
+              {BASEMAPS.map((b) => (
+                <button key={b.id} type="button" className={basemap === b.id ? "on" : ""} onClick={() => setBasemap(b.id)}>
+                  {b.label}
+                </button>
+              ))}
+            </div>
+            <button type="button" className={`mx-tool${showPrices ? " on" : ""}`} aria-pressed={showPrices} onClick={() => setShowPrices((v) => !v)}>
+              Prices
+            </button>
+            <button
+              type="button"
+              className={`mx-tool${showErf ? " on" : ""}`}
+              aria-pressed={showErf}
+              onClick={() => setShowErf((v) => !v)}
+              title="Every surveyed erf, from zoom 14. Click an erf for its municipal valuation."
+            >
+              Erven
+            </button>
+          </div>
+
+          <div className="mx-legend" aria-label="Legend">
+            <span><i className="dot ours" /> Ours</span>
+            <span><i className="dot joint" /> Joint</span>
+            <span><i className="dot offer" /> Under offer</span>
+            <span><i className="dot market" /> Other agencies</span>
+          </div>
+
+          {hovered && hoverFromMap && hoverXY && hovered.key !== selectedKey && <HoverCard listing={hovered} x={hoverXY.x} y={hoverXY.y} stageW={stageW} />}
+
+          <button type="button" className="mx-list-toggle" onClick={() => setListOpen((v) => !v)} aria-expanded={listOpen}>
+            {listOpen ? "Show map" : `List · ${inView.length}`}
+          </button>
+
+          {!cleanToken && (
+            <div className="map-empty">
+              <div className="map-empty-card">
+                <h2>Mapbox token needed</h2>
+                <p>
+                  Set <code>NEXT_PUBLIC_MAPBOX_TOKEN</code> in Vercel (Project → Settings → Environment Variables) to a public Mapbox access token, then redeploy.
+                </p>
+              </div>
+            </div>
+          )}
+          {mapError && (
+            <div className="mx-error">
+              <b>Map error:</b> {mapError}
+            </div>
+          )}
+          {cleanToken && stats.total === 0 && mergedPins.length === 0 && (
+            <div className="map-empty">
+              <div className="map-empty-card">
+                <h2>No properties or market listings yet</h2>
+                <p>Commit a batch from Triage, or wait for tonight&apos;s scraper run to surface market listings.</p>
+                <Link href="/triage" className="btn-primary" style={{ display: "inline-block" }}>
+                  Open Triage →
+                </Link>
+              </div>
+            </div>
+          )}
+
+          <aside className={`map-preview ${selected ? "on" : ""}`}>
+            {selected && (
+              <PreviewPanel
+                pin={selected.pin}
+                onClose={() => setSelectedKey(null)}
+                isAdmin={isAdmin}
+                inDragMode={dragKey === selected.key}
+                onStartDrag={() => {
+                  setPinMsg(null);
+                  setPinErr(null);
+                  setDragKey(selected.key);
+                }}
+                onCancelDrag={() => setDragKey(null)}
+                pinPending={pinPending}
+                pinMsg={pinMsg}
+                pinErr={pinErr}
+              />
+            )}
+          </aside>
+        </div>
       </div>
     </div>
-  );
-}
-
-// -----------------------------------------------------------------------------
-// Spend meter — admins only. Tints amber at ≥80% of budget, red at ≥100%.
-// Reads a server-computed snapshot so we don't do a client-side count query.
-// -----------------------------------------------------------------------------
-
-function SpendMeter({ budget }: { budget: BudgetSummary }) {
-  const pct = budget.pctUsed;
-  const state: "ok" | "warn" | "hit" =
-    pct >= 100 ? "hit" : pct >= 80 ? "warn" : "ok";
-
-  const palette = {
-    ok:   { fg: "var(--estuary)", bar: "var(--navy)",  bg: "#fbfcfe", ring: "#d7deef" },
-    warn: { fg: "#7A5814",        bar: "#C8A032",       bg: "rgba(200,160,50,0.06)", ring: "rgba(200,160,50,0.4)" },
-    hit:  { fg: "#8b1a1a",        bar: "#8b1a1a",       bg: "#fdecec", ring: "#f3c2c2" },
-  }[state];
-
-  const label =
-    state === "hit"  ? "Budget reached · pulls paused" :
-    state === "warn" ? `At ${pct}% of monthly budget` :
-                        `${pct}% of monthly budget`;
-
-  return (
-    <section>
-      <h3>Lightstone spend</h3>
-      <div
-        style={{
-          padding: 12,
-          margin: "0 16px",
-          borderRadius: 10,
-          border: `1px solid ${palette.ring}`,
-          background: palette.bg,
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "baseline",
-            gap: 6,
-            fontFamily: "var(--font-mono)",
-            color: palette.fg,
-          }}
-        >
-          <span style={{ fontSize: 18, fontWeight: 700, letterSpacing: "-0.02em" }}>
-            {budget.used}
-          </span>
-          <span style={{ fontSize: 12, color: "#7a86a8" }}>
-            / {budget.budget} calls
-          </span>
-        </div>
-        <div
-          style={{
-            marginTop: 8,
-            height: 4,
-            width: "100%",
-            background: "#eef1f8",
-            borderRadius: 999,
-            overflow: "hidden",
-          }}
-        >
-          <div
-            style={{
-              width: `${Math.min(100, pct)}%`,
-              height: "100%",
-              background: palette.bar,
-              transition: "width 0.25s",
-            }}
-          />
-        </div>
-        <div
-          style={{
-            marginTop: 6,
-            fontSize: 11,
-            color: palette.fg,
-            fontWeight: 500,
-          }}
-        >
-          {label}
-        </div>
-        <div
-          style={{
-            marginTop: 2,
-            fontSize: 10,
-            color: "#7a86a8",
-            fontFamily: "var(--font-mono)",
-            letterSpacing: "0.04em",
-          }}
-        >
-          {budget.monthKey} · warn at {budget.softWarnPct}%
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// -----------------------------------------------------------------------------
-// Preview panel — shape depends on whether the pin is ours, market-only, or
-// merged across sources.
-// -----------------------------------------------------------------------------
-
-function PreviewPanel({
-  pin,
-  onClose,
-  isAdmin,
-  inDragMode,
-  onStartDrag,
-  onCancelDrag,
-  pinPending,
-  pinMsg,
-  pinErr,
-}: {
-  pin: MergedPin;
-  onClose: () => void;
-  isAdmin: boolean;
-  inDragMode: boolean;
-  onStartDrag: () => void;
-  onCancelDrag: () => void;
-  pinPending: boolean;
-  pinMsg: string | null;
-  pinErr: string | null;
-}) {
-  const our = pin.our;
-  const externals = pin.externals;
-  const hasMultipleSources = pin.sources.length > 1;
-
-  // Adjust-pin control is only meaningful when the pin is a property we own
-  // and the viewer is a Director. Market-only listings have no property to
-  // move; agents shouldn't reshape the map.
-  const canAdjust = isAdmin && !!our && !!pin.matchedPropertyId;
-
-  // Compare prices across sources; if the range spans more than 5% we flag it.
-  const priceQuotes: { source: SourceKey; price: number | null; url: string | null }[] = [];
-  if (our) priceQuotes.push({ source: "dream_os", price: our.askingPrice, url: null });
-  for (const e of externals) priceQuotes.push({ source: e.source, price: e.price, url: e.url });
-
-  const withPrice = priceQuotes.filter((q) => q.price != null) as { source: SourceKey; price: number; url: string | null }[];
-  let priceMismatch = false;
-  if (withPrice.length > 1) {
-    const min = Math.min(...withPrice.map((q) => q.price));
-    const max = Math.max(...withPrice.map((q) => q.price));
-    if (max > 0 && (max - min) / max > 0.05) priceMismatch = true;
-  }
-
-  return (
-    <>
-      <div className="head">
-        <button
-          type="button"
-          className="close"
-          onClick={onClose}
-          aria-label="Close preview"
-        >
-          ×
-        </button>
-        <div className={`mandate-line mandate-${pin.representative.mandateType}`}>
-          <span className="m-chip">
-            {our ? (our.mandateRaw ?? "No mandate") : "Market listing"}
-          </span>
-          {our?.listingStatus && (
-            <span
-              className="m-chip"
-              style={{ background: "var(--mist)", color: "var(--estuary)" }}
-            >
-              {our.listingStatus}
-            </span>
-          )}
-        </div>
-        <h2 className="addr">{pin.representative.address}</h2>
-        {pin.representative.suburb && (
-          <p className="suburb">{pin.representative.suburb}</p>
-        )}
-        {hasMultipleSources && (
-          <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
-            {pin.sources.map((s) => (
-              <span
-                key={s}
-                className={`source-dot source-${s}`}
-                title={SOURCE_META[s].label}
-                style={{ position: "static" }}
-              >
-                {SOURCE_META[s].code}
-              </span>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div className="body">
-        {/* Our-property block */}
-        {our ? (
-          <>
-            <p className="price">{formatFullPrice(our.askingPrice)}</p>
-            <p className="price-sub">Our asking price</p>
-
-            <div className="pv-grid">
-              <div className="pv-cell">
-                <div className="lbl">Extent</div>
-                <div className="val">
-                  {our.extentSqm ? `${our.extentSqm} m²` : "—"}
-                </div>
-              </div>
-              <div className="pv-cell">
-                <div className="lbl">Title deed</div>
-                <div className="val mono" style={{ fontSize: 12 }}>
-                  {our.titleDeed ?? "—"}
-                </div>
-              </div>
-              <div className="pv-cell">
-                <div className="lbl">Transfers</div>
-                <div className="val">{our.transferCount}</div>
-              </div>
-              <div className="pv-cell">
-                <div className="lbl">Latest transfer</div>
-                <div className="val" style={{ fontSize: 12 }}>
-                  {our.transferStatus ? our.transferStatus.replace(/_/g, " ") : "—"}
-                </div>
-              </div>
-            </div>
-
-            {our.listingHeadline && (
-              <p style={{ marginTop: 20, fontFamily: "Inter, -apple-system, sans-serif", color: "var(--estuary)", fontSize: 14, lineHeight: 1.5 }}>
-                {our.listingHeadline}
-              </p>
-            )}
-          </>
-        ) : (
-          <>
-            <p className="price">{formatFullPrice(pin.representative.price)}</p>
-            <p className="price-sub">Market listing</p>
-            {externals[0]?.headline && (
-              <p style={{ marginTop: 12, fontFamily: "Inter, -apple-system, sans-serif", color: "var(--estuary)", fontSize: 14, lineHeight: 1.5 }}>
-                {externals[0].headline}
-              </p>
-            )}
-          </>
-        )}
-
-        {/* Per-source table when merged */}
-        {(hasMultipleSources || externals.length > 0) && (
-          <div style={{ marginTop: 24 }}>
-            <p
-              style={{
-                fontFamily: "var(--font-mono)",
-                fontSize: 10,
-                letterSpacing: "0.14em",
-                textTransform: "uppercase",
-                color: "var(--gold)",
-                margin: "0 0 8px",
-              }}
-            >
-              Also listed on
-            </p>
-            <ul
-              style={{
-                listStyle: "none",
-                margin: 0,
-                padding: 0,
-                display: "flex",
-                flexDirection: "column",
-                gap: 6,
-              }}
-            >
-              {externals.map((e) => (
-                <li
-                  key={e.id}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    padding: "8px 10px",
-                    borderRadius: 8,
-                    border: "1px solid #e2e8f5",
-                    background: "#fbfcfe",
-                  }}
-                >
-                  <span
-                    className={`source-dot source-${e.source}`}
-                    style={{ position: "static", flexShrink: 0 }}
-                  >
-                    {SOURCE_META[e.source as SourceKey].code}
-                  </span>
-                  <span
-                    style={{
-                      fontFamily: "var(--font-mono)",
-                      fontSize: 12,
-                      color: priceMismatch ? "#a24700" : "var(--estuary)",
-                      fontWeight: 600,
-                      minWidth: 80,
-                    }}
-                  >
-                    {formatFullPrice(e.price)}
-                  </span>
-                  <span style={{ fontSize: 11, color: "#7a86a8", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {e.agencyName ?? SOURCE_META[e.source as SourceKey].label}
-                  </span>
-                  {e.url && (
-                    <a
-                      href={e.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{
-                        fontSize: 12,
-                        color: "var(--navy)",
-                        textDecoration: "none",
-                        fontWeight: 600,
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      Open ↗
-                    </a>
-                  )}
-                </li>
-              ))}
-            </ul>
-            {priceMismatch && (
-              <p
-                style={{
-                  margin: "8px 0 0",
-                  fontSize: 11,
-                  color: "#a24700",
-                  fontFamily: "var(--font-mono)",
-                  letterSpacing: "0.04em",
-                  textTransform: "uppercase",
-                }}
-              >
-                Prices differ across sources
-              </p>
-            )}
-          </div>
-        )}
-
-        {canAdjust && (
-          <div
-            style={{
-              marginTop: 24,
-              padding: 14,
-              borderRadius: 10,
-              background: inDragMode ? "rgba(200,160,50,0.10)" : "#fbfcfe",
-              border: `1px solid ${inDragMode ? "rgba(200,160,50,0.45)" : "#e2e8f5"}`,
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "baseline",
-                justifyContent: "space-between",
-                gap: 12,
-              }}
-            >
-              <p
-                style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 10,
-                  letterSpacing: "0.14em",
-                  textTransform: "uppercase",
-                  color: "var(--gold)",
-                  margin: 0,
-                }}
-              >
-                Pin location
-              </p>
-              {our?.geoManual && !inDragMode && (
-                <span
-                  title="An admin has hand-placed this pin. Automated geocoders skip it."
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 4,
-                    padding: "2px 8px",
-                    borderRadius: 999,
-                    fontSize: 10,
-                    fontFamily: "var(--font-mono)",
-                    letterSpacing: "0.08em",
-                    textTransform: "uppercase",
-                    background: "rgba(200,160,50,0.14)",
-                    border: "1px solid rgba(200,160,50,0.45)",
-                    color: "#7A5814",
-                  }}
-                >
-                  Pin adjusted
-                </span>
-              )}
-            </div>
-
-            {inDragMode ? (
-              <>
-                <p
-                  style={{
-                    margin: "10px 0 4px",
-                    fontSize: 14,
-                    fontWeight: 600,
-                    color: "var(--estuary)",
-                    lineHeight: 1.35,
-                  }}
-                >
-                  Grab the pulsing pin on the map and drag it to the correct
-                  spot.
-                </p>
-                <p
-                  style={{
-                    margin: "0 0 12px",
-                    fontSize: 12,
-                    color: "#7a86a8",
-                    lineHeight: 1.4,
-                  }}
-                >
-                  It saves automatically when you release. The map is centred
-                  on the pin.
-                </p>
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={onCancelDrag}
-                  disabled={pinPending}
-                  style={{ padding: "10px 16px", fontSize: 13, minHeight: 40 }}
-                >
-                  Cancel
-                </button>
-              </>
-            ) : (
-              <>
-                <p
-                  style={{
-                    margin: "8px 0 10px",
-                    fontSize: 12,
-                    color: "#5b6885",
-                    lineHeight: 1.4,
-                  }}
-                >
-                  {our?.geoManual
-                    ? "Move this pin again if the placement drifted."
-                    : "Drop the pin exactly on the property."}
-                </p>
-                <button
-                  type="button"
-                  className="btn-primary"
-                  onClick={onStartDrag}
-                  disabled={pinPending}
-                  style={{
-                    padding: "11px 18px",
-                    fontSize: 14,
-                    minHeight: 44,
-                    width: "100%",
-                    justifyContent: "center",
-                    display: "inline-flex",
-                    alignItems: "center",
-                  }}
-                >
-                  {our?.geoManual ? "Move pin again" : "Move pin"}
-                </button>
-              </>
-            )}
-            {pinPending && (
-              <p style={{ margin: "8px 0 0", fontSize: 12, color: "#7a86a8" }}>
-                Saving…
-              </p>
-            )}
-            {pinMsg && (
-              <p
-                style={{
-                  margin: "8px 0 0",
-                  fontSize: 12,
-                  color: "var(--estuary)",
-                  fontWeight: 600,
-                }}
-              >
-                {pinMsg}
-              </p>
-            )}
-            {pinErr && (
-              <p className="error" style={{ margin: "8px 0 0", fontSize: 12 }}>
-                {pinErr}
-              </p>
-            )}
-          </div>
-        )}
-
-        {pin.matchedPropertyId ? (
-          <Link href={`/properties/${pin.matchedPropertyId}`} className="pv-cta">
-            Open property record →
-          </Link>
-        ) : (
-          pin.externals.length > 0 &&
-          isAdmin && (
-            <MarketListingAttach externalIds={pin.externals.map((e) => e.id)} />
-          )
-        )}
-
-        {/* Admin: re-geocode the pin when it's visibly in the wrong place.
-            Works on any market pin (matched or not) since a wrong coord is
-            a wrong coord regardless of whether it's been attached to an
-            OS property. Runs on the first external in the group; dedup
-            groups share a physical address so one is enough. */}
-        {isAdmin && pin.externals.length > 0 && (
-          <RegeocodeListingButton externalId={pin.externals[0].id} />
-        )}
-      </div>
-    </>
   );
 }

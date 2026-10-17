@@ -44,7 +44,7 @@ export default async function MapPage() {
   const { data: propsData } = await supabase
     .from("property")
     .select(
-      "id, primary_address, title_deed_no, lng, lat, geo_manual, extent_sqm, prcl_key, suburb:suburb_id(name)",
+      "id, primary_address, title_deed_no, lng, lat, geo_manual, extent_sqm, prcl_key, suburb:suburb_id(name), property_type:property_type_id(label)",
     );
   const properties = (propsData ?? []) as any[];
 
@@ -71,12 +71,23 @@ export default async function MapPage() {
 
   // External listings: everything active from every source. Staff read; the
   // RLS on external_listing already allows both admin and agent.
-  const { data: externalData } = await supabase
-    .from("external_listing")
-    .select(
-      "id, source, source_ref, url, headline, address_raw, suburb, price, image_url, agency_name, lat, lng, prcl_key, matched_property_id, dedup_group_id",
-    )
-    .eq("active", true);
+  // The search bar's facts (beds, baths, type, garden / pool, sizes). The
+  // last three columns arrive with migration 0083; until it has run, fall
+  // back to the base columns so the map never breaks on deploy order.
+  const BASE_COLS =
+    "id, source, source_ref, url, headline, address_raw, suburb, price, image_url, agency_name, lat, lng, prcl_key, matched_property_id, dedup_group_id, bedrooms, bathrooms, property_type";
+  let externalData: any[] | null = null;
+  {
+    const withFacts = await supabase
+      .from("external_listing")
+      .select(`${BASE_COLS}, features, erf_size_sqm, floor_size_sqm`)
+      .eq("active", true);
+    if (!withFacts.error) externalData = withFacts.data;
+    else {
+      const base = await supabase.from("external_listing").select(BASE_COLS).eq("active", true);
+      externalData = base.data;
+    }
+  }
   const externals = (externalData ?? []) as any[];
 
   // Roll properties up into one row apiece (latest listing wins for mandate + price).
@@ -107,6 +118,7 @@ export default async function MapPage() {
       transferDate: latestTransfer?.transfer_date ?? null,
       transferCount: propTransfers.length,
       prclKey: p.prcl_key ?? null,
+      propertyType: (Array.isArray(p.property_type) ? p.property_type[0]?.label : p.property_type?.label) ?? null,
     };
   });
 
@@ -158,6 +170,12 @@ export default async function MapPage() {
       lat: e.lat != null ? Number(e.lat) : null,
       lng: e.lng != null ? Number(e.lng) : null,
       prclKey: e.prcl_key ?? null,
+      bedrooms: e.bedrooms != null ? Number(e.bedrooms) : null,
+      bathrooms: e.bathrooms != null ? Number(e.bathrooms) : null,
+      propertyType: e.property_type ?? null,
+      features: Array.isArray(e.features) ? e.features : [],
+      erfSqm: e.erf_size_sqm != null ? Number(e.erf_size_sqm) : null,
+      floorSqm: e.floor_size_sqm != null ? Number(e.floor_size_sqm) : null,
     };
 
     // Case 1 — matched to one of our properties. A matched listing collapses

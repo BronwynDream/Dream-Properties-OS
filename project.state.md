@@ -8,6 +8,35 @@ _Last updated: 2026-10-17_
 
 ---
 
+## MAP REDESIGN — DOTS, SEARCH BAR, LIST (2026-10-17, evening)
+
+**Feedback moment (verbatim, Simon):** "I just would like the map to be just better than it is. It's just too busy… Maybe what's irritating me the most is the price and the little white flags for each property. Maybe it's better to have little dots, and then you hover over the dot to see some detail of the property. Maybe there's a little search engine… 'Find me properties in this suburb, this price range, with this many bedrooms, whether it's got a garden or not.'"
+
+**Correction:** price pills are gone by default. Every listing is a dot (navy = ours, slate = other agencies). Hovering a dot shows a card: photo, price, beds/baths/size, agency. Pattern taken from Airbnb, Booking and Zillow research: fewer marks, a search bar on top, the list synced to the map.
+
+**Shipped**
+- `app/map/MapView.tsx` rewritten. One GeoJSON source `listings` (promoteId `key`). Circle layers `dots-market`, `dots-ours`, `dots-ring`, plus an invisible `dots-hit` layer for pointer events. The `prices` symbol layer is behind a "Prices" toggle and shows ours always, market only from z13.
+  - Feature-state hover/selected grows the dot. Zoom must stay the top-level interpolate (Mapbox rule).
+  - The erf outline shows only for the hovered or selected listing.
+  - The light basemap (light-v11) is the default; Satellite is one click away. Both choices are remembered in localStorage.
+  - Every merged pin shows at every zoom. The old map hid erf-matched listings below z14.
+- New: `listing.ts` (normalised MapListing + filters), `FilterBar.tsx` (area search with suggestions; Price with histogram; Beds & baths; Type; More = garden/pool/garage/pets; Listings menu = ours by mandate state + portals), `ResultsList.tsx` ("N in view of M", sort, cards), `HoverCard.tsx`, `PreviewPanel.tsx` (extracted verbatim), `sources.ts`, `map.css` (all `mx-*`; mobile list as a sheet with a "List · N" toggle).
+- `app/map/page.tsx` selects bedrooms, bathrooms, property_type and the new fact columns. It falls back to the base columns if 0083 hasn't run yet, so the deploy order is safe.
+- `supabase/migrations/0083_external_listing_facts.sql`: adds `features text[]`, `erf_size_sqm`, `floor_size_sqm`. A trigger parses the saved raw page; garden/pool/garage are read only inside the "External Features" block, and "Pets Allowed: Yes" means pets. It fills beds/baths if they are null, and the file backfills existing rows.
+
+**Verification**
+- tsc clean; eslint on app/map clean; production build compiles (/map 16.4 kB).
+- Rendered in a container harness (Playwright + Chromium, 293 real pin fixtures) on a PLAIN background, because the Mapbox basemap can't load there. Checked: default view, hover card, price panel, listings panel, area search, prices toggle, mobile sheet.
+- NOT verified: the live basemap and erf tiles, the real Supabase data, or 0083 against real Firecrawl markdown (the regex is tolerant of `|`, `:`, `*` and spaces, but untested on stored rows). House rule: load dreamproperties.app/map before calling it done.
+
+**Loose ends**
+- Run 0083 (pbcopy route). Until then the "More" filters are disabled, with a note.
+- The old map CSS in `globals.css` (`.map-shell`, `.price-pin`…) is now unused, except `.map-preview`/`.pv-*`/`.source-dot` (PreviewPanel). Remove it once the new map is confirmed live.
+- Dev harness (`devmap` page + Open Sans glyphs) lives outside the repo, at `/tmp/harness` in the cloud container. It is gone with the session.
+- `lib/external-listings/dedup.ts:430` has an unused `updateErrors` (pre-existing lint warning).
+
+---
+
 ## EVERY DOCUMENT LAID OUT AS ITS MASTER (2026-10-17, later)
 
 **Feedback moment (verbatim, Simon):** "That's much better. I've sent it to Bron so hopefully she's happy. Let's make sure the rest of the agreements and documents render as the templates."
