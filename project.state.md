@@ -60,8 +60,16 @@ _Last updated: 2026-10-17_
 - `centroidForArea` was spot-checked (Woodbourne → Fernwood; "Belvidere St, Hornlee" → Hornlee; Knysna Rural → null).
 - NOT verified: Mapbox v6 `feature_type`/`match_code` on real responses (no token in the container); the recheck endpoint against production (to run after deploy, dry first).
 
+**Applied (12:55, Simon said "yes" to the third dry run):** 0084 is run, and recheck-locations has been applied to production. 503 rows scanned, 172 moved, 331 unchanged. Dedup rebuild: no group or match changes.
+- 93 hidden-address listings came off P24's placeholder point: 88 went to their suburb, area-only; 5 went off the map (Knysna Rural ×4, bare "Knysna" ×1).
+- 25 area-only listings moved to the corrected centroids (Elandskraal, Knysna Rural, went off the map).
+- 28 listings that had no coordinate now show as area-only dots.
+- 22 bad pins were corrected (Woodbourne → Fernwood; Pezula house 56 km out; Paradise in the sea; town-centre Westford Bridge / Pezula / Fernwood; River Club Road ×3 → River Club).
+- 4 Dream-website house names went off the map: Sandpoint, Gael, The Boat Aerial View, Karalee Farm Karatara. Karalee was roughly right; offered to pin it by hand.
+- Live check in the browser: no pins are left on the P24 placeholder; 52 Woodbourne sits at the Fernwood centroid as area-only (hollow dot plus "Area only" in the list, satellite view checked).
+- Two rows are still on the old causeway point (-34.067203, 23.064679): "African Breeze" [Leisure Isle], kept because it is within 0.46 km of Leisure Isle, and "C13 Updated Photos", which has a digit and no area, so rule f skipped it. Both are Dream-website rows. Fix by hand, or make the Dream scraper stop using image captions as addresses.
+
 **Loose ends**
-- After deploy: run 0084, then dry-run recheck-locations, review the moves, then apply.
 - `app/map/actions.ts` still has its own Mapbox geocoder for OUR properties (`property` table); it is not touched here.
 - `dedup.ts:430` unused `updateErrors` (pre-existing).
 
