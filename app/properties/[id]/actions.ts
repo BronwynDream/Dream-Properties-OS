@@ -678,3 +678,69 @@ export async function deleteOffer(input: {
   revalidatePath("/pipeline");
   return { ok: true };
 }
+
+// ---------------------------------------------------------------------------
+// Edit details (2026-10-17). Agents fill in the blanks on properties they're
+// listed on — the website sync creates records named after the listing when
+// the website publishes no street address. Admins can edit any property.
+// The database enforces the same rule (policy property_agent_update, 0085).
+// ---------------------------------------------------------------------------
+export async function updatePropertyDetails(input: {
+  propertyId: string;
+  primaryAddress: string;
+  suburbId: string | null;
+  extentSqm: number | null;
+  erfNumber: string | null;
+}): Promise<{ ok: boolean; error?: string }> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "unauthorised" };
+
+  const address = (input.primaryAddress ?? "").trim();
+  if (address.length < 3) return { ok: false, error: "Enter the street address." };
+  if (input.extentSqm != null && !(input.extentSqm > 0)) return { ok: false, error: "Size must be a number of m²." };
+
+  const { data: before } = await supabase
+    .from("property")
+    .select("primary_address")
+    .eq("id", input.propertyId)
+    .single();
+  if (!before) return { ok: false, error: "Property not found." };
+
+  const patch: Record<string, unknown> = {
+    primary_address: address,
+    suburb_id: input.suburbId,
+    extent_sqm: input.extentSqm,
+  };
+  // A changed address is a confirmed one.
+  if (address !== before.primary_address) patch.address_to_confirm = false;
+
+  const { data: updated, error } = await supabase
+    .from("property")
+    .update(patch)
+    .eq("id", input.propertyId)
+    .select("id");
+  if (error) return { ok: false, error: error.message };
+  if (!updated || updated.length === 0) {
+    return { ok: false, error: "You can only edit properties you're an agent on." };
+  }
+
+  const erf = (input.erfNumber ?? "").trim();
+  if (erf) {
+    const { data: existing } = await supabase
+      .from("erf")
+      .select("id")
+      .eq("property_id", input.propertyId)
+      .eq("erf_number", erf)
+      .maybeSingle();
+    if (!existing) {
+      const { error: eErr } = await supabase.from("erf").insert({ property_id: input.propertyId, erf_number: erf });
+      if (eErr) return { ok: false, error: `Saved, but the erf number didn't: ${eErr.message}` };
+    }
+  }
+
+  revalidatePath(`/properties/${input.propertyId}`);
+  revalidatePath("/properties");
+  revalidatePath("/map");
+  return { ok: true };
+}

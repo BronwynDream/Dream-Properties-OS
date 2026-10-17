@@ -5,6 +5,16 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { rebuildDedupAndMatch } from "@/lib/external-listings/dedup";
 import { inGardenRoute, mapboxToken } from "@/lib/external-listings/geocode";
 import { locateListing } from "@/lib/external-listings/locate";
+import {
+  captionAsAddress,
+  parseAgentCards,
+  parseIndexCards,
+  stripAgentSidebar,
+  suburbForArea,
+  type WebsiteAgent,
+  type WebsiteCard,
+} from "@/lib/dream/website";
+import { syncWebsiteToOs, type SyncReport } from "@/lib/dream/sync";
 
 export const runtime = "nodejs";
 // Vercel Hobby silently clamps to 60s — anything higher gets truncated
@@ -143,7 +153,7 @@ async function run(request: Request) {
       );
     }
 
-    const listingUrls = await discoverAllListingUrls(indexHtml);
+    const { urls: listingUrls, cards } = await discoverAllListingUrls(indexHtml);
 
     // Zero-state: a WordPress theme change or Cloudflare interstitial would
     // cut this to zero. Return an explicit note so the next Vercel log line
@@ -191,11 +201,22 @@ async function run(request: Request) {
     const seenIds = new Set<string>();
     const geocodeQueue: {
       id: string;
-      address: string;
+      address: string | null;
       suburb: string | null;
     }[] = [];
 
     for (const item of parsed) {
+      // The index card carries the facts the listing page doesn't: area,
+      // erf size, under-offer, and the cover-photo caption agents write as
+      // the street address. The card wins where both have a value.
+      const card = cards.get(item.source_ref) ?? null;
+      item.address_raw = card?.captionAddress ?? captionAsAddress(item.address_raw);
+      item.suburb = suburbForArea(card?.area) ?? item.suburb;
+      if (card?.price != null) item.price = card.price;
+      if (card?.bedrooms != null) item.bedrooms = card.bedrooms;
+      if (card?.bathrooms != null) item.bathrooms = card.bathrooms;
+      item.raw = { ...item.raw, card, agents: item.agents };
+
       const existing = await service
         .from("external_listing")
         .select("id, address_raw, lat, lng")
@@ -216,6 +237,8 @@ async function run(request: Request) {
         property_type: item.property_type,
         agency_name: "Dream Properties",
         image_url: item.image_url,
+        erf_size_sqm: card?.erfSqm ?? null,
+        floor_size_sqm: card?.dwellingSqm ?? null,
         raw: item.raw,
         last_seen: runAt.toISOString(),
         active: true,
@@ -238,7 +261,10 @@ async function run(request: Request) {
       seenIds.add(upsertRow.id);
       upserted++;
 
-      if ((addressChanged || missingCoords) && item.address_raw) {
+      // Address may now be null (a caption that was really a photo
+      // description or an agent's name): the locator then places the
+      // listing by its area instead of on a stale wrong pin.
+      if (addressChanged || missingCoords) {
         geocodeQueue.push({
           id: upsertRow.id,
           address: item.address_raw,
@@ -353,8 +379,27 @@ async function run(request: Request) {
       errors.push(`dedup failed: ${(e as Error).message}`);
     }
 
+    // Website → Dream OS: properties, listings and agents. Runs nightly only
+    // once the first sync has been reviewed and applied by hand (POST
+    // /api/sources/dream/sync-os), so nothing is created unseen.
+    let osSync: Pick<SyncReport, "counts" | "agentsCreated" | "goneFromWebsite" | "errors"> | null = null;
+    try {
+      const { count } = await service
+        .from("listing")
+        .select("id", { count: "exact", head: true })
+        .not("website_slug", "is", null);
+      if ((count ?? 0) > 0) {
+        const r = await syncWebsiteToOs(service, { dry: false });
+        osSync = { counts: r.counts, agentsCreated: r.agentsCreated, goneFromWebsite: r.goneFromWebsite, errors: r.errors };
+        errors.push(...r.errors.map((e) => `os sync: ${e}`));
+      }
+    } catch (e) {
+      errors.push(`os sync failed: ${(e as Error).message}`);
+    }
+
     return NextResponse.json({
       ok: true,
+      osSync,
       upserted,
       geocoded,
       centroid_fallback: centroidFallback,
@@ -434,8 +479,12 @@ function extractListingUrls(html: string): string[] {
 // We extract nonce + max data-pagenum from the initial HTML, then walk. Stop
 // early if a page returns zero new slugs (safety net for theme changes).
 // -----------------------------------------------------------------------------
-async function discoverAllListingUrls(initialHtml: string): Promise<string[]> {
+async function discoverAllListingUrls(
+  initialHtml: string,
+): Promise<{ urls: string[]; cards: Map<string, WebsiteCard> }> {
   const bySlug = new Map<string, string>();
+  const cards = new Map<string, WebsiteCard>();
+  for (const c of parseIndexCards(initialHtml)) cards.set(c.slug, c);
   const slugFromUrl = (u: string) =>
     u.match(/knysna-properties\/([a-z0-9][a-z0-9-]*)\/?$/i)?.[1];
 
@@ -453,7 +502,7 @@ async function discoverAllListingUrls(initialHtml: string): Promise<string[]> {
     console.warn(
       "[dream-scraper] no AJAX nonce found in index — falling back to server-rendered slugs only",
     );
-    return Array.from(bySlug.values());
+    return { urls: Array.from(bySlug.values()), cards };
   }
 
   // We don't cap the walk with the paginator's max page number. The theme
@@ -491,6 +540,7 @@ async function discoverAllListingUrls(initialHtml: string): Promise<string[]> {
       console.warn(`[dream-scraper] AJAX page ${page} fetch failed: ${(e as Error).message}`);
       break;
     }
+    for (const c of parseIndexCards(html)) if (!cards.has(c.slug)) cards.set(c.slug, c);
     let addedThisPage = 0;
     for (const url of extractListingUrls(html)) {
       const slug = slugFromUrl(url);
@@ -502,7 +552,7 @@ async function discoverAllListingUrls(initialHtml: string): Promise<string[]> {
     if (addedThisPage === 0) break;   // theme changed / stale page / end of set
   }
 
-  return Array.from(bySlug.values());
+  return { urls: Array.from(bySlug.values()), cards };
 }
 
 // -----------------------------------------------------------------------------
@@ -519,6 +569,8 @@ export type DreamListing = {
   bathrooms: number | null;
   property_type: string | null;
   image_url: string | null;
+  /** Agents on the listing's sidebar, lead first. */
+  agents: WebsiteAgent[];
   raw: Record<string, unknown>;
 };
 
@@ -543,7 +595,10 @@ function parseDreamListing(url: string, html: string): DreamListing {
   // address (e.g. "26-Brenton-Hotel-11.jpg"). Meta/og tags are decorative on
   // most listings and rarely include a usable street address, so the image
   // filenames are the reliable address source.
-  const listingImages = collectListingImages(html);
+  // The sidebar's agent photos ("Angie-540x360.jpg") are not listing
+  // photos; their names were being read as addresses.
+  const listingImages = collectListingImages(stripAgentSidebar(html));
+  const agents = parseAgentCards(html);
 
   // Address extraction — priority:
   //   1. meta description / h1 / og:title if they start with a street number
@@ -603,6 +658,7 @@ function parseDreamListing(url: string, html: string): DreamListing {
     bathrooms,
     property_type,
     image_url,
+    agents,
     raw: {
       metaDesc,
       priceMatch: priceMatch?.[0] ?? null,

@@ -357,6 +357,24 @@ table.queue { width: 100%; border-collapse: collapse; margin-top: 28px; backgrou
 table.queue th { text-align: left; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: #6b78a0; padding: 12px 14px; border-bottom: 2px solid var(--mist); font-family: var(--font-mono); }
 table.queue td { padding: 12px 14px; border-bottom: 1px solid var(--mist); font-size: 14px; }
 table.queue td.strong { font-weight: 600; color: var(--estuary); }
+
+/* Properties list (2026-10-17): views, status, agents, address-to-confirm */
+.prop-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.prop-tab { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px; border: 1px solid var(--mist); background: var(--white); color: #343c52; font-size: 14px; font-weight: 500; text-decoration: none; }
+.prop-tab:hover { border-color: #c5cde3; }
+.prop-tab.on { background: var(--navy); border-color: var(--navy); color: var(--white); }
+.prop-tab:focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; }
+.prop-tab-n { font-family: var(--font-mono); font-size: 12px; opacity: 0.75; }
+.prop-hint { margin: 16px 0 0; padding: 10px 14px; border-radius: 10px; background: #fbefd9; color: #5c4210; font-size: 14px; line-height: 1.5; max-width: 760px; }
+.prop-confirm { display: inline-block; margin-left: 8px; padding: 2px 8px; border-radius: 999px; background: #fbefd9; color: #7A5814; font-size: 11px; font-weight: 600; letter-spacing: 0.02em; vertical-align: 1px; white-space: nowrap; }
+.prop-status { display: inline-block; padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; background: #eef1f8; color: #5f6883; }
+.prop-status.s-live { background: #e2e8f6; color: var(--navy); }
+.prop-status.s-under_offer { background: var(--status-under-offer-bg); color: var(--status-under-offer-fg); }
+.prop-status.s-sold { background: #dceee3; color: #0E4A2A; }
+.prop-status.s-none { background: transparent; color: #8a93ab; padding-left: 0; font-weight: 500; }
+.prop-agent { display: block; font-size: 13px; color: #343c52; line-height: 1.45; }
+.prop-agent.me { font-weight: 600; color: var(--navy); }
+.prop-lead { color: #8a93ab; font-weight: 400; font-size: 12px; }
 .tier { padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; text-transform: uppercase; }
 .tier-green { background: #e2f2e8; color: var(--forest); }
 .tier-amber { background: #fbefd9; color: #9a6414; }
@@ -403,6 +421,22 @@ table.kv td.c { color: #9aa6c4; text-align: right; font-size: 11px; width: 40px;
 .record-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; }
 .record-head-title { flex: 1; min-width: 0; }
 .record-head-status { text-align: right; }
+.record-head-agents { margin: 4px 0 0; font-size: 13px; color: rgba(255,255,255,0.78); }
+.record-head-agents b { color: var(--white); font-weight: 600; }
+.prop-confirm.on-dark { font-size: 11px; vertical-align: 4px; }
+
+/* Edit details (2026-10-17) */
+.edit-details-btn { margin: 0 0 16px; padding: 7px 14px; border-radius: 999px; border: 1px solid #c5cde3; background: var(--white); color: var(--navy); font-size: 13px; font-weight: 600; cursor: pointer; }
+.edit-details-btn:hover { border-color: var(--navy); }
+.edit-details-btn:focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; }
+.edit-details { display: grid; gap: 12px; margin: 0 0 20px; padding: 18px 20px; max-width: 760px; background: var(--white); border: 1px solid var(--mist); border-radius: 12px; box-shadow: 0 4px 20px rgba(15,42,99,0.06); }
+.edit-details label { display: grid; gap: 4px; font-size: 12px; font-weight: 600; color: #5f6883; }
+.edit-details input, .edit-details select { font: inherit; font-size: 15px; font-weight: 400; color: #1b2236; padding: 9px 11px; border: 1px solid #c5cde3; border-radius: 8px; background: var(--white); min-width: 0; }
+.edit-details-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.edit-details-note { margin: 0; font-size: 13px; color: #5c4210; background: #fbefd9; padding: 8px 12px; border-radius: 8px; }
+.edit-details-err { margin: 0; color: #B9431F; font-size: 13px; }
+.edit-details-actions { display: flex; gap: 8px; }
+@media (max-width: 640px) { .edit-details-row { grid-template-columns: 1fr; } }
 .record-head-date {
   margin: 8px 0 0; font-size: 11.5px;
   color: rgba(255,255,255,0.66);

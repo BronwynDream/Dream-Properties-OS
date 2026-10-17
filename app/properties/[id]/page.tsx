@@ -22,6 +22,7 @@ import { PRODUCTS as LIGHTSTONE_PRODUCTS } from "@/lib/lightstone";
 import { Rand, randString } from "@/app/components/format";
 import { ppraFormTypeFor, type PpraFormType } from "@/lib/ppraDisclosure";
 import type { ViewingKind } from "@/lib/viewings";
+import EditDetails from "./EditDetails";
 
 export const dynamic = "force-dynamic";
 
@@ -53,6 +54,32 @@ export default async function PropertyRecord({
     .eq("id", params.id)
     .single();
   if (!prop) notFound();
+
+  // Agents on this property's listings (0085) and whether this user may
+  // edit the record: admins always, agents on a listing of it.
+  const [{ data: laRows }, { data: suburbList }] = await Promise.all([
+    supabase
+      .from("listing")
+      .select("id, status, created_at, listing_agent(position, agent:agent_id(full_name, app_user_id))")
+      .eq("property_id", params.id)
+      .order("created_at", { ascending: false }),
+    supabase.from("suburb").select("id, name").order("name"),
+  ]);
+  const listingAgents = (() => {
+    const rows = (laRows ?? []) as any[];
+    const open = rows.find((l) => ["draft", "live", "under_offer"].includes(l.status)) ?? rows[0];
+    return ((open?.listing_agent ?? []) as any[])
+      .sort((a, b) => a.position - b.position)
+      .map((x) => (Array.isArray(x.agent) ? x.agent[0] : x.agent))
+      .filter(Boolean) as { full_name: string; app_user_id: string | null }[];
+  })();
+  const onAnyListing = ((laRows ?? []) as any[]).some((l) =>
+    ((l.listing_agent ?? []) as any[]).some((x) => {
+      const a = Array.isArray(x.agent) ? x.agent[0] : x.agent;
+      return a?.app_user_id === user.id;
+    }),
+  );
+  const canEditDetails = isAdmin || onAnyListing;
 
   const { data: erven } = await supabase
     .from("erf")
@@ -1038,7 +1065,21 @@ export default async function PropertyRecord({
       <header className="app-head record-head">
         <div className="record-head-title">
           <p className="eyebrow">Dream Knysna · Property record</p>
-          <h1>{prop.primary_address}</h1>
+          <h1>
+            {prop.primary_address}
+            {(prop as any).address_to_confirm && <span className="prop-confirm on-dark">Address to confirm</span>}
+          </h1>
+          {listingAgents.length > 0 && (
+            <p className="record-head-agents">
+              Listed by{" "}
+              {listingAgents.map((a, i) => (
+                <span key={a.full_name}>
+                  {i > 0 ? (i === listingAgents.length - 1 ? " and " : ", ") : ""}
+                  <b>{a.full_name}</b>
+                </span>
+              ))}
+            </p>
+          )}
         </div>
         <div className="record-head-status">
           <span className={`status-chip status-${headerStatus.kind}`}>
@@ -1055,6 +1096,17 @@ export default async function PropertyRecord({
       <hr className="tideline" />
 
       <section className="app-body property-record-body">
+        {canEditDetails && (
+          <EditDetails
+            propertyId={prop.id}
+            address={prop.primary_address}
+            addressToConfirm={!!(prop as any).address_to_confirm}
+            suburbId={(prop as any).suburb_id ?? null}
+            extentSqm={(prop as any).extent_sqm != null ? Number((prop as any).extent_sqm) : null}
+            erfNumber={primaryErf}
+            suburbs={(suburbList ?? []) as { id: string; name: string }[]}
+          />
+        )}
         {/* The record plate — identity (Registry Stamp + valuation), cadastre,
             schedule, photos. All action buttons for the record live inside
             the plate via actionsSlot so they belong to the identity, not

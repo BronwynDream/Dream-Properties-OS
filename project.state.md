@@ -8,6 +8,64 @@ _Last updated: 2026-10-17_
 
 ---
 
+## WEBSITE LISTINGS → DREAM OS, WITH AGENTS (2026-10-17, afternoon)
+
+**Feedback moments (verbatim, Simon):**
+- "The website is a complete listing of what's on the books. What we now need to do is take all of those listings, bring them into Dream OS, and assign them to an agent. Then when an agent logs in, they can see the listings that are associated with them as property records on the system."
+- "I think the agent can fill in the blanks if there are any on the property record. So if there is no address the record should still be created and then the agent can add the details right"
+- "Yes then the agent can add the sellers details as well as all the other available documents for the record"
+
+**Decisions (Simon, via question card):** co-listed agents both see the listing, and the first-named is lead. Do NOT send invites yet. Where a listing already exists, the website's price wins and Dream OS's status wins.
+
+**What the comparison found (2026-10-17):**
+- The website has 49 listings; Dream OS has 25 property records.
+- Only 8 website listings exist in Dream OS, and only 2 of those agree on price and status.
+- 41 website listings had no record. 6 Dream OS records are folder names, not properties. 6 Bowden Park appears twice.
+
+**Shipped**
+- Migration `0085_agents_and_website_listings.sql`:
+  - New `agent` roster table, keyed by email (7 agents, from the website's agent cards), and `listing_agent` (position 1 = lead).
+  - New columns: `listing.website_slug / website_url / website_seen_at` and `property.address_to_confirm`.
+  - Trigger `trg_app_user_links_agent` links an agent to their login by email (any capitalisation) when the login is created, and fills `listing.agent_user_id` for listings where they lead.
+  - RLS: staff read, admin write. New `agent_on_property()`: agents can update `property` and insert/update `erf` on properties they're listed on.
+  - Missing suburbs seeded.
+  - 8 website listings hand-linked to existing properties via `external_listing.matched_property_id`:
+    - Eagle's Way → 12 Eagles Way; E105; St James → 4 Waterfront Drive; Jaw Dropping → 25 Ridge Drive (268 m²); Inviting the Outdoors in → 159 Sharples (1 043 m²); Hudson Heights; Freehold with Views Forever → 19 Eagles Way; Dual Living B&B → 6 Bowden Park (1 373 m²).
+- `lib/dream/website.ts`:
+  - `parseIndexCards`: title, price, area, erf/dwelling m² (`&sup2;`!), beds, baths, `offer-banner` = under offer, and the cover-photo caption = street address when it has a number.
+  - `parseAgentCards`: reads the `.dream_agent_form_data` sidebar.
+  - `stripAgentSidebar`: agent photos were being read as listing photos, which is where the "Angie" / "Avril" / "Gael" / "Bronwyne" addresses came from.
+  - `captionAsAddress`, `suburbForArea`.
+- Dream refresh route:
+  - Discovery collects cards; the parser strips the sidebar and collects agents.
+  - The upsert takes the address from the card caption, plus area→suburb, price, beds/baths, erf/floor m², and `raw.card` / `raw.agents`.
+  - Rows whose address becomes null are re-located by area.
+  - At the end it runs the OS sync, but only once a listing with a `website_slug` exists, i.e. after the first reviewed run.
+- `lib/dream/sync.ts` `syncWebsiteToOs`:
+  - Matching order: `website_slug` → `matched_property_id` → create.
+  - New property: caption address or "<title>, <suburb>" + `address_to_confirm`; suburb, estate, type, erf extent; lat/lng only when the geocode was exact.
+  - Adopts the property's latest listing that has no slug, or creates one: live / under_offer from the banner; sold if the transfer is registered; under_offer if it's in progress.
+  - Website price wins (with price history). Dream OS status wins, except draft.
+  - Replaces `listing_agent` to match the website.
+  - Reports listings gone from the website, without closing them.
+- `POST /api/sources/dream/sync-os?dry=1` (admin).
+- Properties page: tabs for My listings (the agent default), Current listings (the office default) and All properties. Columns for status, price and agents (lead marked), an "Address to confirm" chip, and a hint on My listings. Falls back to the plain list before 0085.
+- Property page: "Listed by …" in the header, an "Address to confirm" chip, and **Edit details** (street address, suburb, erf number, erf size) for admins and the listing's agents. `updatePropertyDetails` clears `address_to_confirm` when the address changes.
+
+**Verification**
+- tsc and the build are clean.
+- 0085 was run twice on a stand-in Postgres: agents seed, Vanessa auto-links by email, a later Angie login links and fills `listing.agent_user_id`, `agent_on_property` is true for Angie and false for Vanessa, and 13 suburbs.
+- The website reader was run against the live site in the browser: page-1 and page-2 cards, the Jo + Avril agents parsed, and the agent photo is gone after the strip.
+- NOT yet verified: the real sync against production (next: run Dream refresh, dry-run sync-os, review, apply).
+
+**Loose ends**
+- Agents still can't add sellers, transfers, FICA or documents: those writes are admin-only in both the app and RLS. Simon wants agents to; I told him it would be its own careful step, scoped to their own records.
+- `/dashboard` and `/mandates` scope by `listing.agent_user_id` (lead only), so co-agents won't see their shared listings there until those screens read `listing_agent`.
+- Clean-up: the 6 folder-name property records (26 Lower Duthie ×3, Master Templates, the Pezula design manual, "Plot: 21 Emu Crescent … continued"), the duplicate 6 Bowden Park, and PLOT19 Eagles Way vs 19 Eagles Way.
+- 6 Bowden Park and Plot A4 are registered, but their listings are still "live" in Dream OS. The website also still advertises 6 Bowden Park ("Dual Living") and 25 Ridge Drive.
+
+---
+
 ## MAP PINS: HOUSE-LEVEL OR AREA-ONLY, NEVER THE MIDDLE OF A STREET (2026-10-17, afternoon)
 
 **Feedback moment (verbatim, Simon):** "whats this property doing on Leisure Island ?" It was 52 Woodbourne Dr, Fernwood Estate (P24 116997184, RE/MAX). The stored coordinate (-34.0691, 23.0649) is exactly Google's point for Woodbourne Drive, the middle of the road by the Leisure Isle causeway. Fernwood Estate is ~1.6 km east, on the northern slopes of the Eastern Head (-34.0696, 23.0824). Simon then said "you choose" on the fix; I chose a hollow "area only" dot over leaving those listings off the map.
@@ -60,16 +118,8 @@ _Last updated: 2026-10-17_
 - `centroidForArea` was spot-checked (Woodbourne → Fernwood; "Belvidere St, Hornlee" → Hornlee; Knysna Rural → null).
 - NOT verified: Mapbox v6 `feature_type`/`match_code` on real responses (no token in the container); the recheck endpoint against production (to run after deploy, dry first).
 
-**Applied (12:55, Simon said "yes" to the third dry run):** 0084 is run, and recheck-locations has been applied to production. 503 rows scanned, 172 moved, 331 unchanged. Dedup rebuild: no group or match changes.
-- 93 hidden-address listings came off P24's placeholder point: 88 went to their suburb, area-only; 5 went off the map (Knysna Rural ×4, bare "Knysna" ×1).
-- 25 area-only listings moved to the corrected centroids (Elandskraal, Knysna Rural, went off the map).
-- 28 listings that had no coordinate now show as area-only dots.
-- 22 bad pins were corrected (Woodbourne → Fernwood; Pezula house 56 km out; Paradise in the sea; town-centre Westford Bridge / Pezula / Fernwood; River Club Road ×3 → River Club).
-- 4 Dream-website house names went off the map: Sandpoint, Gael, The Boat Aerial View, Karalee Farm Karatara. Karalee was roughly right; offered to pin it by hand.
-- Live check in the browser: no pins are left on the P24 placeholder; 52 Woodbourne sits at the Fernwood centroid as area-only (hollow dot plus "Area only" in the list, satellite view checked).
-- Two rows are still on the old causeway point (-34.067203, 23.064679): "African Breeze" [Leisure Isle], kept because it is within 0.46 km of Leisure Isle, and "C13 Updated Photos", which has a digit and no area, so rule f skipped it. Both are Dream-website rows. Fix by hand, or make the Dream scraper stop using image captions as addresses.
-
 **Loose ends**
+- After deploy: run 0084, then dry-run recheck-locations, review the moves, then apply.
 - `app/map/actions.ts` still has its own Mapbox geocoder for OUR properties (`property` table); it is not touched here.
 - `dedup.ts:430` unused `updateErrors` (pre-existing).
 
