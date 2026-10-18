@@ -19,6 +19,8 @@ _Last updated: 2026-10-18_
 - `/api/lightstone` and `/api/lightstone/search` return 503 "Lightstone isn't connected" without them, so no more placeholders.
 - Code kept for a future reseller / API (see LIGHTSTONE STRATEGY 2026-07-22).
 
+**Open question (Simon, 2026-10-18):** "I'm not sure if all of the agents have their own manual login to Lightstone, or whether the company has one login that they all use." It's on the running list **claude/questions-for-bronwyn-and-camilla.md** in the Claude project ("Dream Knysna"), together with every other open question for Bronwyn and Camilla gathered from these notes. Add new ones there, not here.
+
 **Idea for later (Simon):** turn the button into "Request a Lightstone report", which emails Camilla (who uses the Lightstone portal) with the property, and files her PDF back via intake. That fits the "pay once, view forever" plan.
 
 ---
