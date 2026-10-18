@@ -4,7 +4,22 @@ Running log of what's decided, built, and next. Updated at the end of each worki
 session. `PROJECT.md` remains the canonical business/design doc; this file is the
 "where are we right now" companion.
 
-_Last updated: 2026-10-17_
+_Last updated: 2026-10-18_
+
+---
+
+## LIGHTSTONE PARKED (2026-10-18)
+
+**Feedback moment (verbatim, Simon):** "So what actually happens when you push 'Fetch a Lightstone report' on the Dream OS? It's not actually linked to Lightstone, is it? … it's R5,000 a month or something, which is not what we require … Maybe that sends a request somewhere or an email to Camilla to look it up, but we just have to park that for now because it's offering something that doesn't actually exist."
+
+**What it did:** with no `LIGHTSTONE_API_BASE`/`KEY` set, `lib/lightstone` falls back to the stub adapter, which files "[SAMPLE]" placeholder documents onto the record. On a sync-created record (10 Old Drift, Simola) it errored with "property not found" (not investigated; parked).
+
+**Shipped:**
+- The "Order Lightstone report" buttons (record plate + Take on documents) and the Lightstone lookup on New property are hidden unless both env vars are set.
+- `/api/lightstone` and `/api/lightstone/search` return 503 "Lightstone isn't connected" without them, so no more placeholders.
+- Code kept for a future reseller / API (see LIGHTSTONE STRATEGY 2026-07-22).
+
+**Idea for later (Simon):** turn the button into "Request a Lightstone report", which emails Camilla (who uses the Lightstone portal) with the property, and files her PDF back via intake. That fits the "pay once, view forever" plan.
 
 ---
 

@@ -128,7 +128,10 @@ export default async function PropertiesList({ searchParams }: { searchParams: {
 
         <section className="app-body" style={{ maxWidth: 1100 }}>
           <div id="new" style={{ marginBottom: 20, scrollMarginTop: 80 }}>
-            <NewPropertyForm suburbs={suburbs} />
+            <NewPropertyForm
+              suburbs={suburbs}
+              lightstoneConnected={!!(process.env.LIGHTSTONE_API_BASE && process.env.LIGHTSTONE_API_KEY)}
+            />
           </div>
 
           {hasListings && (

@@ -26,8 +26,11 @@ type Candidate = {
 
 export default function NewPropertyForm({
   suburbs,
+  lightstoneConnected = false,
 }: {
   suburbs: SuburbOption[];
+  /** Lightstone is parked (2026-10-18): the lookup only shows when the live API is configured. */
+  lightstoneConnected?: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -252,7 +255,9 @@ export default function NewPropertyForm({
         </h3>
       </div>
 
-      {/* Lightstone address search */}
+      {/* Lightstone address search — parked 2026-10-18 (no Lightstone API; R5k/month declined). Shown only when LIGHTSTONE_API_BASE + KEY are set. */}
+      {lightstoneConnected && (
+      <>
       <div
         style={{
           background: "#fbfcfe",
@@ -397,6 +402,8 @@ export default function NewPropertyForm({
           </p>
         )}
       </div>
+      </>
+      )}
 
       <form
         onSubmit={submit}

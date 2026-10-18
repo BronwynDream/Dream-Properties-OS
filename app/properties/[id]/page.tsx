@@ -80,6 +80,10 @@ export default async function PropertyRecord({
     }),
   );
   const canEditDetails = isAdmin || onAnyListing;
+  // Lightstone is parked (Simon, 2026-10-18): Dream declined the R5k/month
+  // API, so without credentials the buttons only produced [SAMPLE]
+  // placeholders. They reappear if LIGHTSTONE_API_BASE + KEY are ever set.
+  const lightstoneConnected = !!(process.env.LIGHTSTONE_API_BASE && process.env.LIGHTSTONE_API_KEY);
 
   const { data: erven } = await supabase
     .from("erf")
@@ -1151,14 +1155,16 @@ export default async function PropertyRecord({
                 transferId={activeTransfer?.id ?? null}
                 listingId={listingForPicker?.id ?? null}
               />
-              <LightstoneFetch
-                propertyId={prop.id}
-                products={LIGHTSTONE_PRODUCTS.map((p) => ({
-                  code: p.code,
-                  label: p.label,
-                  description: p.description,
-                }))}
-              />
+              {lightstoneConnected && (
+                <LightstoneFetch
+                  propertyId={prop.id}
+                  products={LIGHTSTONE_PRODUCTS.map((p) => ({
+                    code: p.code,
+                    label: p.label,
+                    description: p.description,
+                  }))}
+                />
+              )}
               {isAdmin && (
                 <ErfLookup
                   propertyId={prop.id}
@@ -1288,14 +1294,16 @@ export default async function PropertyRecord({
               style={{ marginBottom: 12, alignItems: "flex-end" }}
             >
               <h2 style={{ fontSize: 20, margin: 0 }}>Take on documents</h2>
-              <LightstoneFetch
-                propertyId={prop.id}
-                products={LIGHTSTONE_PRODUCTS.map((p) => ({
-                  code: p.code,
-                  label: p.label,
-                  description: p.description,
-                }))}
-              />
+              {lightstoneConnected && (
+                <LightstoneFetch
+                  propertyId={prop.id}
+                  products={LIGHTSTONE_PRODUCTS.map((p) => ({
+                    code: p.code,
+                    label: p.label,
+                    description: p.description,
+                  }))}
+                />
+              )}
             </div>
             <DropZone
               propertyId={prop.id}

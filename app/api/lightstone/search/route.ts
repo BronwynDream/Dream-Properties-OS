@@ -11,6 +11,11 @@ export const runtime = "nodejs";
 // Used by the take-on form: type an address → pick a match → capture propertyId.
 
 export async function POST(request: Request) {
+  // Lightstone is parked (Simon, 2026-10-18): no API subscription, so the
+  // stub would only file [SAMPLE] placeholders onto real records.
+  if (!(process.env.LIGHTSTONE_API_BASE && process.env.LIGHTSTONE_API_KEY)) {
+    return NextResponse.json({ error: "Lightstone isn't connected to Dream OS." }, { status: 503 });
+  }
   const supabase = createClient();
   const {
     data: { user },
