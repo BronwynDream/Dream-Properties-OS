@@ -18,6 +18,7 @@ export type StartProperty = {
   suburb: string | null;
   lat: number | null;
   lng: number | null;
+  prclKey: string | null;
   listingId: string | null;
   transferId: string | null;
   mine: boolean;

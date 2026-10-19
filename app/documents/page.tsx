@@ -22,6 +22,7 @@ type PropRow = {
   primary_address: string;
   lat: number | null;
   lng: number | null;
+  prcl_key: string | null;
   suburb: { name: string } | { name: string }[] | null;
   listing:
     | {
@@ -44,7 +45,7 @@ export default async function DocumentsStart() {
   const [propsRes, transfersRes] = await Promise.all([
     supabase
       .from("property")
-      .select("id, primary_address, lat, lng, suburb:suburb_id(name), listing(id, created_at, listing_agent(agent:agent_id(app_user_id)))")
+      .select("id, primary_address, lat, lng, prcl_key, suburb:suburb_id(name), listing(id, created_at, listing_agent(agent:agent_id(app_user_id)))")
       .order("primary_address"),
     supabase.from("transfer").select("id, property_id, created_at").order("created_at", { ascending: false }),
   ]);
@@ -65,6 +66,7 @@ export default async function DocumentsStart() {
       suburb: one(p.suburb)?.name ?? null,
       lat: p.lat != null ? Number(p.lat) : null,
       lng: p.lng != null ? Number(p.lng) : null,
+      prclKey: p.prcl_key ?? null,
       listingId: listings[0]?.id ?? null,
       transferId: dealOf.get(p.id) ?? null,
       mine,

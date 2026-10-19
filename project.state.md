@@ -24,6 +24,19 @@ have a suburb search bar or something easier to track the property ?"
 - CSS: `.takeon-where` single column, `.erfmap-bar/-suburb/-size`,
   `.docstart-suburbs/-suburb`.
 
+**Found in the live check (previous push) and fixed in the same commit**
+- Picking a roll erf didn't move the map: `erf_centroid_lookup` (0060)
+  matches only `tag_value = 'erf N'` and `maj_region = 'KNYSNA'` and returned
+  nothing for erf 4497 (15 Eagles Way). `locateErf` now falls back to
+  cadastral_parcel with digits / "erf N" variants and `maj_region ilike
+  '%KNYSNA%'` (as the 0039 snap does), parsing the centroid from GeoJSON or
+  EWKB hex. Existing records also outline their `prcl_key`.
+- The roll offered "15 Eagles Way" as a NEW record although "15 Eagles Way,
+  The Heads, Knysna" exists: roll hits whose address is a prefix of a Dream
+  OS result are hidden, and `resolveProperty` also matches `address,%`.
+- Roll suburbs carry a code ("1300-Heads"): stripped for display and for
+  the suburb lookup.
+
 **Verification**: tsc clean, build passes. Live check pending push.
 
 ## MANDATE TAKE-ON: FIND THE PROPERTY ON THE MAP TOO (2026-10-19)

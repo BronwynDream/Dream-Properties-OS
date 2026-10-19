@@ -46,13 +46,50 @@ export async function locateErf(erfNumber: string): Promise<{ prclKey: string; l
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user || !erfNumber.trim()) return null;
-  const { data } = await createServiceClient().rpc("erf_centroid_lookup", { p_erf_number: erfNumber.trim() });
+  const n = erfNumber.trim().replace(/[^0-9]/g, "");
+  if (!user || !n) return null;
+  const db = createServiceClient();
+
+  const { data } = await db.rpc("erf_centroid_lookup", { p_erf_number: n });
   const row = (Array.isArray(data) ? data[0] : data) as { prcl_key: string; lng: number; lat: number } | null;
-  if (!row) return null;
-  const lng = Number(row.lng);
-  const lat = Number(row.lat);
-  return Number.isFinite(lng) && Number.isFinite(lat) ? { prclKey: row.prcl_key, lng, lat } : null;
+  if (row && Number.isFinite(Number(row.lng)) && Number.isFinite(Number(row.lat))) {
+    return { prclKey: row.prcl_key, lng: Number(row.lng), lat: Number(row.lat) };
+  }
+
+  // erf_centroid_lookup only matches tag_value = 'erf N' with maj_region
+  // exactly 'KNYSNA' and found nothing for 15 Eagles Way (erf 4497) on
+  // 2026-10-19. The erf snap (0039) compares digits only and uses
+  // ilike '%KNYSNA%'; do the same here.
+  const { data: parcels } = await db
+    .from("cadastral_parcel")
+    .select("prcl_key, centroid")
+    .in("tag_value", [n, `erf ${n}`, `Erf ${n}`, `ERF ${n}`])
+    .ilike("maj_region", "%KNYSNA%")
+    .limit(5);
+  for (const p of (parcels ?? []) as { prcl_key: string; centroid: unknown }[]) {
+    const c = readPoint(p.centroid);
+    if (c) return { prclKey: p.prcl_key, ...c };
+  }
+  return null;
+}
+
+/** A PostGIS point as PostgREST returns it: GeoJSON, or (E)WKB hex. */
+function readPoint(v: unknown): { lng: number; lat: number } | null {
+  if (!v) return null;
+  if (typeof v === "object" && Array.isArray((v as { coordinates?: unknown }).coordinates)) {
+    const [lng, lat] = (v as { coordinates: number[] }).coordinates;
+    return Number.isFinite(lng) && Number.isFinite(lat) ? { lng, lat } : null;
+  }
+  if (typeof v === "string" && /^[0-9a-f]+$/i.test(v) && v.length >= 42) {
+    const buf = Buffer.from(v, "hex");
+    const le = buf[0] === 1;
+    const type = le ? buf.readUInt32LE(1) : buf.readUInt32BE(1);
+    const off = type & 0x20000000 ? 9 : 5; // EWKB carries a 4-byte SRID
+    const lng = le ? buf.readDoubleLE(off) : buf.readDoubleBE(off);
+    const lat = le ? buf.readDoubleLE(off + 8) : buf.readDoubleBE(off + 8);
+    return Number.isFinite(lng) && Number.isFinite(lat) ? { lng, lat } : null;
+  }
+  return null;
 }
 
 /** A Dream OS property that already has this erf attached, if any. */
@@ -240,12 +277,19 @@ async function resolveProperty(db: Db, p: TakeOnProperty): Promise<{ ok: true; i
     if (data?.property_id) return { ok: true, id: data.property_id };
   }
   // Same address written the same way? Reuse it.
-  const { data: same } = await db.from("property").select("id").ilike("primary_address", address.replace(/[%_\\]/g, (c) => `\\${c}`)).limit(1).maybeSingle();
+  const esc = address.replace(/[%_\\]/g, (c) => `\\${c}`);
+  const { data: same } = await db
+    .from("property")
+    .select("id")
+    .or(`primary_address.ilike.${JSON.stringify(esc)},primary_address.ilike.${JSON.stringify(`${esc},%`)}`)
+    .limit(1)
+    .maybeSingle();
   if (same) return { ok: true, id: same.id };
 
   let suburbId: string | null = null;
   if (p.kind === "erf" && p.suburb) {
-    const { data } = await db.from("suburb").select("id").ilike("name", p.suburb.trim()).limit(1).maybeSingle();
+    const name = p.suburb.replace(/^\d+-/, "").trim();
+    const { data } = await db.from("suburb").select("id").ilike("name", name).limit(1).maybeSingle();
     suburbId = data?.id ?? null;
   }
 

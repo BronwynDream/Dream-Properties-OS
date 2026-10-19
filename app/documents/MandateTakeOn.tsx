@@ -31,6 +31,8 @@ type Chosen = { label: string; sub: string | null; property: TakeOnProperty; exi
 
 const titleCase = (s: string) =>
   s === s.toUpperCase() ? s.toLowerCase().replace(/\b([a-z])/g, (c) => c.toUpperCase()) : s;
+// The roll prefixes some suburbs with a code: "1300-Heads".
+const cleanSuburb = (s: string | null | undefined) => (s ? titleCase(s.replace(/^\d+-/, "").trim()) : null);
 const rollAddress = (h: RollHit) => titleCase([h.streetNo, h.streetName].filter(Boolean).join(" "));
 const groupDigits = (n: number) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
 
@@ -66,6 +68,16 @@ export default function MandateTakeOn({
       .sort((a, b) => Number(b.mine) - Number(a.mine) || a.address.localeCompare(b.address))
       .slice(0, 5);
   }, [properties, q]);
+
+  // A roll erf whose address is already a Dream OS record is that record —
+  // don't offer it twice ("15 Eagles Way" vs "15 Eagles Way, The Heads").
+  const rollShown = useMemo(() => {
+    const known = inOs.map((p) => p.address.toLowerCase());
+    return roll.filter((h) => {
+      const a = rollAddress(h).toLowerCase();
+      return !known.some((k) => k === a || k.startsWith(`${a},`));
+    });
+  }, [roll, inOs]);
 
   // A suburb typed in the search: offer to show it on the map.
   const suburbHits = useMemo(() => {
@@ -129,7 +141,7 @@ export default function MandateTakeOn({
     }
     const p = c.existingId ? properties.find((x) => x.id === c.existingId) : null;
     if (p?.lat != null && p?.lng != null) {
-      setFocus({ lng: p.lng, lat: p.lat, prclKey: null });
+      setFocus({ lng: p.lng, lat: p.lat, prclKey: p.prclKey });
       return;
     }
     if (c.property.kind === "erf") {
@@ -148,7 +160,7 @@ export default function MandateTakeOn({
       );
       return;
     }
-    const suburb = e.suburb ? titleCase(e.suburb) : null;
+    const suburb = cleanSuburb(e.suburb);
     const address = e.address ? titleCase(e.address) : `Erf ${e.erfNumber}${suburb ? `, ${suburb}` : ""}`;
     pick(
       {
@@ -281,24 +293,24 @@ export default function MandateTakeOn({
                   </div>
                 )}
 
-                {roll.length > 0 && (
+                {rollShown.length > 0 && (
                   <div>
                     <p className="docstart-group">Municipal roll · a new record, with the erf attached</p>
                     <ul className="docstart-props" role="list">
-                      {roll.map((h) => (
+                      {rollShown.map((h) => (
                         <li key={h.sgNumber}>
                           <button
                             type="button"
                             onClick={() =>
                               pick({
                                 label: rollAddress(h),
-                                sub: [`Erf ${h.erfNumber}`, h.suburb ? titleCase(h.suburb) : null].filter(Boolean).join(" · "),
+                                sub: [`Erf ${h.erfNumber}`, cleanSuburb(h.suburb)].filter(Boolean).join(" · "),
                                 property: {
                                   kind: "erf",
                                   erfNumber: h.erfNumber,
                                   sgNumber: h.sgNumber,
                                   address: rollAddress(h),
-                                  suburb: h.suburb ? titleCase(h.suburb) : null,
+                                  suburb: cleanSuburb(h.suburb),
                                   extentSqm: h.extentSqm,
                                   titleDeedNo: h.titleDeedNo,
                                 },
@@ -309,7 +321,7 @@ export default function MandateTakeOn({
                             <span className="docstart-addr">{rollAddress(h)}</span>
                             <span className="docstart-sub">
                               Erf {h.erfNumber}
-                              {h.suburb ? ` · ${titleCase(h.suburb)}` : ""}
+                              {cleanSuburb(h.suburb) ? ` · ${cleanSuburb(h.suburb)}` : ""}
                               {h.extentSqm ? ` · ${groupDigits(Number(h.extentSqm))} m²` : ""}
                             </span>
                           </button>
