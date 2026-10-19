@@ -6,7 +6,8 @@ import AddSellerFields, { emptySeller, normaliseSeller, type SellerFormValue } f
 import dynamic from "next/dynamic";
 import { locateErf, mandateContext, propertyForErf, takeOnForMandate, type TakeOnProperty } from "./actions";
 import type { StartProperty } from "./DocumentStart";
-import type { MapErf, MapFocus } from "./ErfPickerMap";
+import type { MapErf, MapFocus, MapJump } from "./ErfPickerMap";
+import { SUBURBS } from "./suburbs";
 
 // Mapbox touches window on import, so the picker map loads in the browser only.
 const ErfPickerMap = dynamic(() => import("./ErfPickerMap"), { ssr: false });
@@ -48,6 +49,7 @@ export default function MandateTakeOn({
   const [rollBusy, setRollBusy] = useState(false);
   const [chosen, setChosen] = useState<Chosen | null>(null);
   const [focus, setFocus] = useState<MapFocus>(null);
+  const [jump, setJump] = useState<MapJump>(null);
   const [onRecord, setOnRecord] = useState<string[] | null>(null);
   const [seller, setSeller] = useState<SellerFormValue>(emptySeller);
   const [sellerOpen, setSellerOpen] = useState(true);
@@ -64,6 +66,13 @@ export default function MandateTakeOn({
       .sort((a, b) => Number(b.mine) - Number(a.mine) || a.address.localeCompare(b.address))
       .slice(0, 5);
   }, [properties, q]);
+
+  // A suburb typed in the search: offer to show it on the map.
+  const suburbHits = useMemo(() => {
+    if (q.length < 3 || /^\d/.test(q)) return [];
+    const needle = q.toLowerCase();
+    return SUBURBS.filter((s) => s.name.toLowerCase().includes(needle)).slice(0, 3);
+  }, [q]);
 
   // The municipal roll: every erf in Knysna, searched by street.
   useEffect(() => {
@@ -221,7 +230,7 @@ export default function MandateTakeOn({
             <input
               type="search"
               className="docstart-search"
-              placeholder="Street address, e.g. 12 Eagles Way"
+              placeholder="Street address or suburb, e.g. 12 Eagles Way or Leisure Isle"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               aria-label="Property address"
@@ -234,6 +243,23 @@ export default function MandateTakeOn({
               </p>
             ) : (
               <div className="docstart-results">
+                {suburbHits.length > 0 && (
+                  <div>
+                    <p className="docstart-group">Suburb · show it on the map, then click the erf</p>
+                    <div className="docstart-suburbs">
+                      {suburbHits.map((s) => (
+                        <button
+                          key={s.name}
+                          type="button"
+                          className="docstart-suburb"
+                          onClick={() => setJump({ lng: s.lng, lat: s.lat, zoom: 15.5, key: Date.now() })}
+                        >
+                          {s.name} →
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 {inOs.length > 0 && (
                   <div>
                     <p className="docstart-group">Already in Dream OS</p>
@@ -308,7 +334,7 @@ export default function MandateTakeOn({
         )}
       </fieldset>
 
-        <ErfPickerMap token={mapboxToken} focus={focus} onPick={pickFromMap} />
+        <ErfPickerMap token={mapboxToken} focus={focus} jump={jump} onPick={pickFromMap} />
       </div>
 
       {chosen && (

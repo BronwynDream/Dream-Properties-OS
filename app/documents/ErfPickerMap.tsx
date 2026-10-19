@@ -3,6 +3,7 @@
 import "mapbox-gl/dist/mapbox-gl.css";
 import { useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
+import { SUBURBS } from "./suburbs";
 
 // A small satellite map for the mandate take-on (2026-10-19). Simon: the
 // property search "should allow you to find the property on the map as
@@ -26,6 +27,9 @@ export type MapErf = {
 };
 
 export type MapFocus = { lng: number; lat: number; prclKey: string | null } | null;
+/** Fly here without choosing anything (a suburb typed in the search). */
+export type MapJump = { lng: number; lat: number; zoom: number; key: number } | null;
+
 
 const KNYSNA: [number, number] = [23.0479, -34.0363];
 const PARCEL_MIN_ZOOM = 14;
@@ -34,10 +38,12 @@ const NO_KEYS: string[] = [];
 export default function ErfPickerMap({
   token,
   focus,
+  jump,
   onPick,
 }: {
   token: string;
   focus: MapFocus;
+  jump?: MapJump;
   onPick: (erf: MapErf) => void;
 }) {
   const box = useRef<HTMLDivElement>(null);
@@ -50,6 +56,8 @@ export default function ErfPickerMap({
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
+  const [big, setBig] = useState(false);
+  const [suburb, setSuburb] = useState("");
 
   useEffect(() => {
     if (!box.current || !token) return;
@@ -195,9 +203,44 @@ export default function ErfPickerMap({
     map.flyTo({ center: [focus.lng, focus.lat], zoom: Math.max(map.getZoom(), 17), duration: 900 });
   }, [focus, ready]);
 
+  // Jump to a suburb (typed in the search, or chosen here).
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready || !jump) return;
+    map.flyTo({ center: [jump.lng, jump.lat], zoom: jump.zoom, duration: 900 });
+  }, [jump, ready]);
+
+  // The canvas changes size when expanded; tell Mapbox.
+  useEffect(() => {
+    const t = setTimeout(() => mapRef.current?.resize(), 50);
+    return () => clearTimeout(t);
+  }, [big]);
+
+  function goSuburb(name: string) {
+    setSuburb(name);
+    const s = SUBURBS.find((x) => x.name === name);
+    if (s) mapRef.current?.flyTo({ center: [s.lng, s.lat], zoom: 15.5, duration: 900 });
+  }
+
   if (!token) return null;
   return (
-    <div className="erfmap">
+    <div className={`erfmap${big ? " big" : ""}`}>
+      <div className="erfmap-bar">
+        <label className="erfmap-suburb">
+          <span>Go to suburb</span>
+          <select value={suburb} onChange={(e) => goSuburb(e.target.value)} aria-label="Go to suburb">
+            <option value="">Choose…</option>
+            {SUBURBS.map((s) => (
+              <option key={s.name} value={s.name}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button type="button" className="erfmap-size" onClick={() => setBig((v) => !v)} aria-pressed={big}>
+          {big ? "Smaller map" : "Bigger map"}
+        </button>
+      </div>
       <div ref={box} className="erfmap-canvas" role="region" aria-label="Map: click an erf to choose it" />
       {failed ? (
         <p className="erfmap-hint">{failed}</p>

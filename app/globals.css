@@ -2986,9 +2986,17 @@ button.doc-thumb {
 .docstart-new { justify-self: start; background: none; border: 1px dashed var(--line-strong); border-radius: var(--radius-md); padding: 9px 12px; font: inherit; font-size: 14px; color: var(--navy); cursor: pointer; text-align: left; }
 .docstart-new:hover, .docstart-new:focus-visible { border-color: var(--navy); background: var(--paper-1); outline: none; }
 .docstart-onrecord { margin: 0; font-size: 14px; }
-/* Mandate take-on: search beside a satellite map you can pick an erf from. */
-.takeon-where { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
-@media (max-width: 760px) { .takeon-where { grid-template-columns: minmax(0, 1fr); } }
-.erfmap { display: grid; gap: 6px; min-width: 0; }
-.erfmap-canvas { height: 340px; border-radius: var(--radius-md); overflow: hidden; border: 1px solid var(--line-soft); background: var(--paper-2); }
+/* Mandate take-on: search, then a big satellite map you can pick an erf from. */
+.takeon-where { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); }
+.erfmap { display: grid; gap: 8px; min-width: 0; }
+.erfmap-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.erfmap-suburb { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-700); }
+.erfmap-suburb select { font: inherit; font-size: 14px; padding: 7px 10px; border: 1px solid var(--line-strong); border-radius: var(--radius-md); background: var(--white); color: var(--ink); max-width: 60vw; }
+.erfmap-size { background: none; border: 1px solid var(--line-strong); border-radius: var(--radius-md); padding: 6px 12px; font: inherit; font-size: 13px; color: var(--navy); cursor: pointer; }
+.erfmap-size:hover, .erfmap-size:focus-visible { border-color: var(--navy); outline: none; }
+.erfmap-canvas { height: min(520px, 62vh); border-radius: var(--radius-md); overflow: hidden; border: 1px solid var(--line-soft); background: var(--paper-2); }
+.erfmap.big .erfmap-canvas { height: 82vh; }
 .erfmap-hint { margin: 0; font-size: 12px; color: var(--paper-mute); }
+.docstart-suburbs { display: flex; flex-wrap: wrap; gap: 6px; }
+.docstart-suburb { background: var(--mist); border: 1px solid transparent; border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 13px; color: var(--estuary); cursor: pointer; }
+.docstart-suburb:hover, .docstart-suburb:focus-visible { border-color: var(--navy); outline: none; }

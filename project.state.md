@@ -8,6 +8,24 @@ _Last updated: 2026-10-19_
 
 ---
 
+## TAKE-ON MAP: BIGGER, WITH A SUBURB JUMP (2026-10-19)
+
+**Feedback moment (Simon, verbatim):** "the map is really small. should we
+have a suburb search bar or something easier to track the property ?"
+
+**Shipped**
+- Map now sits full width under the search, `min(520px, 62vh)` tall, with a
+  "Bigger map" toggle (82vh; calls `map.resize()`).
+- "Go to suburb" dropdown above the map (ErfPickerMap `SUBURBS`: the
+  GARDEN_ROUTE_CENTROIDS list, one name per point, other towns dropped) flies
+  to zoom 15.5, where erf boundaries show.
+- Typing a suburb in the search box offers "Leisure Isle →" chips that fly
+  the map there (`jump` prop), so the agent can then click the erf.
+- CSS: `.takeon-where` single column, `.erfmap-bar/-suburb/-size`,
+  `.docstart-suburbs/-suburb`.
+
+**Verification**: tsc clean, build passes. Live check pending push.
+
 ## MANDATE TAKE-ON: FIND THE PROPERTY ON THE MAP TOO (2026-10-19)
 
 **Feedback moment (Simon, verbatim):** "i think the search bar should allow
