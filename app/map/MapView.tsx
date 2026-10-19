@@ -391,7 +391,17 @@ export default function MapView({
     // a source now throws "Style is not done loading" and takes the whole
     // page down (seen live 2026-10-19). The new style's own style.load bumps
     // mapReady again, and the install runs then.
-    if (!map.isStyleLoaded()) return;
+    // But skipping must not mean "never": on the satellite style, style.load
+    // can fire while isStyleLoaded() is still false, and no second style.load
+    // follows — the dots never appeared (seen on a phone, 2026-10-19). Retry
+    // once the map has settled.
+    if (!map.isStyleLoaded()) {
+      const retry = () => setMapReady((n) => n + 1);
+      map.once("idle", retry);
+      return () => {
+        map.off("idle", retry);
+      };
+    }
 
     if (!map.hasImage("pill-ours")) {
       // 48×40 px at pixel ratio 2: stretch the flat middle, keep the round ends.

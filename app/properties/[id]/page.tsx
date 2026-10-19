@@ -165,7 +165,7 @@ export default async function PropertyRecord({
   const { data: listingRow } = await supabase
     .from("listing")
     .select(
-      "id, agent_user_id, agent:agent_user_id(name), mandate:mandate(type, expiry_date, evidence)",
+      "id, agent_user_id, agent:agent_user_id(full_name), mandate:mandate(type, expiry_date, evidence)",
     )
     .eq("property_id", params.id)
     .order("created_at", { ascending: false })
@@ -180,7 +180,7 @@ export default async function PropertyRecord({
     listingForPicker = {
       id: (listingRow as any).id,
       agent_user_id: (listingRow as any).agent_user_id ?? null,
-      agent_name: agentJoin?.name ?? null,
+      agent_name: agentJoin?.full_name ?? null,
     };
   }
   let currentMandate = (() => {
@@ -201,15 +201,22 @@ export default async function PropertyRecord({
     currentMandate = pub ?? null;
   }
 
+  // app_user's column is full_name; asking for `name` made both selects fail
+  // silently, so the record said "No listing on this property yet" on
+  // listed properties and the agent picker was empty (found 2026-10-19).
   let assignableAgents: { id: string; name: string; role: string }[] = [];
   if (isAdmin) {
     const { data: agentsData } = await supabase
       .from("app_user")
-      .select("id, name, role")
+      .select("id, full_name, role")
       .in("role", ["agent", "admin"])
       .eq("active", true)
-      .order("name", { ascending: true });
-    assignableAgents = (agentsData ?? []) as typeof assignableAgents;
+      .order("full_name", { ascending: true });
+    assignableAgents = ((agentsData ?? []) as { id: string; full_name: string; role: string }[]).map((a) => ({
+      id: a.id,
+      name: a.full_name,
+      role: a.role,
+    }));
   }
 
   // Try the post-0033 schema first (sold_by, sold_by_note). If those columns

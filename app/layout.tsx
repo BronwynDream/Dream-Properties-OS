@@ -16,6 +16,14 @@ const instrumentSans = Instrument_Sans({
 export const metadata: Metadata = {
   title: "Dream Properties OS",
   description: "Dream Knysna operating system",
+  applicationName: "Dream OS",
+  // Installable on phones (app/manifest.ts). iPhones read these instead of
+  // the manifest: home-screen name, icon, and full-screen launch.
+  appleWebApp: { capable: true, title: "Dream OS", statusBarStyle: "default" },
+  icons: {
+    icon: [{ url: "/icon-192.png", sizes: "192x192", type: "image/png" }],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180" }],
+  },
 };
 
 export const viewport: Viewport = {

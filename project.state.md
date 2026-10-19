@@ -8,6 +8,34 @@ _Last updated: 2026-10-19_
 
 ---
 
+## ARC E1 — INSTALLABLE ON PHONES + MAP DOTS FIX + AGENT NAME FIX (2026-10-19)
+
+Plan: Arc E (mobile in the field) saved to the Claude project as
+`claude/dream-os-mobile-plan.md`. Simon: show-house check-in parked; "the rest
+is awesome" (E1 install + phone pass, E2 around-me map, E3 scan & file, E4
+voice notes, E5 sign on glass — legal check first, E6 Today).
+
+**Shipped**
+- `app/manifest.ts` (name/short_name "Dream OS", start_url /map, standalone,
+  portrait, theme #122E87) + `app/layout.tsx` metadata (applicationName,
+  appleWebApp capable/title, icons). Icons in `public/`: icon-192, icon-512,
+  icon-maskable-512, apple-touch-icon — Dream's crescent redrawn at size from
+  `brand/apple-touch-icon.png` (bg #302A4C). No service worker yet (offline
+  is a later candidate).
+- **Map dots never appeared on Satellite** (seen at phone size, live): this
+  morning's crash guard returned when `isStyleLoaded()` was false at
+  style.load and nothing retried. `MapView.tsx` install effect now retries on
+  `map.once("idle")`. House rule: verify live after push.
+- **Property record "No listing on this property yet" on listed properties**
+  + empty agent picker: selects asked app_user for `name`; the column is
+  `full_name`. Fixed both selects in `app/properties/[id]/page.tsx`.
+- Phone pass at 375 px (built-in browser): Properties, property record,
+  Documents, top-bar drawer fit with no horizontal scroll. Nothing else needed
+  for E1.
+
+**Verification**: tsc + build pass. Live check of the map dots + install
+prompt after push.
+
 ## AGENTS FILE THEIR OWN DOCUMENTS — FROM THE OFFICE OR A PHONE (2026-10-19)
 
 **Feedback moment (Simon, verbatim):** "the agents should certainly be able to
