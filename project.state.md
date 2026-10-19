@@ -77,7 +77,12 @@ pointed at other deals, deactivated users, in-progress prices) — all fixed and
 covered by tests 37–50. tsc + next build pass. NOT yet run on Bon Bon.
 
 **Loose ends**
-- Simon to apply 0086 and run the check script on Bon Bon; then push.
+- APPLIED on Bon Bon by Simon (2026-10-19 ~17:50). Check script on Bon Bon:
+  38/39 PASS; the one FAIL (#6) was the test's own expectation — the picked
+  "other" deal isn't completed, and past sales now show completed sales only.
+  Check #6 now compares against that property's completed-sale count.
+  Directors on Bon Bon: Bronwyn Eyre and Simon Houghton only — **Camilla has
+  no director login yet** (create / promote her before relying on it).
 - Pre-existing, not touched: `/team` shows "No team members yet" (its select
   probably errors on a column — investigate before inviting); property page
   and AgentPicker select `app_user.name` / `agent:agent_user_id(name)` but the

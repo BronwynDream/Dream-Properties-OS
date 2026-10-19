@@ -74,6 +74,9 @@ insert into agreement (transfer_id, price) select (select v from _ids where k = 
 create temp table _n (k text primary key, v bigint) on commit drop;
 grant all on _n to authenticated;
 insert into _n select 'parties_total', count(*) from party;
+insert into _n select 'other_completed', count(*) from transfer
+ where property_id = (select v from _ids where k = 'other_property')
+   and (status in ('registered', 'sold_external') or registered_date is not null);
 insert into _t values (0, 'setup: deals found', 'mine + other',
   (select count(*) from _ids where k in ('my_transfer','other_transfer'))::text || ' of 2',
   (select count(*) from _ids where k in ('my_transfer','other_transfer')) = 2);
@@ -92,9 +95,10 @@ insert into _t select 2, 'is_admin() for an agent', 'false', is_admin()::text, n
 insert into _t select 3, 'sees every property', 'all', (select count(*) from property)::text, (select count(*) from property) > 1;
 insert into _t select 4, 'sees every listing', 'all', (select count(*) from listing)::text, (select count(*) from listing) > 1;
 insert into _t select 5, 'transfer_public (map) shows all deals', 'many', (select count(*) from transfer_public)::text, (select count(*) from transfer_public) > 1;
-insert into _t select 6, 'past sales of the OTHER property (date/price)', '≥1 row',
+insert into _t select 6, 'past sales of the OTHER property = its completed sales only',
+  (select v from _n where k = 'other_completed')::text,
   (select count(*) from property_sales((select v from _ids where k = 'other_property')))::text,
-  (select count(*) from property_sales((select v from _ids where k = 'other_property'))) >= 1;
+  (select count(*) from property_sales((select v from _ids where k = 'other_property'))) = (select v from _n where k = 'other_completed');
 
 -- My deal: full detail.
 insert into _t select 10, 'sees MY transfer', '1',
