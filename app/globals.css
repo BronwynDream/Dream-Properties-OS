@@ -2981,3 +2981,8 @@ button.doc-thumb {
 .docstart-err { margin: 0; font-size: 13px; color: var(--critical); }
 .docstart-foot { margin-top: var(--space-6); font-size: 13px; color: var(--paper-mute); }
 .docstart-foot a { color: var(--navy); }
+.docstart-results { display: grid; gap: 14px; }
+.docstart-group { margin: 0 0 6px; font-size: 12px; font-weight: 600; color: var(--ink-700); }
+.docstart-new { justify-self: start; background: none; border: 1px dashed var(--line-strong); border-radius: var(--radius-md); padding: 9px 12px; font: inherit; font-size: 14px; color: var(--navy); cursor: pointer; text-align: left; }
+.docstart-new:hover, .docstart-new:focus-visible { border-color: var(--navy); background: var(--paper-1); outline: none; }
+.docstart-onrecord { margin: 0; font-size: 14px; }

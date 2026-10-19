@@ -3,6 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createDraft } from "@/app/documents/[id]/actions";
+import MandateTakeOn from "./MandateTakeOn";
 
 // The Documents start page's two questions (2026-10-19): what are you
 // making, and which property is it for. Bronwyn's eleven templates fall into
@@ -188,6 +189,14 @@ export default function DocumentStart({ properties }: { properties: StartPropert
             </fieldset>
           )}
 
+          {family.key === "mandate" ? (
+            <MandateTakeOn
+              key={family.key}
+              type={variant ? (variant.code.slice("mandate:".length) as "exclusive" | "joint" | "open") : null}
+              properties={properties}
+            />
+          ) : (
+            <>
           <fieldset className="docstart-step">
             <legend>Which property?</legend>
             {chosen ? (
@@ -245,6 +254,8 @@ export default function DocumentStart({ properties }: { properties: StartPropert
             </button>
             {err && <p className="docstart-err">{err}</p>}
           </div>
+            </>
+          )}
         </section>
       )}
     </div>

@@ -8,6 +8,48 @@ _Last updated: 2026-10-19_
 
 ---
 
+## MANDATE FROM DOCUMENTS: TAKE ON THE PROPERTY + SELLER, THEN THE EDITOR (2026-10-19)
+
+**Feedback moment (Simon, verbatim):** "I would imagine you wouldn't have a
+property listed at this point without a mandate. I would think, when you
+click a mandate, it should ask you for the details, and then it should open a
+property record automatically whilst it generates the mandate." Agreed with
+one guard (look before creating — the property is often already in Dream OS
+or on the municipal roll). Simon: "yes please".
+
+**Shipped**
+- `app/documents/MandateTakeOn.tsx` replaces the property picker for the
+  Mandate block. Type the address → "Already in Dream OS" (client filter over
+  every readable property) + "Municipal roll" (`/api/erf-lookup`, filtered to
+  the typed street number) + "Not listed? Create … as a new property". Then
+  the seller (AddSellerFields; skipped if the record's open listing already
+  has one, with "Add another seller"). "Continue to the mandate".
+- `app/documents/actions.ts` → `takeOnForMandate()`: find/create property
+  (existing id → erf already attached by SG number → same address ilike →
+  new property with suburb/extent/deed + erf row); find the open listing
+  (draft/live/under_offer) or create preparing transfer + draft listing;
+  attach seller party via transfer_party; add the caller's `agent` row to
+  listing_agent (lead if first) and set listing.agent_user_id if empty.
+  Uses the SERVICE client after checking the caller is active staff,
+  because property/listing/transfer/party writes are admin-only under RLS
+  (0005). `mandateContext()` reads the seller already on record.
+- `buildPartyRow` + `SellerInput` moved to `lib/parties.ts` (a "use server"
+  file can only export async functions); `app/properties/actions.ts`
+  imports and re-exports the type.
+- CSS: `.docstart-results/-group/-new/-onrecord`.
+
+**Verification**: tsc clean, next build passes. NOT yet clicked through live.
+
+**Loose ends**
+- `saveMandate` (mandate editor) still writes with the user client, and
+  `mandate` / `listing` writes are admin-only under RLS — an AGENT can now
+  take on the property but the mandate save would fail for them. Must be
+  fixed with the agent access rules, before invites.
+- New properties from this flow have no map pin until geocoded / the erf
+  snap runs; their listing is draft, so nothing shows on the map anyway.
+- Seller privacy ("only the agents on the listing see the seller") is still
+  the pending access-rules work; the form makes no promise about it.
+
 ## DOCUMENTS OPENS ON "WHAT ARE YOU MAKING", NOT HISTORY (2026-10-19)
 
 **Feedback moment (Simon, verbatim):** "If you're coming in fresh, just

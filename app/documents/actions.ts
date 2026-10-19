@@ -1,0 +1,233 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
+import { buildPartyRow, type SellerInput } from "@/lib/parties";
+
+// Taking on a mandate from the Documents page (2026-10-19).
+//
+// Simon: "when you click a mandate, it should ask you for the details, and
+// then it should open a property record automatically whilst it generates
+// the mandate." Agreed with one guard: the property is often already in
+// Dream OS (website import, an old sale, the municipal roll), so we look
+// before we create — a second record for the same erf is the duplicate
+// problem the dupe finder exists to clean up.
+//
+// takeOnForMandate() does, in order:
+//   1. Find or create the property (existing record → erf already attached
+//      by SG number → same address → new record built from the erf).
+//   2. Find the open listing (draft / live / under offer) or open a
+//      preparing transfer + draft listing — the mandate editor needs both.
+//   3. Put the seller on that transfer, unless one is already there.
+//   4. Make the agent doing this the lead agent on the listing.
+// The client then opens the mandate editor on the result.
+//
+// Written with the service client: property / listing / transfer / party
+// writes are admin-only under RLS (0005), but taking on a mandate is every
+// agent's job. The caller is checked as active staff first.
+
+export type TakeOnProperty =
+  | { kind: "existing"; propertyId: string }
+  | {
+      kind: "erf";
+      erfNumber: string;
+      sgNumber: string | null;
+      address: string;
+      suburb: string | null;
+      extentSqm: number | null;
+      titleDeedNo: string | null;
+    }
+  | { kind: "new"; address: string };
+
+type Result = { ok: true; propertyId: string; listingId: string } | { ok: false; error: string };
+
+const OPEN = ["draft", "live", "under_offer"];
+
+/** What the record already knows, so the form can skip the seller step. */
+export async function mandateContext(
+  propertyId: string,
+): Promise<{ ok: true; listingId: string | null; sellerNames: string[] } | { ok: false; error: string }> {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "unauthorised" };
+
+  const { data: listing } = await supabase
+    .from("listing")
+    .select("id, transfer_id")
+    .eq("property_id", propertyId)
+    .in("status", OPEN)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!listing?.transfer_id) return { ok: true, listingId: listing?.id ?? null, sellerNames: [] };
+
+  const { data: rows } = await supabase
+    .from("transfer_party")
+    .select("is_primary, party:party_id(display_name)")
+    .eq("transfer_id", listing.transfer_id)
+    .eq("side", "seller")
+    .order("is_primary", { ascending: false });
+  const names = ((rows ?? []) as unknown as { party: { display_name: string } | { display_name: string }[] | null }[])
+    .map((r) => (Array.isArray(r.party) ? r.party[0] : r.party)?.display_name)
+    .filter(Boolean) as string[];
+  return { ok: true, listingId: listing.id, sellerNames: names };
+}
+
+export async function takeOnForMandate(input: { property: TakeOnProperty; seller: SellerInput | null }): Promise<Result> {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "You're signed out. Sign in again and retry." };
+  const { data: me } = await supabase.from("app_user").select("id, active").eq("id", user.id).maybeSingle();
+  if (!me || me.active === false) return { ok: false, error: "Your login isn't active on Dream OS." };
+
+  let db;
+  try {
+    db = createServiceClient();
+  } catch {
+    return { ok: false, error: "Dream OS can't write records right now (service key missing). Tell Simon." };
+  }
+
+  // 1. The property ---------------------------------------------------------
+  const prop = await resolveProperty(db, input.property);
+  if (!prop.ok) return prop;
+  const propertyId = prop.id;
+
+  // 2. The open listing and its transfer -------------------------------------
+  const { data: open } = await db
+    .from("listing")
+    .select("id, transfer_id, agent_user_id")
+    .eq("property_id", propertyId)
+    .in("status", OPEN)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  let listingId: string | null = open?.id ?? null;
+  let transferId: string | null = open?.transfer_id ?? null;
+  const listingAgentUserId: string | null = open?.agent_user_id ?? null;
+
+  if (!transferId) {
+    const { data: addr } = await db.from("property").select("primary_address").eq("id", propertyId).single();
+    const { data: t, error } = await db
+      .from("transfer")
+      .insert({ property_id: propertyId, name: `${addr?.primary_address ?? "Property"} (preparing)`, status: "preparing" })
+      .select("id")
+      .single();
+    if (error || !t) return { ok: false, error: `Could not open the deal: ${error?.message ?? "unknown error"}` };
+    transferId = t.id;
+    if (listingId) {
+      await db.from("listing").update({ transfer_id: transferId }).eq("id", listingId);
+    }
+  }
+  if (!listingId) {
+    const { data: l, error } = await db
+      .from("listing")
+      .insert({ property_id: propertyId, transfer_id: transferId, status: "draft" })
+      .select("id")
+      .single();
+    if (error || !l) return { ok: false, error: `Could not start the listing: ${error?.message ?? "unknown error"}` };
+    listingId = l.id;
+  }
+  // Both are set by now; the narrowing is for the compiler.
+  if (!listingId || !transferId) return { ok: false, error: "Could not start the listing." };
+
+  // 3. The seller -----------------------------------------------------------
+  const { count: sellerCount } = await db
+    .from("transfer_party")
+    .select("party_id", { count: "exact", head: true })
+    .eq("transfer_id", transferId)
+    .eq("side", "seller");
+  if (input.seller) {
+    const row = buildPartyRow(input.seller);
+    if (!row) return { ok: false, error: "Add the seller's name (or the company / trust name)." };
+    const { data: party, error } = await db.from("party").insert(row).select("id").single();
+    if (error || !party) return { ok: false, error: `Could not save the seller: ${error?.message ?? "unknown error"}` };
+    const { error: tpErr } = await db.from("transfer_party").insert({
+      transfer_id: transferId,
+      party_id: party.id,
+      side: "seller",
+      is_primary: !sellerCount,
+    });
+    if (tpErr) return { ok: false, error: `Could not link the seller: ${tpErr.message}` };
+  } else if (!sellerCount) {
+    return { ok: false, error: "Add the seller — the mandate is signed by them." };
+  }
+
+  // 4. The agent ------------------------------------------------------------
+  const { data: agent } = await db.from("agent").select("id").eq("app_user_id", user.id).maybeSingle();
+  if (agent) {
+    const { data: existing } = await db.from("listing_agent").select("agent_id, position").eq("listing_id", listingId);
+    const rows = (existing ?? []) as { agent_id: string; position: number }[];
+    if (!rows.some((r) => r.agent_id === agent.id)) {
+      await db.from("listing_agent").insert({
+        listing_id: listingId,
+        agent_id: agent.id,
+        position: rows.length ? Math.max(...rows.map((r) => r.position)) + 1 : 1,
+      });
+    }
+    if (!listingAgentUserId && !rows.length) {
+      await db.from("listing").update({ agent_user_id: user.id }).eq("id", listingId);
+    }
+  }
+
+  revalidatePath("/properties");
+  revalidatePath(`/properties/${propertyId}`);
+  revalidatePath("/documents");
+  return { ok: true, propertyId, listingId };
+}
+
+type Db = ReturnType<typeof createServiceClient>;
+
+async function resolveProperty(db: Db, p: TakeOnProperty): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  if (p.kind === "existing") {
+    const { data } = await db.from("property").select("id").eq("id", p.propertyId).maybeSingle();
+    return data ? { ok: true, id: data.id } : { ok: false, error: "That property no longer exists." };
+  }
+
+  const address = tidyAddress(p.address);
+  if (address.length < 3) return { ok: false, error: "Type the property's street address." };
+
+  // Already attached to a record by its SG number? That's the same erf.
+  if (p.kind === "erf" && p.sgNumber) {
+    const { data } = await db.from("erf").select("property_id").eq("sg_number", p.sgNumber).limit(1).maybeSingle();
+    if (data?.property_id) return { ok: true, id: data.property_id };
+  }
+  // Same address written the same way? Reuse it.
+  const { data: same } = await db.from("property").select("id").ilike("primary_address", address.replace(/[%_\\]/g, (c) => `\\${c}`)).limit(1).maybeSingle();
+  if (same) return { ok: true, id: same.id };
+
+  let suburbId: string | null = null;
+  if (p.kind === "erf" && p.suburb) {
+    const { data } = await db.from("suburb").select("id").ilike("name", p.suburb.trim()).limit(1).maybeSingle();
+    suburbId = data?.id ?? null;
+  }
+
+  const { data: created, error } = await db
+    .from("property")
+    .insert({
+      primary_address: address,
+      suburb_id: suburbId,
+      extent_sqm: p.kind === "erf" ? p.extentSqm : null,
+      title_deed_no: p.kind === "erf" ? p.titleDeedNo : null,
+    })
+    .select("id")
+    .single();
+  if (error || !created) return { ok: false, error: `Could not create the property: ${error?.message ?? "unknown error"}` };
+
+  if (p.kind === "erf" && p.erfNumber) {
+    await db.from("erf").insert({ property_id: created.id, erf_number: p.erfNumber, sg_number: p.sgNumber });
+  }
+  return { ok: true, id: created.id };
+}
+
+/** "12 EAGLES WAY" → "12 Eagles Way"; leaves mixed-case input alone. */
+function tidyAddress(a: string): string {
+  const s = a.trim().replace(/\s+/g, " ");
+  if (s !== s.toUpperCase()) return s;
+  return s.toLowerCase().replace(/\b([a-z])/g, (c) => c.toUpperCase());
+}
