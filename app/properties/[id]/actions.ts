@@ -744,3 +744,111 @@ export async function updatePropertyDetails(input: {
   revalidatePath("/map");
   return { ok: true };
 }
+
+// ---------------------------------------------------------------------------
+// Agents file their own documents (2026-10-19). Simon: "the agents should
+// certainly be able to load/file their own documents" — from the office or
+// from a phone in the field.
+//
+// The browser uploads each file straight to the `documents` bucket under
+// uploads/<propertyId>/…; this action then files them: one `document` row
+// per file, linked to the deal and the property. It writes with the service
+// client because document rows are director-write under RLS, after checking
+// the caller works on this property and deal (0086 helpers). If the agent's
+// listing has no deal yet, a preparing deal is opened on it so the papers
+// have somewhere to live.
+// ---------------------------------------------------------------------------
+export async function fileDocuments(input: {
+  propertyId: string;
+  transferId: string | null;
+  docTypeId: string | null;
+  files: { path: string; name: string; size: number; mime: string | null }[];
+}): Promise<{ ok: true; filed: number; transferId: string } | { ok: false; error: string }> {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "You're signed out. Sign in again and retry." };
+  if (!input.files.length) return { ok: false, error: "Choose at least one file." };
+
+  const prefix = `uploads/${input.propertyId}/`;
+  if (input.files.some((f) => !f.path.startsWith(prefix) || f.path.includes(".."))) {
+    return { ok: false, error: "Those files weren't uploaded for this property." };
+  }
+
+  const { data: works } = await supabase.rpc("works_on_property", { pid: input.propertyId });
+  if (works !== true) return { ok: false, error: "Only the agents on this property (and the directors) can file its documents." };
+
+  const { createServiceClient } = await import("@/lib/supabase/service");
+  const db = createServiceClient();
+
+  // The deal the papers belong to.
+  let transferId = input.transferId;
+  if (transferId) {
+    const { data: ok } = await supabase.rpc("works_on_transfer", { tid: transferId });
+    if (ok !== true) return { ok: false, error: "That deal isn't one of yours." };
+  } else {
+    const { data: listings } = await db
+      .from("listing")
+      .select("id, transfer_id, created_at")
+      .eq("property_id", input.propertyId)
+      .in("status", ["draft", "live", "under_offer"])
+      .order("created_at", { ascending: false });
+    let mine: { id: string; transfer_id: string | null } | null = null;
+    for (const l of (listings ?? []) as { id: string; transfer_id: string | null }[]) {
+      const { data: ok } = await supabase.rpc("works_on_listing", { lid: l.id });
+      if (ok === true) {
+        mine = l;
+        break;
+      }
+    }
+    if (mine?.transfer_id) {
+      transferId = mine.transfer_id;
+    } else {
+      const { data: p } = await db.from("property").select("primary_address").eq("id", input.propertyId).single();
+      const { data: t, error } = await db
+        .from("transfer")
+        .insert({ property_id: input.propertyId, name: `${p?.primary_address ?? "Property"} (preparing)`, status: "preparing" })
+        .select("id")
+        .single();
+      if (error || !t) return { ok: false, error: `Could not open the deal: ${error?.message ?? "unknown error"}` };
+      transferId = t.id as string;
+      if (mine) await db.from("listing").update({ transfer_id: transferId }).eq("id", mine.id);
+    }
+  }
+  if (!transferId) return { ok: false, error: "No deal to file these under." };
+
+  let isPii = false;
+  if (input.docTypeId) {
+    const { data: dt } = await db.from("document_type").select("is_pii_default, category").eq("id", input.docTypeId).maybeSingle();
+    isPii = !!dt?.is_pii_default || dt?.category === "fica";
+  }
+
+  let filed = 0;
+  for (const f of input.files) {
+    const { data: doc, error } = await db
+      .from("document")
+      .insert({
+        doc_type_id: input.docTypeId,
+        title: f.name.slice(0, 200),
+        storage_bucket: "documents",
+        storage_path: f.path,
+        mime_type: f.mime,
+        byte_size: f.size,
+        status: "final",
+        is_pii: isPii,
+        uploaded_by: user.id,
+      })
+      .select("id")
+      .single();
+    if (error || !doc) return { ok: false, error: `Filed ${filed} of ${input.files.length}: ${error?.message ?? "unknown error"}` };
+    await db.from("document_link").insert([
+      { document_id: doc.id, entity_type: "transfer", entity_id: transferId },
+      { document_id: doc.id, entity_type: "property", entity_id: input.propertyId },
+    ]);
+    filed++;
+  }
+
+  revalidatePath(`/properties/${input.propertyId}`);
+  return { ok: true, filed, transferId };
+}

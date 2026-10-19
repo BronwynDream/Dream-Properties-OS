@@ -18,6 +18,7 @@ import AttachListing from "./AttachListing";
 import PrepareMandateButton from "./PrepareMandateButton";
 import GeneratedDocuments from "./GeneratedDocuments";
 import PrepareDocumentButton from "./PrepareDocumentButton";
+import AddDocuments, { type DocTypeOption } from "./AddDocuments";
 import { PRODUCTS as LIGHTSTONE_PRODUCTS } from "@/lib/lightstone";
 import { Rand, randString } from "@/app/components/format";
 import { ppraFormTypeFor, type PpraFormType } from "@/lib/ppraDisclosure";
@@ -86,6 +87,9 @@ export default async function PropertyRecord({
   const worksRes = await supabase.rpc("works_on_property", { pid: params.id });
   const canSeeDeal = worksRes.error ? isAdmin || onAnyListing : worksRes.data === true;
   const canEditDetails = isAdmin || canSeeDeal;
+  const docTypeOptions: DocTypeOption[] = canEditDetails
+    ? (((await supabase.from("document_type").select("id, label, category").eq("active", true).order("category").order("label")).data ?? []) as DocTypeOption[])
+    : [];
   const openListingRow = ((laRows ?? []) as any[]).find((l) => ["draft", "live", "under_offer"].includes(l.status)) ?? null;
   const pastSales: { transfer_id: string; status: string; transfer_date: string | null; registered_date: string | null; price: number | null }[] =
     canSeeDeal ? [] : (((await supabase.rpc("property_sales", { p_property_id: params.id })).data ?? []) as any[]);
@@ -1246,15 +1250,30 @@ export default async function PropertyRecord({
           ) : (
             <div className="record-deal-empty">
               <p className="eyebrow">Active deal</p>
-              <p>
-                No live transfer yet. Bring in ownership history and start a deal.
-              </p>
-              <Link href="/triage" className="btn-primary" style={{ marginTop: 12, display: "inline-block" }}>
-                Start a deal (via triage)
-              </Link>
+              {isAdmin ? (
+                <>
+                  <p>
+                    No live transfer yet. Bring in ownership history and start a deal.
+                  </p>
+                  <Link href="/triage" className="btn-primary" style={{ marginTop: 12, display: "inline-block" }}>
+                    Start a deal (via triage)
+                  </Link>
+                </>
+              ) : (
+                <p>
+                  No deal opened yet. Prepare the mandate, or add documents below, and the deal is opened for
+                  you.
+                </p>
+              )}
             </div>
           )}
         </section>
+
+        {/* Agents (and directors) file papers onto the deal — from the
+            office or a phone (2026-10-19, migration 0088). */}
+        {canEditDetails && (
+          <AddDocuments propertyId={prop.id} transferId={activeTransfer?.id ?? null} docTypes={docTypeOptions} />
+        )}
 
         {/* Deal compliance — PPRA Section 67 disclosure + Certificates
             of Compliance for the active transfer. Sits directly under the

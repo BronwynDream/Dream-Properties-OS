@@ -8,6 +8,38 @@ _Last updated: 2026-10-19_
 
 ---
 
+## AGENTS FILE THEIR OWN DOCUMENTS — FROM THE OFFICE OR A PHONE (2026-10-19)
+
+**Feedback moment (Simon, verbatim):** "the agents should certainly be able to
+load/file their own documents" and, mid-build, "i also want the agents to be
+able to use their cell phones whilst out in the field".
+
+**Shipped**
+- `app/properties/[id]/AddDocuments.tsx`: "+ Add documents" on the property
+  record for anyone who works on it (directors + its agents). Drop / choose
+  files, or **Take a photo** (camera, shown on touch devices only), pick
+  "What are they?" (document_type, grouped by category), File. Browser
+  uploads straight to `documents/uploads/<propertyId>/<uuid>-<name>`.
+- `fileDocuments()` in `app/properties/[id]/actions.ts`: checks
+  `works_on_property` / `works_on_transfer` (0086 rpcs, caller's session),
+  validates paths are under that property's upload prefix, then (service
+  client) inserts `document` rows (uploaded_by = caller, is_pii from the type
+  / fica category) linked to the deal AND the property. No deal yet → opens a
+  preparing transfer on the caller's open listing (or plain, for directors).
+- Agents' empty deal band now says "No deal opened yet. Prepare the mandate,
+  or add documents below…" (triage link stays for directors).
+- Migration `0088_agents_file_documents.sql`: staging-bucket files are also
+  readable when their `document` row is visible — intake filed deal papers
+  in `staging`, and 0086 had limited staging to the batch sender + directors,
+  so agents couldn't open their own deal's intake papers.
+
+**Verification**: tsc + build pass; 0088 applied on the stand-in DB and an
+agent sees exactly the staging file of their own deal's document. Upload
+flow not yet clicked through live.
+
+**Loose ends**: orphaned uploads (upload ok, filing failed) stay in storage
+unreadable (no document row) — harmless; a sweep could tidy them later.
+
 ## ROSTER: LOAD EVERYONE, INVITE ONLY ON THE SWITCH (2026-10-19)
 
 **Feedback moment (Simon, verbatim):** "so i'd like to load everyone and not

@@ -3041,3 +3041,26 @@ button.doc-thumb {
 .roster-add-fields label { display: grid; gap: 4px; font-size: 12px; color: var(--ink-700); }
 .roster-add-fields input, .roster-add-fields select { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--line-strong); border-radius: var(--radius-md); background: var(--white); color: var(--ink); }
 .roster-add-go { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+
+/* Property record: agents add documents, from the office or a phone (0088). */
+.adddocs-closed { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 16px 0 8px; }
+.adddocs { margin: 16px 0; padding: 18px; background: var(--white); border: 1px solid var(--line-soft); border-radius: var(--radius-lg); display: grid; gap: 14px; }
+.adddocs-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.adddocs-head h3 { margin: 0; font-size: 17px; color: var(--estuary); }
+.adddocs-drop { border: 2px dashed var(--line-strong); border-radius: var(--radius-md); padding: 18px; display: grid; justify-items: center; gap: 10px; text-align: center; background: var(--paper-1); }
+.adddocs-drop p { margin: 0; color: var(--paper-mute); font-size: 14px; }
+.adddocs-pickers { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.adddocs-pickers .btn-secondary { min-height: 44px; }
+.adddocs-files { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.adddocs-files li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; font-size: 14px; }
+.adddocs-files li > span:first-child { min-width: 0; overflow-wrap: anywhere; flex: 1 1 200px; }
+.adddocs-size { font-family: var(--font-mono); font-size: 12px; color: var(--paper-mute); }
+.adddocs-link { background: none; border: 0; padding: 0; font: inherit; font-size: 13px; color: var(--navy); text-decoration: underline; cursor: pointer; }
+.adddocs-type { display: grid; gap: 4px; font-size: 13px; color: var(--ink-700); max-width: 420px; }
+.adddocs-type select { font: inherit; font-size: 15px; padding: 9px 10px; border: 1px solid var(--line-strong); border-radius: var(--radius-md); background: var(--white); color: var(--ink); min-height: 44px; }
+.adddocs-go { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+.adddocs-go .btn-primary { min-height: 44px; }
+.adddocs-note { font-size: 13px; color: var(--paper-mute); }
+.adddocs-err { margin: 0; font-size: 13px; color: var(--critical); }
+.adddocs-done { margin: 0; font-size: 13px; color: var(--positive); }
+@media (pointer: fine) { .adddocs-camera { display: none; } }
