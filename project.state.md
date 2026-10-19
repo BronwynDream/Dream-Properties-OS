@@ -8,6 +8,38 @@ _Last updated: 2026-10-19_
 
 ---
 
+## PASSWORD-RESET LINK FIX (2026-10-19, evening)
+
+**Feedback moment (verbatim, Simon on his iPhone):** "When I push the link to
+reset the password, it takes me straight back to the original login page ... It
+doesn't actually give me a reset password landing page."
+
+**Diagnosis**
+- Reset emails used the PKCE `?code=` flow via `/auth/callback`. The code can
+  only be swapped in the browser that asked for the email (verifier cookie). On
+  iOS the home-screen app, Outlook's in-app browser and Safari are separate
+  cookie jars, so the swap failed → redirect to `/login?error=…` — and the login
+  page never displayed `?error`, so it looked like nothing happened.
+- Same trap for invitations: admin `inviteUserByEmail` links come back with the
+  session in the `#hash`, which the server route can't read → `missing_code`.
+
+**Shipped**
+- `app/auth/confirm/route.ts`: `verifyOtp({ type, token_hash })` — works in any
+  browser. Needs the Supabase email templates changed (Simon, Studio →
+  Authentication → Emails): Reset Password and Invite user links →
+  `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=recovery&next=/account/password`
+  (type=invite for the invite template).
+- Login page now shows plain-English messages for `?error=` and finishes
+  `#access_token` sign-ins (older invite links) → `/account/password`.
+- `/auth/callback` maps errors to codes; `/` forwards stray `?code=` /
+  `?token_hash=` (Supabase falls back to the Site URL when a redirect isn't
+  allow-listed).
+
+**Verification**: tsc + build. NOT verified end to end — needs Simon to update
+the template and request a reset on his phone.
+
+---
+
 ## ARC E3 — SCAN & FILE (2026-10-19)
 
 **Shipped**
