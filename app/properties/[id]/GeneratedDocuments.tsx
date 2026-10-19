@@ -28,7 +28,7 @@ export default function GeneratedDocuments({ rows }: { rows: Row[] }) {
     <section style={{ marginTop: 28 }}>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
         <h2 style={{ fontSize: 20, margin: 0 }}>Generated documents</h2>
-        <Link href="/documents" style={{ fontSize: 12, color: "var(--navy)" }}>All documents →</Link>
+        <Link href="/documents/prepared" style={{ fontSize: 12, color: "var(--navy)" }}>All prepared documents →</Link>
       </div>
       <ul style={{ listStyle: "none", padding: 0, margin: "12px 0 0", display: "grid", gap: 6 }}>
         {rows.map((r) => {

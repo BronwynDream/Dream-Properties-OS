@@ -8,6 +8,41 @@ _Last updated: 2026-10-19_
 
 ---
 
+## DOCUMENTS OPENS ON "WHAT ARE YOU MAKING", NOT HISTORY (2026-10-19)
+
+**Feedback moment (Simon, verbatim):** "If you're coming in fresh, just
+straight from the menu, from Documents, it should give you four or five blocks
+as to which document you would like to work on, or which one you would like
+to generate. It shouldn't have a history of what documents you've done
+before, which is what it's currently doing."
+
+**Shipped**
+- `app/documents/page.tsx` is now a start page: five blocks — Mandate
+  (exclusive / joint / open), Agreement of sale (house / sectional / land),
+  Movables, Addendum (to sale / to movables), Disclosure (PPRA / condition
+  report appendix). Picking one opens a panel: which exact document, then
+  which property (search; your own listings shown first with no query).
+- `app/documents/DocumentStart.tsx` (client) does the routing: mandates →
+  `/properties/[id]/documents/mandate/new?type=…&listing=…`; everything else →
+  `createDraft()` (same action as the record's "Prepare document…"), which
+  redirects to the editor. Deal documents only list properties with a
+  transfer (newest transfer, same rule as the property record).
+- The old history list moved to `app/documents/prepared/page.tsx`
+  ("Prepared documents"), linked quietly at the foot of the start page and
+  from the record's "All prepared documents →" (GeneratedDocuments.tsx).
+  Its templates section was dropped — the blocks replace it.
+- Styles: `.docstart-*` in `app/globals.css`.
+
+**Verification**: `tsc --noEmit` clean; `next build` passes (with dummy
+Supabase env). Live check in the built-in browser after Simon pushes.
+
+**Loose ends**
+- The family → template mapping is hard-coded in DocumentStart.tsx (as it
+  already was in PrepareDocumentButton.tsx). If a template is added to
+  `doc_template`, both lists need it.
+- Property picker shows every property the user can read; when the agent
+  access rules land, RLS narrows it automatically.
+
 ## TOP-BAR MENUS UNDER THE MAP BAR + MAP CRASH ON LOAD (2026-10-19)
 
 **Feedback moment (Simon, with screenshot):** "when you click on the admin menu, it drops behind the map menus."

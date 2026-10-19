@@ -2,213 +2,92 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import TopBar from "@/app/components/TopBar";
+import DocumentStart, { type StartProperty } from "./DocumentStart";
 
-// Documents hub (plan 019 Arc A3). Two things an agent asks:
-//   "what have we generated?"  → every document_draft they can see, newest
-//                                first, with the property it belongs to
-//   "what can I prepare?"      → the active templates in the clause library
+// Documents — the start page (2026-10-19).
 //
-// RLS on document_draft already scopes agents to their own drafts and the
-// transfers they lead; admins see everything. Templates are staff-readable.
+// Simon: "If you're coming in fresh, just straight from the menu, from
+// Documents, it should give you four or five blocks as to which document you
+// would like to work on, or which one you would like to generate. It
+// shouldn't have a history of what documents you've done before."
 //
-// Drafts open back into their editor in A4; until then a row links to the
-// property record, where the mandate it produced is visible.
+// So this page asks two things: what are you making (five families of
+// Bronwyn's templates), and which property is it for. The record then fills
+// what it knows. The history moved to /documents/prepared, one link away.
 
 export const dynamic = "force-dynamic";
 
-type DraftRow = {
+type PropRow = {
   id: string;
-  title: string | null;
-  status: "draft" | "final" | "superseded";
-  created_at: string;
-  finalised_at: string | null;
-  signed_document_id: string | null;
-  property_id: string | null;
-  template: { code: string; label: string } | { code: string; label: string }[] | null;
-  property: { primary_address: string | null } | { primary_address: string | null }[] | null;
-  author: { full_name: string | null } | { full_name: string | null }[] | null;
+  primary_address: string;
+  suburb: { name: string } | { name: string }[] | null;
+  listing:
+    | {
+        id: string;
+        created_at: string;
+        listing_agent: { agent: { app_user_id: string | null } | { app_user_id: string | null }[] | null }[] | null;
+      }[]
+    | null;
 };
 
-type TemplateRow = { code: string; label: string; description: string | null; requires_purchaser: boolean };
+const one = <T,>(v: T | T[] | null | undefined): T | null => (v == null ? null : Array.isArray(v) ? v[0] ?? null : v);
 
-const PREPARE_HREF: Record<string, (propertyId: string) => string> = {
-  mandate_exclusive: (id) => `/properties/${id}/documents/mandate/new?type=exclusive`,
-  mandate_joint: (id) => `/properties/${id}/documents/mandate/new?type=joint`,
-  mandate_open: (id) => `/properties/${id}/documents/mandate/new?type=open`,
-};
-
-function one<T>(v: T | T[] | null | undefined): T | null {
-  if (v == null) return null;
-  return Array.isArray(v) ? v[0] ?? null : v;
-}
-
-function fmtDate(iso: string | null): string {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("en-ZA", { day: "2-digit", month: "short", year: "numeric", timeZone: "Africa/Johannesburg" });
-}
-
-export default async function DocumentsHub() {
+export default async function DocumentsStart() {
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [{ data: draftsData }, { data: templatesData }] = await Promise.all([
+  const [propsRes, transfersRes] = await Promise.all([
     supabase
-      .from("document_draft")
-      .select("id, title, status, created_at, finalised_at, signed_document_id, property_id, template:template_id(code, label), property:property_id(primary_address), author:created_by(full_name)")
-      .order("created_at", { ascending: false })
-      .limit(200),
-    supabase
-      .from("doc_template")
-      .select("code, label, description, requires_purchaser")
-      .eq("active", true)
-      .order("sort_order", { ascending: true }),
+      .from("property")
+      .select("id, primary_address, suburb:suburb_id(name), listing(id, created_at, listing_agent(agent:agent_id(app_user_id)))")
+      .order("primary_address"),
+    supabase.from("transfer").select("id, property_id, created_at").order("created_at", { ascending: false }),
   ]);
-  const drafts = (draftsData ?? []) as unknown as DraftRow[];
-  const templates = (templatesData ?? []) as TemplateRow[];
 
-  const mono: React.CSSProperties = { fontFamily: "var(--font-mono)", fontSize: 12 };
+  // The property record treats its newest transfer as the deal documents
+  // are prepared against; do the same here.
+  const dealOf = new Map<string, string>();
+  for (const t of (transfersRes.data ?? []) as { id: string; property_id: string }[]) {
+    if (!dealOf.has(t.property_id)) dealOf.set(t.property_id, t.id);
+  }
+
+  const properties: StartProperty[] = ((propsRes.data ?? []) as unknown as PropRow[]).map((p) => {
+    const listings = [...(p.listing ?? [])].sort((a, b) => b.created_at.localeCompare(a.created_at));
+    const mine = listings.some((l) => (l.listing_agent ?? []).some((la) => one(la.agent)?.app_user_id === user.id));
+    return {
+      id: p.id,
+      address: p.primary_address,
+      suburb: one(p.suburb)?.name ?? null,
+      listingId: listings[0]?.id ?? null,
+      transferId: dealOf.get(p.id) ?? null,
+      mine,
+    };
+  });
 
   return (
     <>
       <TopBar />
       <main>
         <header className="app-head">
-          <p className="eyebrow">Dream Knysna · Deals · Documents</p>
-          <h1>Documents</h1>
+          <p className="eyebrow">Dream Knysna · Documents</p>
+          <h1>Prepare a document</h1>
           <p className="app-sub">
-            Everything generated from Bronwyn&apos;s templates, and the templates themselves. A
-            document is prepared from the property it belongs to, so the record fills what it can
-            before you are asked for the rest.
+            Choose what you&apos;re making, then the property it&apos;s for. Dream OS fills in what the
+            record already knows, and you finish the rest in the editor.
           </p>
         </header>
         <hr className="tideline" />
 
         <section className="app-body">
-          <h2 style={sectionHead}>Generated</h2>
-          {drafts.length === 0 ? (
-            <p style={{ color: "var(--paper-mute)", fontStyle: "italic", padding: "12px 0 24px" }}>
-              Nothing generated yet. Open a property and choose <b>Prepare mandate…</b>.
-            </p>
-          ) : (
-            <ul style={{ listStyle: "none", padding: 0, margin: "0 0 32px", display: "grid", gap: 6 }}>
-              {drafts.map((d) => {
-                const tpl = one(d.template);
-                const prop = one(d.property);
-                const author = one(d.author);
-                return (
-                  <li
-                    key={d.id}
-                    className="doc-row"
-                    style={{
-                      border: "1px solid var(--hairline, #e2e8f5)",
-                      borderRadius: 3,
-                      padding: "10px 14px",
-                      display: "grid",
-                      gridTemplateColumns: "minmax(0, 1.6fr) minmax(0, 1fr) auto auto",
-                      gap: 16,
-                      alignItems: "center",
-                      background: "var(--white)",
-                    }}
-                  >
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {tpl?.label ?? "Document"}
-                      </div>
-                      {d.property_id ? (
-                        <Link href={`/properties/${d.property_id}`} style={{ ...mono, color: "var(--navy)" }}>
-                          {prop?.primary_address ?? "Property"}
-                        </Link>
-                      ) : (
-                        <span style={{ ...mono, color: "var(--paper-mute)" }}>No property</span>
-                      )}
-                    </div>
-                    <div style={{ ...mono, color: "var(--paper-mute)" }}>
-                      {author?.full_name ?? "—"} · {fmtDate(d.created_at)}
-                    </div>
-                    <StatusPill status={d.signed_document_id ? "signed" : d.status} />
-                    <Link href={`/documents/${d.id}`} className="btn-secondary" style={{ padding: "6px 10px", fontSize: 12 }}>
-                      Open
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-
-          <h2 style={sectionHead}>Templates</h2>
-          <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 6 }}>
-            {templates.map((t) => (
-              <li
-                key={t.code}
-                style={{
-                  border: "1px solid var(--hairline, #e2e8f5)",
-                  borderRadius: 3,
-                  padding: "10px 14px",
-                  display: "grid",
-                  gridTemplateColumns: "minmax(0, 1fr) auto",
-                  gap: 16,
-                  alignItems: "center",
-                  background: "var(--white)",
-                }}
-              >
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontWeight: 600 }}>{t.label}</div>
-                  {t.description && (
-                    <div style={{ fontSize: 13, color: "var(--ink-700)", marginTop: 2 }}>{t.description}</div>
-                  )}
-                </div>
-                <span style={{ ...mono, color: "var(--paper-mute)", whiteSpace: "nowrap" }}>
-                  {PREPARE_HREF[t.code]
-                    ? "Prepare from a property record"
-                    : t.requires_purchaser
-                    ? "Prepare from a property record with a deal"
-                    : "Prepare from a property record"}
-                </span>
-              </li>
-            ))}
-          </ul>
-          <p style={{ ...mono, color: "var(--paper-mute)", marginTop: 20 }}>
-            Templates are Bronwyn&apos;s 2026 masters, clause by clause. Wording changes are made in
-            the clause library by an admin, never on a single document.
+          <DocumentStart properties={properties} />
+          <p className="docstart-foot">
+            Looking for something already made? <Link href="/documents/prepared">Prepared documents</Link>
           </p>
         </section>
       </main>
     </>
   );
 }
-
-function StatusPill({ status }: { status: DraftRow["status"] | "signed" }) {
-  const map = {
-    signed: { label: "Signed", color: "var(--positive)" },
-    draft: { label: "Draft", color: "var(--caution)" },
-    final: { label: "Final", color: "var(--positive)" },
-    superseded: { label: "Superseded", color: "var(--ink-400)" },
-  }[status];
-  return (
-    <span
-      style={{
-        fontFamily: "var(--font-mono)",
-        fontSize: 10,
-        letterSpacing: "0.1em",
-        textTransform: "uppercase",
-        color: map.color,
-        border: `1px solid ${map.color}`,
-        borderRadius: 999,
-        padding: "2px 8px",
-        whiteSpace: "nowrap",
-      }}
-    >
-      {map.label}
-    </span>
-  );
-}
-
-const sectionHead: React.CSSProperties = {
-  fontFamily: "var(--font-mono)",
-  fontSize: 11,
-  letterSpacing: "0.14em",
-  textTransform: "uppercase",
-  color: "var(--estuary, #132B84)",
-  margin: "24px 0 12px",
-};
