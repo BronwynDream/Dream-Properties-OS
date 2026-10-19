@@ -1504,7 +1504,10 @@ button.doc-thumb {
   background-size: 48px 48px;
   color: var(--white);
   position: relative;
-  z-index: 30;
+  /* Above every page's own sticky bars (the map's search bar is 60) so the
+     Admin / More menus and the phone drawer open over them; below the
+     full-screen dialogs (command palette 300, lightbox 1000). */
+  z-index: 100;
   border-bottom: 1px solid rgba(255,255,255,0.18);
 }
 .topbar-inner {

@@ -4,7 +4,20 @@ Running log of what's decided, built, and next. Updated at the end of each worki
 session. `PROJECT.md` remains the canonical business/design doc; this file is the
 "where are we right now" companion.
 
-_Last updated: 2026-10-18_
+_Last updated: 2026-10-19_
+
+---
+
+## TOP-BAR MENUS UNDER THE MAP BAR + MAP CRASH ON LOAD (2026-10-19)
+
+**Feedback moment (Simon, with screenshot):** "when you click on the admin menu, it drops behind the map menus."
+
+**Cause:** `.topbar` was z-index 30 while the map's `.mx-bar` is 60, so the Admin/More dropdowns (and the phone drawer, which lives inside the top bar) opened underneath it. **Fix:** `.topbar` is now z-index 100: above every page's own bars, below the command palette (300) and lightbox (1000).
+
+**Found while checking it live:** /map crashed ("Application error") in a browser whose remembered basemap was Satellite, with the console showing "Style is not done loading" from `addSource`.
+- Cause: the basemap effect's first run happens on mount while `basemap` state is still the SSR default "map", but the map was built on the remembered "satellite". It called `setStyle(street)` (and overwrote the remembered choice), then flipped back to satellite once the saved choice loaded. Two style loads raced, and the install effect ran while a style was loading.
+- Fix: skip the basemap effect's mount run (`basemapMounted` ref), and the install effect returns early if `!map.isStyleLoaded()` (the next style.load re-runs it).
+- Verification: tsc and build clean. Live check after push: the tab with remembered Satellite must load /map without the error, and the Admin menu must open over the map bar.
 
 ---
 

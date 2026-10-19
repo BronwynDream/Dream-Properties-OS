@@ -364,8 +364,17 @@ export default function MapView({
   // Basemap switch: setStyle drops our layers; style.load re-installs them.
   // appliedBasemap is what the map is actually showing (it starts on the
   // remembered choice), so only a real change calls setStyle.
+  // The first run is the mount, with basemap still at its SSR default
+  // ("map") while the map was built on the remembered choice. Switching
+  // then flipped satellite users to the street map and straight back — two
+  // setStyle calls racing — and overwrote their remembered choice.
+  const basemapMounted = useRef(false);
   useEffect(() => {
     const map = mapRef.current;
+    if (!basemapMounted.current) {
+      basemapMounted.current = true;
+      return;
+    }
     if (!map || basemap === appliedBasemap.current) return;
     appliedBasemap.current = basemap;
     const target = BASEMAPS.find((b) => b.id === basemap)?.style;
@@ -378,6 +387,11 @@ export default function MapView({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
+    // A basemap switch may have started since this style.load fired; adding
+    // a source now throws "Style is not done loading" and takes the whole
+    // page down (seen live 2026-10-19). The new style's own style.load bumps
+    // mapReady again, and the install runs then.
+    if (!map.isStyleLoaded()) return;
 
     if (!map.hasImage("pill-ours")) {
       // 48×40 px at pixel ratio 2: stretch the flat middle, keep the round ends.
