@@ -27,6 +27,7 @@ toggle to active"
 - All paths fall back if 0087 hasn't run (adding a director then asks for it).
 
 **Verification**: 0087 applied on the stand-in DB; tsc + build pass.
+- 0087 also seeds Camilla Anley-Eyre (camilla@dreamknysna.co.za) as director-to-be, access off (Simon: "you've left out Camilla?").
 **Live state seen 2026-10-19 ~18:55**: logins = Angie Bevan (agent, active),
 Bronwyn (director), Simon (director). Camilla: none.
 
