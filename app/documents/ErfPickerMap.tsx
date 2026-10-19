@@ -71,6 +71,11 @@ export default function ErfPickerMap({
       style: "mapbox://styles/mapbox/satellite-streets-v12",
       center: KNYSNA,
       zoom: 12,
+      maxZoom: 19,
+      // The map sits in a scrolling page: a plain scroll moves the page, and
+      // Ctrl/⌘ + scroll (two fingers on a phone) moves the map. Without this
+      // a scroll over the map zoomed it to street-texture level (live check).
+      cooperativeGestures: true,
       attributionControl: false,
     });
     mapRef.current = map;
@@ -200,7 +205,7 @@ export default function ErfPickerMap({
     if (!focus.prclKey) {
       markerRef.current = new mapboxgl.Marker({ color: "#F2C14E" }).setLngLat([focus.lng, focus.lat]).addTo(map);
     }
-    map.flyTo({ center: [focus.lng, focus.lat], zoom: Math.max(map.getZoom(), 17), duration: 900 });
+    map.flyTo({ center: [focus.lng, focus.lat], zoom: 17.5, duration: 900 });
   }, [focus, ready]);
 
   // Jump to a suburb (typed in the search, or chosen here).

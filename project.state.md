@@ -24,6 +24,15 @@ have a suburb search bar or something easier to track the property ?"
 - CSS: `.takeon-where` single column, `.erfmap-bar/-suburb/-size`,
   `.docstart-suburbs/-suburb`.
 
+**Live check after push (built-in browser, 2026-10-19 17:10)**: Go to suburb →
+The Heads flies to zoom 15.5 with erf lines; clicking a house picked
+"16 Ou Pad Road · Erf 10926 · new record" and outlined it in gold; typing
+"15 Eagles Way" now shows only the Dream OS record (roll duplicate hidden).
+Found: a page scroll over the map zoomed the map (to street-texture level).
+Fixed: `cooperativeGestures: true` (Ctrl/⌘+scroll or two fingers moves the
+map), `maxZoom: 19`, picks fly to a fixed zoom 17.5. Stopped before Continue
+each time — no records created.
+
 **Found in the live check (previous push) and fixed in the same commit**
 - Picking a roll erf didn't move the map: `erf_centroid_lookup` (0060)
   matches only `tag_value = 'erf N'` and `maj_region = 'KNYSNA'` and returned
