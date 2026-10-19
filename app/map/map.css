@@ -368,6 +368,20 @@
   cursor: pointer;
 }
 .mx-tool.on { background: var(--navy); color: var(--white); font-weight: 600; }
+/* "Near me" (Arc E2): our own button drives Mapbox's locate control, so
+   the stock crosshair button is hidden — one way to do it, clearly named. */
+.mx-near::before { content: "◎"; margin-right: 6px; font-size: 14px; }
+.mx-canvas .mapboxgl-ctrl-geolocate { display: none; }
+.mx-canvas .mapboxgl-ctrl-group:has(.mapboxgl-ctrl-geolocate):not(:has(.mapboxgl-ctrl-zoom-in)) { display: none; }
+.mx-card-dist { font-weight: 500; color: var(--ink-500, var(--ink-700)); }
+.mx-geo-msg {
+  position: absolute; top: 56px; right: 12px; z-index: 11; max-width: min(340px, calc(100% - 24px));
+  margin: 0; padding: 10px 34px 10px 14px; border-radius: 10px;
+  background: var(--white); box-shadow: var(--shadow-md); color: var(--ink-900); font-size: 13px; line-height: 1.4;
+}
+.mx-geo-msg button {
+  position: absolute; top: 4px; right: 6px; border: 0; background: none; font-size: 18px; line-height: 1; cursor: pointer; color: var(--ink-700); padding: 4px;
+}
 
 .mx-legend {
   position: absolute;
@@ -517,7 +531,8 @@
     align-items: center;
   }
   .mx-legend { display: none; }
-  .mx-tools { top: 10px; right: 10px; }
+  .mx-tools { top: 10px; right: 10px; left: 10px; flex-wrap: wrap; justify-content: flex-end; }
+  .mx-geo-msg { top: 100px; right: 10px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

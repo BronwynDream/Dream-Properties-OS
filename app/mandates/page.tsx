@@ -1,3 +1,4 @@
+import { myListingIds as fetchMyListingIds } from "@/lib/myListings";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
@@ -25,7 +26,7 @@ type MandateRow = {
     status: string;
     property_id: string;
     property: { primary_address: string | null; suburb: { name: string | null } | null };
-    agent: { name: string | null; email: string | null } | null;
+    agent: { full_name: string | null; email: string | null } | null;
   };
 };
 
@@ -100,11 +101,7 @@ export default async function MandatesPage({
 
   let myListingIds: string[] | null = null;
   if (isAgent) {
-    const { data: myListings } = await supabase
-      .from("listing")
-      .select("id")
-      .eq("agent_user_id", user.id);
-    myListingIds = ((myListings ?? []) as { id: string }[]).map((l) => l.id);
+    myListingIds = await fetchMyListingIds(supabase, user.id);
   }
 
   // Pull every mandate on active listings, along with property + agent so
@@ -119,7 +116,7 @@ export default async function MandatesPage({
       listing:listing_id(
         id, status, property_id,
         property:property_id(primary_address, suburb:suburb_id(name)),
-        agent:agent_user_id(name, email)
+        agent:agent_user_id(full_name, email)
       )
     `,
     )
@@ -344,7 +341,7 @@ function MandateSection({
 function MandateEntry({ row, daysUntil }: { row: MandateRow; daysUntil: number }) {
   const address = row.listing.property?.primary_address ?? "Unknown address";
   const suburb = row.listing.property?.suburb?.name ?? null;
-  const agentName = row.listing.agent?.name ?? "Unassigned";
+  const agentName = row.listing.agent?.full_name ?? "Unassigned";
   const isNullExpiry = Number.isNaN(daysUntil);
 
   return (

@@ -3,18 +3,22 @@
 import { useEffect, useRef } from "react";
 import { type MapListing, shortPrice, sqm, STATE_LABEL, TYPE_LABEL } from "./listing";
 import { SOURCE_META } from "./sources";
+import { kmBetween } from "@/lib/external-listings/geocode";
+
+const distanceLabel = (km: number) => (km < 1 ? `${Math.max(10, Math.round((km * 1000) / 10) * 10)} m` : `${km.toFixed(km < 10 ? 1 : 0)} km`);
 
 // The list beside the map: what is in view, in step with the dots.
 // Hovering a card lights its dot; clicking opens the panel and flies there.
 // "N in view of M" stops the false sense of having seen everything.
 
-export type SortKey = "ours" | "price_desc" | "price_asc";
+export type SortKey = "ours" | "price_desc" | "price_asc" | "near";
 
 export default function ResultsList({
   items,
   total,
   sort,
   setSort,
+  me = null,
   hoverKey,
   selectedKey,
   onHover,
@@ -24,6 +28,7 @@ export default function ResultsList({
   total: number;
   sort: SortKey;
   setSort: (s: SortKey) => void;
+  me?: { lng: number; lat: number } | null;
   hoverKey: string | null;
   selectedKey: string | null;
   onHover: (key: string | null) => void;
@@ -50,6 +55,7 @@ export default function ResultsList({
         <label className="mx-sort">
           <span className="sr-only">Sort</span>
           <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)}>
+            {me && <option value="near">Nearest me</option>}
             <option value="ours">Ours first</option>
             <option value="price_desc">Price, high to low</option>
             <option value="price_asc">Price, low to high</option>
@@ -84,7 +90,10 @@ export default function ResultsList({
               )}
             </span>
             <span className="mx-card-body">
-              <span className="mx-card-price">{shortPrice(l.price)}</span>
+              <span className="mx-card-price">
+                {shortPrice(l.price)}
+                {me && <span className="mx-card-dist"> · {distanceLabel(kmBetween(me, l))}</span>}
+              </span>
               <span className="mx-card-addr">{l.address}</span>
               {l.areaOnly && <span className="mx-card-area">Area only</span>}
               <span className="mx-card-facts">{facts(l)}</span>

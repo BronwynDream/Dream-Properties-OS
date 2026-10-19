@@ -1,3 +1,4 @@
+import { myListingIds as fetchMyListingIds } from "@/lib/myListings";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -46,10 +47,10 @@ export default async function Dashboard() {
   const myListingIds: string[] = [];
   const myPropertyIds: string[] = [];
   if (isAgent) {
-    const { data: myListingRows } = await supabase
-      .from("listing")
-      .select("id, property_id")
-      .eq("agent_user_id", user.id);
+    const mine = await fetchMyListingIds(supabase, user.id);
+    const { data: myListingRows } = mine.length
+      ? await supabase.from("listing").select("id, property_id").in("id", mine)
+      : { data: [] };
     for (const r of (myListingRows ?? []) as { id: string; property_id: string }[]) {
       myListingIds.push(r.id);
       if (!myPropertyIds.includes(r.property_id)) myPropertyIds.push(r.property_id);
@@ -87,7 +88,7 @@ export default async function Dashboard() {
               "id, asking_price, listed_date, property:property_id(id, primary_address, suburb:suburb_id(name)), mandate:mandate(type)",
             )
             .eq("status", "live")
-            .eq("agent_user_id", user.id)
+            .in("id", myListingIds.length ? myListingIds : ["00000000-0000-0000-0000-000000000000"])
             .order("listed_date", { ascending: false, nullsFirst: false })
             .limit(6)
         : supabase

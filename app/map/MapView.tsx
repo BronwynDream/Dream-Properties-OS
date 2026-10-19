@@ -11,6 +11,7 @@ import { savePropertyPin } from "./actions";
 import PreviewPanel from "./PreviewPanel";
 import FilterBar from "./FilterBar";
 import ResultsList, { type SortKey } from "./ResultsList";
+import { kmBetween } from "@/lib/external-listings/geocode";
 import HoverCard from "./HoverCard";
 import { type Filters, type MapListing, DEFAULT_FILTERS, groupDigits, matches, shortPrice, toListing } from "./listing";
 
@@ -248,6 +249,12 @@ export default function MapView({
   const [basemap, setBasemap] = useState<BasemapId>("map");
   const [showPrices, setShowPrices] = useState(false);
   const [showErf, setShowErf] = useState(false);
+  // "What's around me" (Arc E2, 2026-10-19): the agent's position once they
+  // tap Near me. Sorts the list by distance and switches the erven on so the
+  // erf they're standing on can be tapped for its municipal record.
+  const [me, setMe] = useState<{ lng: number; lat: number } | null>(null);
+  const geoRef = useRef<mapboxgl.GeolocateControl | null>(null);
+  const [geoMsg, setGeoMsg] = useState<string | null>(null);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [hoverKey, setHoverKey] = useState<string | null>(null); // from the map or the list
   const [hoverFromMap, setHoverFromMap] = useState(false);
@@ -298,11 +305,14 @@ export default function MapView({
       if (b.price == null) return -1;
       return (a.price - b.price) * dir;
     };
+    if (sort === "near" && me) {
+      return [...vis].sort((a, b) => kmBetween(me, a) - kmBetween(me, b));
+    }
     return [...vis].sort((a, b) => {
       if (sort === "ours" && a.kind !== b.kind) return a.kind === "ours" ? -1 : 1;
       return byPrice(a, b, sort === "price_asc" ? 1 : -1);
     });
-  }, [filtered, bounds, sort]);
+  }, [filtered, bounds, sort, me]);
 
   const selected = selectedKey ? byKey.get(selectedKey) ?? null : null;
   const hovered = hoverKey ? byKey.get(hoverKey) ?? null : null;
@@ -343,6 +353,31 @@ export default function MapView({
       setMapError(msg);
     });
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "bottom-right");
+    const geo = new mapboxgl.GeolocateControl({
+      positionOptions: { enableHighAccuracy: true },
+      trackUserLocation: true,
+      showUserHeading: true,
+      fitBoundsOptions: { maxZoom: 17 },
+    });
+    map.addControl(geo, "bottom-right");
+    geoRef.current = geo;
+    let firstFix = true;
+    geo.on("geolocate", (pos: GeolocationPosition) => {
+      setMe({ lng: pos.coords.longitude, lat: pos.coords.latitude });
+      setGeoMsg(null);
+      if (firstFix) {
+        firstFix = false;
+        setShowErf(true);
+        setSort("near");
+      }
+    });
+    geo.on("error", (e: GeolocationPositionError) => {
+      setGeoMsg(
+        e?.code === 1
+          ? "Location is off for Dream OS. Allow it in your phone's settings to see what's around you."
+          : "Couldn't find your location. Try again outside, or with Wi-Fi on.",
+      );
+    });
     map.addControl(new mapboxgl.AttributionControl({ compact: true, customAttribution: "Dream Knysna" }), "bottom-right");
 
     const ro = new ResizeObserver(() => map.resize());
@@ -799,6 +834,7 @@ export default function MapView({
             total={filtered.length}
             sort={sort}
             setSort={setSort}
+            me={me}
             hoverKey={hoverKey}
             selectedKey={selectedKey}
             onHover={(k) => {
@@ -813,6 +849,17 @@ export default function MapView({
           <div ref={containerRef} className="mx-canvas" />
 
           <div className="mx-tools">
+            <button
+              type="button"
+              className={`mx-tool mx-near${me ? " on" : ""}`}
+              aria-pressed={!!me}
+              onClick={() => {
+                setGeoMsg(null);
+                geoRef.current?.trigger();
+              }}
+            >
+              Near me
+            </button>
             <div className="mx-seg" role="group" aria-label="Basemap">
               {BASEMAPS.map((b) => (
                 <button key={b.id} type="button" className={basemap === b.id ? "on" : ""} onClick={() => setBasemap(b.id)}>
@@ -833,6 +880,13 @@ export default function MapView({
               Erven
             </button>
           </div>
+
+          {geoMsg && (
+            <p className="mx-geo-msg" role="alert">
+              {geoMsg}
+              <button type="button" onClick={() => setGeoMsg(null)} aria-label="Dismiss">×</button>
+            </p>
+          )}
 
           <div className="mx-legend" aria-label="Legend">
             <span><i className="dot ours" /> Ours</span>

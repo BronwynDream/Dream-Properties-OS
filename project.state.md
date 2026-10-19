@@ -8,6 +8,38 @@ _Last updated: 2026-10-19_
 
 ---
 
+## ARC E2 — "NEAR ME" ON THE MAP + CO-AGENT SCOPING (2026-10-19)
+
+**Shipped**
+- **Co-listing agents see shared listings.** New `lib/myListings.ts`
+  (`myListingIds`) = listings where `agent_user_id` is the user UNION listings
+  reached via `listing_agent` through the user's active `agent` row. Dashboard,
+  Mandates and Pipeline now scope "mine" through it (they used only
+  `agent_user_id`, so Vanessa would not have seen the deals she shares with
+  Bronwyn). Mandates select fixed from `name` to `full_name`.
+- **"Near me" on /map** (mobile plan E2). `MapView.tsx` adds a Mapbox
+  `GeolocateControl` (high accuracy, tracks, heading) driven by our own
+  "◎ Near me" pill in the map tools; the stock crosshair is hidden in
+  `map.css`. First fix: fly in (max zoom 17), switch **Erven on** so the agent
+  can tap the erf they're standing on for its municipal record, and sort the
+  list **Nearest me**. `ResultsList.tsx` gains `SortKey "near"` (only offered
+  once a location is known) and a distance label on each card
+  (`kmBetween` from `lib/external-listings/geocode.ts`). Location refused /
+  unavailable shows a plain dismissible message. Tools row wraps on phones.
+
+**Verification**
+- `tsc --noEmit` clean; `next build` compiles (env placeholders in the
+  container — the only prerender errors there are the missing Supabase env).
+- NOT yet verified live: house rule — load /map after Simon pushes and check the
+  pill renders, no console errors, dots still install. Real geolocation can only
+  be tested on a phone (Simon).
+
+**Loose ends**
+- E3 scan-and-file, E4 voice notes, E5 sign on glass (legal check), E6 Today.
+- Show-house check-in parked by Simon.
+
+---
+
 ## ARC E1 — INSTALLABLE ON PHONES + MAP DOTS FIX + AGENT NAME FIX (2026-10-19)
 
 Plan: Arc E (mobile in the field) saved to the Claude project as

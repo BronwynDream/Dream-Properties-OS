@@ -1,3 +1,4 @@
+import { myListingIds as fetchMyListingIds } from "@/lib/myListings";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
@@ -178,11 +179,15 @@ export default async function PipelinePage() {
     };
   });
 
+  // Co-agents too, not only the lead (lib/myListings). Since 0086 the
+  // database only returns this agent's deals anyway; this keeps the board
+  // honest if a deal has a listing they're on as second agent.
+  const mineSet = isAdmin ? null : new Set(await fetchMyListingIds(supabase, profile.id));
   const scopedCards = isAdmin
     ? cards
     : cards.filter((c) => {
         const listing = listingByTransfer.get(c.id);
-        return listing?.agent_user_id === profile.id;
+        return !!listing && (listing.agent_user_id === profile.id || !!mineSet?.has(listing.id));
       });
 
   // 4. Group by column, sort by days-in-stage (descending — stuck deals bubble up)
