@@ -2,8 +2,12 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import { createClient } from "@/lib/supabase/client";
 import { fileDocuments } from "./actions";
+
+// The scanner (canvas maths + pdf-lib) loads only when someone taps Scan.
+const ScanPages = dynamic(() => import("./ScanPages"), { ssr: false });
 
 // "Add documents" on the property record (2026-10-19). Agents file their
 // own papers onto their deal — signed mandates, IDs, plans, certificates —
@@ -45,6 +49,7 @@ export default function AddDocuments({
   const [err, setErr] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  const [scanning, setScanning] = useState(false);
   const pick = useRef<HTMLInputElement>(null);
   const camera = useRef<HTMLInputElement>(null);
 
@@ -98,6 +103,16 @@ export default function AddDocuments({
         <button type="button" className="btn-secondary" onClick={() => setOpen(true)}>
           + Add documents
         </button>
+        <button
+          type="button"
+          className="btn-secondary adddocs-camera"
+          onClick={() => {
+            setOpen(true);
+            setScanning(true);
+          }}
+        >
+          Scan pages
+        </button>
         {done && <span className="adddocs-done" role="status">{done}</span>}
       </div>
     );
@@ -125,6 +140,9 @@ export default function AddDocuments({
           <button type="button" className="btn-secondary" onClick={() => pick.current?.click()} disabled={pending}>
             Choose files
           </button>
+          <button type="button" className="btn-secondary adddocs-scan" onClick={() => setScanning(true)} disabled={pending}>
+            Scan pages
+          </button>
           <button type="button" className="btn-secondary adddocs-camera" onClick={() => camera.current?.click()} disabled={pending}>
             Take a photo
           </button>
@@ -132,6 +150,18 @@ export default function AddDocuments({
         <input ref={pick} type="file" multiple hidden onChange={(e) => add(e.target.files)} />
         <input ref={camera} type="file" accept="image/*" capture="environment" hidden onChange={(e) => add(e.target.files)} />
       </div>
+
+      {scanning && (
+        <ScanPages
+          onClose={() => setScanning(false)}
+          onDone={(f) => {
+            setScanning(false);
+            setFiles((all) => [...all, f]);
+            setErr(null);
+            setDone(null);
+          }}
+        />
+      )}
 
       {files.length > 0 && (
         <ul className="adddocs-files" role="list">

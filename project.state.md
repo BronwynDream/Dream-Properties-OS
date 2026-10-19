@@ -8,6 +8,37 @@ _Last updated: 2026-10-19_
 
 ---
 
+## ARC E3 — SCAN & FILE (2026-10-19)
+
+**Shipped**
+- **Scan pages** on the property record's Add documents panel (and straight
+  from the closed panel on phones). Photograph a document page by page; each
+  photo is straightened to the page edges and cleaned, and the pages become
+  one PDF that drops into the usual file list → pick the document type → File.
+  Everything happens on the phone; nothing uploads until "File".
+- `lib/scan.ts`: `loadPhoto` (downscale to 2400 px), `detectCorners` (Otsu +
+  largest bright blob + extreme points; falls back to a 6% inset), `flatten`
+  (homography warp with bilinear sampling, quarter-turn rotate, "Clean" mode =
+  divide out a dilated background estimate → white paper, grey ink, legible
+  signatures), `pagesToPdf` (pdf-lib, A4 width, one page per scan).
+- `app/properties/[id]/ScanPages.tsx`: full-screen sheet, corner editor with
+  44 px draggable handles (arrow keys nudge), Rotate / Clean–Colour / Reset /
+  Delete, page thumbnails, Add page. Loaded with next/dynamic only when tapped.
+- `AddDocuments.tsx` wires it in; styles `.scan*` in globals.css.
+
+**Verification**
+- Headless Chromium on a synthetic skewed photo with a shadow: detected
+  corners within ~0.5% of the truth; output straight and clean; 2-page PDF made.
+- Phone-size (390×844) harness of the sheet: empty → corner editor → thumbnails
+  → PDF handed back (144 KB). tsc + next build clean.
+- NOT verified on a real phone camera (Simon), nor live after push.
+
+**Loose ends**
+- Corner detection needs contrast between page and surface; on a white table it
+  falls back to the inset and the agent drags the dots.
+
+---
+
 ## ARC E2 — "NEAR ME" ON THE MAP + CO-AGENT SCOPING (2026-10-19)
 
 **Shipped**
