@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import AgentRoster, { type RosterRow } from "./AgentRoster";
+import { createServiceClient } from "@/lib/supabase/service";
 import TopBar from "@/app/components/TopBar";
 import InviteUser from "./InviteUser";
 import TeamRow, { type TeamMember } from "./TeamRow";
@@ -80,6 +82,59 @@ export default async function TeamPage() {
     transfersLed.set(id, (transfersLed.get(id) ?? 0) + 1);
   }
 
+  // The agent roster (0085) with each agent's login state. Sign-in and
+  // invitation dates live in Supabase Auth, so read them with the service
+  // client (this page is director-only).
+  const roster: RosterRow[] = await (async () => {
+    const [{ data: agents }, { data: la }] = await Promise.all([
+      supabase.from("agent").select("id, full_name, email, phone, app_user_id").order("full_name"),
+      supabase.from("listing_agent").select("agent_id, listing:listing_id(status)"),
+    ]);
+    const live = new Map<string, number>();
+    for (const r of (la ?? []) as any[]) {
+      const st = (Array.isArray(r.listing) ? r.listing[0] : r.listing)?.status;
+      if (["draft", "live", "under_offer"].includes(st)) live.set(r.agent_id, (live.get(r.agent_id) ?? 0) + 1);
+    }
+    const users = (usersData ?? []) as any[];
+    const auth = new Map<string, { invited_at: string | null; last_sign_in_at: string | null }>();
+    try {
+      const svc = createServiceClient();
+      for (let page = 1; page <= 5; page++) {
+        const { data } = await svc.auth.admin.listUsers({ page, perPage: 200 });
+        for (const u of data?.users ?? []) {
+          auth.set((u.email ?? "").toLowerCase(), { invited_at: (u as any).invited_at ?? u.created_at ?? null, last_sign_in_at: u.last_sign_in_at ?? null });
+        }
+        if (!data || data.users.length < 200) break;
+      }
+    } catch {
+      /* no service key: dates just don't show */
+    }
+    return ((agents ?? []) as any[]).map((a) => {
+      const email = String(a.email ?? "").toLowerCase();
+      const u = users.find((x) => x.id === a.app_user_id) ?? users.find((x) => String(x.email ?? "").toLowerCase() === email);
+      const au = auth.get(email) ?? null;
+      const state: RosterRow["state"] = !u
+        ? "none"
+        : u.role === "admin"
+          ? "director"
+          : u.active === false
+            ? "off"
+            : au?.last_sign_in_at
+              ? "active"
+              : "invited";
+      return {
+        agentId: a.id,
+        name: a.full_name,
+        email,
+        phone: a.phone ?? null,
+        listings: live.get(a.id) ?? 0,
+        state,
+        invitedAt: au?.invited_at ?? null,
+        lastSignIn: au?.last_sign_in_at ?? null,
+      };
+    });
+  })();
+
   const members: TeamMember[] = ((usersData ?? []) as any[])
     .map((u) => ({
       id: u.id,
@@ -107,6 +162,13 @@ export default async function TeamPage() {
         <hr className="tideline" />
 
         <section className="app-body" style={{ maxWidth: 1100 }}>
+          {roster.length > 0 && <AgentRoster rows={roster} />}
+
+          <h2 className="roster-sub">Logins &amp; roles</h2>
+          <p className="roster-subnote">
+            Everyone with a Dream OS login. Make someone a director here, or invite someone who isn&apos;t on the
+            agent list (e.g. Camilla).
+          </p>
           <div style={{ marginBottom: 20 }}>
             <InviteUser />
           </div>

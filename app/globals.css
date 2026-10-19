@@ -3006,3 +3006,30 @@ button.doc-thumb {
 .record-sales ul { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; }
 .record-sales li { display: flex; flex-wrap: wrap; gap: 16px; font-size: 14px; }
 .record-sales-status { color: var(--paper-mute); text-transform: capitalize; font-size: 13px; }
+
+/* Team: agent roster with access switches (2026-10-19). */
+.roster { margin-bottom: 36px; }
+.roster-head h2, .roster-sub { font-size: 20px; margin: 0 0 4px; color: var(--estuary); }
+.roster-head p, .roster-subnote { margin: 0 0 14px; color: var(--ink-700); font-size: 14px; max-width: 70ch; }
+.roster-sub { margin-top: 8px; }
+.roster-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line-soft); border-radius: var(--radius-lg); background: var(--white); }
+.roster-item { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 24px; padding: 14px 18px; }
+.roster-item + .roster-item { border-top: 1px solid var(--line-soft); }
+.roster-who { display: grid; gap: 2px; min-width: 0; }
+.roster-name { font-weight: 600; font-size: 15px; color: var(--ink); }
+.roster-meta { font-size: 13px; color: var(--paper-mute); overflow-wrap: anywhere; }
+.roster-act { display: grid; justify-items: end; gap: 6px; }
+.roster-switch { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; font-size: 14px; }
+.roster-switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.roster-track { width: 42px; height: 24px; border-radius: 999px; background: var(--line-strong); position: relative; transition: background .15s; flex: none; }
+.roster-thumb { position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: var(--white); box-shadow: var(--shadow-sm); transition: transform .15s; }
+.roster-switch input:checked + .roster-track { background: var(--positive); }
+.roster-switch input:checked + .roster-track .roster-thumb { transform: translateX(18px); }
+.roster-switch input:focus-visible + .roster-track { outline: 2px solid var(--navy); outline-offset: 2px; }
+.roster-switch-label { min-width: 78px; color: var(--ink-700); }
+.roster-confirm { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; font-size: 14px; }
+.roster-cancel { background: none; border: 0; color: var(--navy); text-decoration: underline; cursor: pointer; font: inherit; font-size: 14px; }
+.roster-pill { font-family: var(--font-mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--navy); border: 1px solid currentColor; border-radius: 999px; padding: 3px 10px; }
+.roster-note { margin: 0; font-size: 13px; color: var(--positive); }
+.roster-err { margin: 0; font-size: 13px; color: var(--critical); max-width: 46ch; text-align: right; }
+@media (prefers-reduced-motion: reduce) { .roster-track, .roster-thumb { transition: none; } }

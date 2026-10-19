@@ -8,6 +8,33 @@ _Last updated: 2026-10-19_
 
 ---
 
+## TEAM PAGE: AGENT ROSTER WITH ACCESS SWITCHES (2026-10-19)
+
+**Feedback moment (Simon, verbatim):** "I'D LIKE TO CREATE A PAGE WHERE EACH
+AGENT IS ALREADY LISTED AS AN AGENT BUT TOGGLED OFF FOR ACCESS AT THIS POINT.
+THEN I WANT TO INVITE THEM BY TURNING ON THEIR ACCESS. I ALSO THOUGHT angie
+Bevan had been invited ?"
+
+**Shipped**
+- `/team` now opens with **Agents**: every `agent` roster row (0085, the 7
+  from the website) with live-listing count, status and an Access switch.
+  Status comes from app_user + Supabase Auth (service `listUsers`, page is
+  director-only): Director / Access on (last signed in) / Invited (date,
+  hasn't signed in) / Access switched off / No access · not invited.
+- `setAgentAccess({agentId, on})` in `app/team/actions.ts` (director-only):
+  ON → existing app_user re-activated; or an Auth login that already exists
+  (dashboard invite) gets its app_user (no second email); else
+  `inviteUserByEmail` + app_user(role agent) + agent.app_user_id. OFF →
+  app_user.active=false (0086: is_staff() needs active, so access closes).
+  Refuses directors (managed in the list below) and self.
+- Inline confirm before either action ("Send Angie an invitation…?").
+- Below it, "Logins & roles": the existing list + "+ Invite team member"
+  (for Camilla as Director).
+- CSS `.roster*`.
+
+**Verification**: tsc + build pass. Not yet seen live (needs push). Angie's
+real status will show on the roster once live.
+
 ## TEAM PAGE: LIST FALLBACK + AGENT ROLE TEXT (2026-10-19)
 
 Simon: "HOW DO I SET CAMILLA AS A DIRECTOR? WHERE IN THE SYSTEM DOES THIS

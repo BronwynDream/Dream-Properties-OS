@@ -203,3 +203,117 @@ export async function inviteTeamMember(input: {
   revalidatePath("/team");
   return { ok: true as const, userId: invite.user.id };
 }
+
+// ---------------------------------------------------------------------------
+// Agent roster access (2026-10-19). Simon: "each agent is already listed as
+// an agent but toggled off for access at this point. Then I want to invite
+// them by turning on their access."
+//
+// The roster is the `agent` table (0085, from the website). Turning access ON:
+//   * no login yet → send the Supabase invitation email and create their
+//     app_user (role agent); the 0085 trigger links the roster row by email,
+//     so their listings are theirs from the first sign-in;
+//   * a login that already exists in Supabase Auth but has no app_user (an
+//     invite sent from the Supabase dashboard) → create the app_user, no
+//     second email;
+//   * a login that was switched off → switch it back on.
+// Turning access OFF sets app_user.active = false: from 0086 every access
+// check starts with is_staff(), which requires an active login, so they see
+// nothing from their next request. Their listings and contacts stay put.
+// Directors are managed in the team list below the roster, not here.
+// ---------------------------------------------------------------------------
+export async function setAgentAccess(input: { agentId: string; on: boolean }) {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false as const, error: gate.error };
+
+  let service;
+  try {
+    service = createServiceClient();
+  } catch (e) {
+    return { ok: false as const, error: `${(e as Error).message} — set SUPABASE_SERVICE_ROLE_KEY on Vercel.` };
+  }
+
+  const { data: agent } = await service
+    .from("agent")
+    .select("id, full_name, email, phone, app_user_id")
+    .eq("id", input.agentId)
+    .maybeSingle();
+  if (!agent) return { ok: false as const, error: "That agent isn't on the roster." };
+  const email = String(agent.email).trim().toLowerCase();
+
+  // Which login, if any, this agent has.
+  let appUser: { id: string; role: string; active: boolean } | null = null;
+  if (agent.app_user_id) {
+    const { data } = await service.from("app_user").select("id, role, active").eq("id", agent.app_user_id).maybeSingle();
+    appUser = data ?? null;
+  }
+  if (!appUser) {
+    const { data } = await service.from("app_user").select("id, role, active").ilike("email", email).maybeSingle();
+    appUser = data ?? null;
+  }
+  if (appUser && appUser.role === "admin") {
+    return { ok: false as const, error: `${agent.full_name} is a director — change directors in the team list below.` };
+  }
+  if (appUser && appUser.id === gate.userId) {
+    return { ok: false as const, error: "You can't switch off your own access." };
+  }
+
+  if (!input.on) {
+    if (!appUser) return { ok: true as const, state: "off" as const };
+    const { error } = await service.from("app_user").update({ active: false }).eq("id", appUser.id);
+    if (error) return { ok: false as const, error: error.message };
+    revalidatePath("/team");
+    return { ok: true as const, state: "off" as const };
+  }
+
+  if (appUser) {
+    const { error } = await service.from("app_user").update({ active: true }).eq("id", appUser.id);
+    if (error) return { ok: false as const, error: error.message };
+    if (!agent.app_user_id) await service.from("agent").update({ app_user_id: appUser.id }).eq("id", agent.id);
+    revalidatePath("/team");
+    return { ok: true as const, state: "on" as const };
+  }
+
+  // No app_user: maybe a Supabase Auth login already exists (invited from
+  // the dashboard). Use it rather than sending a second invitation.
+  let authUserId: string | null = null;
+  let invited = false;
+  const existing = await findAuthUserByEmail(service, email);
+  if (existing) {
+    authUserId = existing;
+  } else {
+    const redirectTo = process.env.NEXT_PUBLIC_SITE_URL
+      ? `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback?next=/account/password`
+      : undefined;
+    const { data: invite, error: inviteErr } = await service.auth.admin.inviteUserByEmail(email, { redirectTo });
+    if (inviteErr || !invite?.user?.id) {
+      return { ok: false as const, error: inviteErr?.message ?? "The invitation didn't send." };
+    }
+    authUserId = invite.user.id;
+    invited = true;
+  }
+
+  const { error: upErr } = await service.from("app_user").upsert(
+    { id: authUserId, full_name: agent.full_name, email, role: "agent", phone: agent.phone ?? null, active: true },
+    { onConflict: "id" },
+  );
+  if (upErr) {
+    return { ok: false as const, error: `${invited ? "Invitation sent, but" : ""} saving the login failed: ${upErr.message}` };
+  }
+  // The 0085 trigger links by email; make sure even if emails differ in case.
+  await service.from("agent").update({ app_user_id: authUserId }).eq("id", agent.id).is("app_user_id", null);
+
+  revalidatePath("/team");
+  return { ok: true as const, state: invited ? ("invited" as const) : ("on" as const) };
+}
+
+async function findAuthUserByEmail(service: ReturnType<typeof createServiceClient>, email: string): Promise<string | null> {
+  for (let page = 1; page <= 10; page++) {
+    const { data, error } = await service.auth.admin.listUsers({ page, perPage: 200 });
+    if (error || !data) return null;
+    const hit = data.users.find((u) => (u.email ?? "").toLowerCase() === email);
+    if (hit) return hit.id;
+    if (data.users.length < 200) return null;
+  }
+  return null;
+}
