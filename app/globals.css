@@ -3000,3 +3000,9 @@ button.doc-thumb {
 .docstart-suburbs { display: flex; flex-wrap: wrap; gap: 6px; }
 .docstart-suburb { background: var(--mist); border: 1px solid transparent; border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 13px; color: var(--estuary); cursor: pointer; }
 .docstart-suburb:hover, .docstart-suburb:focus-visible { border-color: var(--navy); outline: none; }
+
+/* Property record, public-facts mode (0086): another agent's deal. */
+.record-private p { max-width: 70ch; }
+.record-sales ul { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; }
+.record-sales li { display: flex; flex-wrap: wrap; gap: 16px; font-size: 14px; }
+.record-sales-status { color: var(--paper-mute); text-transform: capitalize; font-size: 13px; }

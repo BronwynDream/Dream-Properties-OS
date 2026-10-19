@@ -53,6 +53,7 @@ export default function MandateTakeOn({
   const [focus, setFocus] = useState<MapFocus>(null);
   const [jump, setJump] = useState<MapJump>(null);
   const [onRecord, setOnRecord] = useState<string[] | null>(null);
+  const [listedBy, setListedBy] = useState<string[] | null>(null);
   const [seller, setSeller] = useState<SellerFormValue>(emptySeller);
   const [sellerOpen, setSellerOpen] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -117,10 +118,12 @@ export default function MandateTakeOn({
   // On an existing record, see whether the seller is already captured.
   useEffect(() => {
     setOnRecord(null);
+    setListedBy(null);
     if (!chosen?.existingId) return;
     let live = true;
     mandateContext(chosen.existingId).then((r) => {
       if (!live || !r.ok) return;
+      setListedBy(r.listedBy);
       setOnRecord(r.sellerNames);
       setSellerOpen(r.sellerNames.length === 0);
     });
@@ -183,7 +186,7 @@ export default function MandateTakeOn({
 
   const sellerValue = sellerOpen ? normaliseSeller(seller) : null;
   const sellerReady = !!sellerValue || (!!onRecord && onRecord.length > 0);
-  const ready = !!type && !!chosen && sellerReady && !pending;
+  const ready = !!type && !!chosen && sellerReady && !listedBy && !pending;
 
   function go() {
     if (!type || !chosen) return;
@@ -349,7 +352,14 @@ export default function MandateTakeOn({
         <ErfPickerMap token={mapboxToken} focus={focus} jump={jump} onPick={pickFromMap} />
       </div>
 
-      {chosen && (
+      {chosen && listedBy && (
+        <p className="docstart-err" role="status">
+          This property already has a listing
+          {listedBy.length ? ` by ${listedBy.join(" and ")}` : " with no agent assigned yet"}. Ask Bronwyn to add you to it.
+        </p>
+      )}
+
+      {chosen && !listedBy && (
         <fieldset className="docstart-step">
           <legend>The seller</legend>
           {chosen.existingId && onRecord === null ? (

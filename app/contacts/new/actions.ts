@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
+import { claimListing, takeOnContext } from "@/lib/takeon";
 import type { SellerInput } from "@/app/properties/actions";
 
 // Seller-first entry point — mirror of createProperty's seller path. Creates
@@ -29,16 +29,19 @@ export async function createSellerWithProperty(input: {
   | { ok: true; partyId: string; propertyId: string | null; transferId: string | null; listingId: string | null }
   | { ok: false; error: string }
 > {
-  const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { ok: false, error: "unauthorised" };
+  // Writes go through the service client after the staff check (lib/takeon,
+  // migration 0086): the seller becomes this agent's contact, and the agent
+  // goes on the listing.
+  const started = await takeOnContext();
+  if (!started.ok) return started;
+  const ctx = started.ctx;
+  const supabase = ctx.db;
 
   const partyRow = buildPartyRow(input.seller);
   if (!partyRow) {
     return { ok: false, error: "Seller name is required." };
   }
+  partyRow.owner_user_id = ctx.userId;
 
   const { data: newParty, error: partyErr } = await supabase
     .from("party")
@@ -129,6 +132,7 @@ export async function createSellerWithProperty(input: {
   if (tpErr) {
     return { ok: false, error: tpErr.message };
   }
+  await claimListing(ctx, newListing.id);
 
   revalidatePath("/contacts");
   revalidatePath("/properties");

@@ -79,7 +79,16 @@ export default async function PropertyRecord({
       return a?.app_user_id === user.id;
     }),
   );
-  const canEditDetails = isAdmin || onAnyListing;
+  // Access rules (0086): directors and the agents on this property's
+  // listings / deals see everything; every other agent sees public facts
+  // only (address, erf, size, photos, asking price, listing agent, past sale
+  // dates and prices) — the database already hides the rest from them.
+  const worksRes = await supabase.rpc("works_on_property", { pid: params.id });
+  const canSeeDeal = worksRes.error ? isAdmin || onAnyListing : worksRes.data === true;
+  const canEditDetails = isAdmin || canSeeDeal;
+  const openListingRow = ((laRows ?? []) as any[]).find((l) => ["draft", "live", "under_offer"].includes(l.status)) ?? null;
+  const pastSales: { transfer_id: string; status: string; transfer_date: string | null; registered_date: string | null; price: number | null }[] =
+    canSeeDeal ? [] : (((await supabase.rpc("property_sales", { p_property_id: params.id })).data ?? []) as any[]);
   // Lightstone is parked (Simon, 2026-10-18): Dream declined the R5k/month
   // API, so without credentials the buttons only produced [SAMPLE]
   // placeholders. They reappear if LIGHTSTONE_API_BASE + KEY are ever set.
@@ -170,12 +179,23 @@ export default async function PropertyRecord({
       agent_name: agentJoin?.name ?? null,
     };
   }
-  const currentMandate = (() => {
+  let currentMandate = (() => {
     const m = Array.isArray((listingRow as any)?.mandate)
       ? (listingRow as any).mandate[0]
       : (listingRow as any)?.mandate;
     return m ?? null;
   })();
+  // Another agent's listing: mandate terms are private since 0086, but the
+  // kind and expiry (the stamp) are public facts — read them from the view.
+  if (!currentMandate && listingRow) {
+    const { data: pub } = await supabase
+      .from("mandate_public")
+      .select("type, expiry_date, evidence")
+      .eq("listing_id", (listingRow as any).id)
+      .limit(1)
+      .maybeSingle();
+    currentMandate = pub ?? null;
+  }
 
   let assignableAgents: { id: string; name: string; role: string }[] = [];
   if (isAdmin) {
@@ -1145,16 +1165,22 @@ export default async function PropertyRecord({
                   agents={assignableAgents}
                 />
               )}
-              <PrepareMandateButton
-                propertyId={prop.id}
-                listingId={listingForPicker?.id ?? null}
-                hasCurrentMandate={!!currentMandate}
-              />
-              <PrepareDocumentButton
-                propertyId={prop.id}
-                transferId={activeTransfer?.id ?? null}
-                listingId={listingForPicker?.id ?? null}
-              />
+              {/* Another agent's live listing: no mandate or deal documents
+                  from here (0086). An unlisted property can be taken on. */}
+              {(canSeeDeal || !openListingRow) && (
+                <PrepareMandateButton
+                  propertyId={prop.id}
+                  listingId={canSeeDeal ? listingForPicker?.id ?? null : null}
+                  hasCurrentMandate={!!currentMandate}
+                />
+              )}
+              {canSeeDeal && (
+                <PrepareDocumentButton
+                  propertyId={prop.id}
+                  transferId={activeTransfer?.id ?? null}
+                  listingId={listingForPicker?.id ?? null}
+                />
+              )}
               {lightstoneConnected && (
                 <LightstoneFetch
                   propertyId={prop.id}
@@ -1188,7 +1214,34 @@ export default async function PropertyRecord({
         {/* Active deal — sits below the plate as a wide strip. Not competing
             with the identity above; deal state is context, not identity. */}
         <section className="record-deal-band">
-          {activeTransfer ? (
+          {!canSeeDeal ? (
+            <div className="record-deal-empty record-private">
+              <p className="eyebrow">{openListingRow ? "Listed" : "Deal details"}</p>
+              <p>
+                {openListingRow && listingAgents.length > 0 ? (
+                  <>
+                    Listed by <b>{listingAgents.map((a) => a.full_name).join(" and ")}</b>.{" "}
+                  </>
+                ) : null}
+                Sellers, owners, buyers, offers, documents and deal terms are visible to the agents on this
+                property&apos;s deal and to the directors.
+              </p>
+              {pastSales.length > 0 && (
+                <div className="record-sales">
+                  <p className="eyebrow" style={{ marginTop: 14 }}>Past sales</p>
+                  <ul>
+                    {pastSales.map((ps) => (
+                      <li key={ps.transfer_id}>
+                        <span className="mono">{ps.registered_date ?? ps.transfer_date ?? "Date not recorded"}</span>
+                        <span className="mono">{ps.price != null ? <Rand value={Number(ps.price)} fallback="—" /> : "Price not recorded"}</span>
+                        <span className="record-sales-status">{String(ps.status).replace(/_/g, " ")}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          ) : activeTransfer ? (
             renderTransferCard(activeTransfer, { showMarker: false })
           ) : (
             <div className="record-deal-empty">
@@ -1287,7 +1340,7 @@ export default async function PropertyRecord({
             hogging vertical space; add-more-docs flows through Triage. Fetch
             from Lightstone is available inline here for fresh take-on flows;
             for established records it's reachable from the action row above. */}
-        {transfers.length === 0 && docs.length === 0 && (
+        {canSeeDeal && transfers.length === 0 && docs.length === 0 && (
           <section style={{ marginTop: 32 }}>
             <div
               className="section-head"

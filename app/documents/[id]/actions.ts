@@ -92,6 +92,18 @@ export async function createDraft(input: {
     .maybeSingle();
   if (!tpl || !tpl.active) return { ok: false, error: `Template ${input.templateCode} is not available.` };
 
+  // Deal documents only on your own deals (0086). Reading the transfer with
+  // the caller's client answers that: RLS hides other agents' transfers.
+  if (input.transferId) {
+    const { data: t } = await supabase
+      .from("transfer")
+      .select("id")
+      .eq("id", input.transferId)
+      .eq("property_id", input.propertyId)
+      .maybeSingle();
+    if (!t) return { ok: false, error: "That deal isn't one of yours, so its documents can't be prepared here." };
+  }
+
   // The PPRA form is filled from the structured disclosure, so make sure
   // that record exists first (plot deals start from the vacant-land
   // preset). Written with the service client: the disclosure tables are

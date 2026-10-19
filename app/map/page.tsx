@@ -50,24 +50,46 @@ export default async function MapPage() {
 
   const propertyIds = properties.map((p) => p.id);
 
+  // Every agent sees every listing on the map (Simon, 2026-10-17), but since
+  // 0086 an agent can only read mandates and transfers on their own deals.
+  // The map reads the two public views instead: mandate kind and sale status
+  // only, no terms, no parties. Before 0086 has run, fall back to the tables.
   const { data: listingsData } = propertyIds.length
     ? await supabase
         .from("listing")
-        .select(
-          "property_id, id, status, asking_price, headline, listed_date, mandate:mandate(type, evidence, expiry_date)",
-        )
+        .select("property_id, id, status, asking_price, headline, listed_date")
         .in("property_id", propertyIds)
     : { data: [] };
-  const listings = (listingsData ?? []) as any[];
+  const listingIds = ((listingsData ?? []) as any[]).map((l) => l.id);
+  let mandateRows: any[] = [];
+  if (listingIds.length) {
+    const pub = await supabase.from("mandate_public").select("listing_id, type, evidence, expiry_date").in("listing_id", listingIds);
+    mandateRows = pub.error
+      ? ((await supabase.from("mandate").select("listing_id, type, evidence, expiry_date").in("listing_id", listingIds)).data ?? [])
+      : (pub.data ?? []);
+  }
+  const listings = ((listingsData ?? []) as any[]).map((l) => ({
+    ...l,
+    mandate: mandateRows.filter((m) => m.listing_id === l.id),
+  }));
 
-  const { data: transfersData } = propertyIds.length
-    ? await supabase
-        .from("transfer")
-        .select("property_id, id, name, status, transfer_date, registered_date")
-        .in("property_id", propertyIds)
-        .order("created_at", { ascending: false })
-    : { data: [] };
-  const transfers = (transfersData ?? []) as any[];
+  let transfers: any[] = [];
+  if (propertyIds.length) {
+    const pub = await supabase
+      .from("transfer_public")
+      .select("property_id, id, status, transfer_date, registered_date")
+      .in("property_id", propertyIds)
+      .order("created_at", { ascending: false });
+    transfers = pub.error
+      ? ((
+          await supabase
+            .from("transfer")
+            .select("property_id, id, status, transfer_date, registered_date")
+            .in("property_id", propertyIds)
+            .order("created_at", { ascending: false })
+        ).data ?? [])
+      : (pub.data ?? []);
+  }
 
   // External listings: everything active from every source. Staff read; the
   // RLS on external_listing already allows both admin and agent.

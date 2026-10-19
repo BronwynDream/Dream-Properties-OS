@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { buildPartyRow, type SellerInput } from "@/lib/parties";
+import { claimListing, takeOnContext, type TakeOnCtx } from "@/lib/takeon";
 
 // Shape of the optional seller block passed from NewPropertyForm.tsx.
 // If present, creates a party + a preparing transfer + a draft listing under
@@ -34,11 +35,12 @@ export async function createProperty(input: {
   suburb_name?: string | null;
   seller?: SellerInput | null;
 }) {
-  const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { ok: false as const, error: "unauthorised" };
+  // Service-client writes after the staff check (lib/takeon, 0086): agents
+  // may take on a property; the seller becomes theirs and they go on the listing.
+  const started = await takeOnContext();
+  if (!started.ok) return { ok: false as const, error: started.error };
+  const ctx = started.ctx;
+  const supabase = ctx.db;
 
   const address = (input.primary_address ?? "").trim();
   if (address.length < 3) {
@@ -101,8 +103,10 @@ export async function createProperty(input: {
       newProp.id,
       address,
       input.seller,
+      ctx.userId,
     );
     if (!sellerRes.ok) sellerWarning = sellerRes.error;
+    else await claimListing(ctx, sellerRes.listingId);
   }
 
   revalidatePath("/properties");
@@ -115,15 +119,17 @@ export async function createProperty(input: {
 // so we can call it from both the property-first flow (createProperty) and the
 // seller-first flow (/contacts/new) in a follow-up ship.
 async function attachSellerToNewProperty(
-  supabase: ReturnType<typeof createClient>,
+  supabase: ReturnType<typeof createClient> | TakeOnCtx["db"],
   propertyId: string,
   primaryAddress: string,
   seller: SellerInput,
+  ownerUserId: string,
 ): Promise<{ ok: true; partyId: string; transferId: string; listingId: string } | { ok: false; error: string }> {
   const partyRow = buildPartyRow(seller);
   if (!partyRow) {
     return { ok: false, error: "Seller name is required." };
   }
+  partyRow.owner_user_id = ownerUserId;
 
   const { data: newParty, error: partyErr } = await supabase
     .from("party")

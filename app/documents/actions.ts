@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { buildPartyRow, type SellerInput } from "@/lib/parties";
+import { claimListing, listingMembers, takeOnContext } from "@/lib/takeon";
 
 // Taking on a mandate from the Documents page (2026-10-19).
 //
@@ -123,10 +124,14 @@ type Result = { ok: true; propertyId: string; listingId: string } | { ok: false;
 
 const OPEN = ["draft", "live", "under_offer"];
 
-/** What the record already knows, so the form can skip the seller step. */
+/** What the record already knows, so the form can skip the seller step —
+ *  and whether the property is someone else's live listing (then the
+ *  take-on is refused, so say so before the agent fills anything in). */
 export async function mandateContext(
   propertyId: string,
-): Promise<{ ok: true; listingId: string | null; sellerNames: string[] } | { ok: false; error: string }> {
+): Promise<
+  { ok: true; listingId: string | null; sellerNames: string[]; listedBy: string[] | null } | { ok: false; error: string }
+> {
   const supabase = createClient();
   const {
     data: { user },
@@ -141,8 +146,16 @@ export async function mandateContext(
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-  if (!listing?.transfer_id) return { ok: true, listingId: listing?.id ?? null, sellerNames: [] };
+  if (!listing) return { ok: true, listingId: null, sellerNames: [], listedBy: null };
 
+  const { data: me } = await supabase.from("app_user").select("role").eq("id", user.id).maybeSingle();
+  if (me?.role !== "admin") {
+    const m = await listingMembers(createServiceClient(), listing.id, user.id);
+    if (!m.isMember) return { ok: true, listingId: listing.id, sellerNames: [], listedBy: m.names };
+  }
+  if (!listing.transfer_id) return { ok: true, listingId: listing.id, sellerNames: [], listedBy: null };
+
+  // Read with the caller's own access: RLS (0086) shows sellers only on their deals.
   const { data: rows } = await supabase
     .from("transfer_party")
     .select("is_primary, party:party_id(display_name)")
@@ -152,24 +165,14 @@ export async function mandateContext(
   const names = ((rows ?? []) as unknown as { party: { display_name: string } | { display_name: string }[] | null }[])
     .map((r) => (Array.isArray(r.party) ? r.party[0] : r.party)?.display_name)
     .filter(Boolean) as string[];
-  return { ok: true, listingId: listing.id, sellerNames: names };
+  return { ok: true, listingId: listing.id, sellerNames: names, listedBy: null };
 }
 
 export async function takeOnForMandate(input: { property: TakeOnProperty; seller: SellerInput | null }): Promise<Result> {
-  const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { ok: false, error: "You're signed out. Sign in again and retry." };
-  const { data: me } = await supabase.from("app_user").select("id, active").eq("id", user.id).maybeSingle();
-  if (!me || me.active === false) return { ok: false, error: "Your login isn't active on Dream OS." };
-
-  let db;
-  try {
-    db = createServiceClient();
-  } catch {
-    return { ok: false, error: "Dream OS can't write records right now (service key missing). Tell Simon." };
-  }
+  const started = await takeOnContext();
+  if (!started.ok) return started;
+  const ctx = started.ctx;
+  const db = ctx.db;
 
   // 1. The property ---------------------------------------------------------
   const prop = await resolveProperty(db, input.property);
@@ -186,9 +189,34 @@ export async function takeOnForMandate(input: { property: TakeOnProperty; seller
     .limit(1)
     .maybeSingle();
 
+  // Someone else's listing or deal is not a way in (0086): attaching to it
+  // would put this agent on that deal and show them its sellers and papers.
+  if (!ctx.isAdmin) {
+    if (open) {
+      const m = await listingMembers(db, open.id, ctx.userId);
+      if (!m.isMember) {
+        const who = m.names.length ? `listed by ${m.names.join(" and ")}` : "already listed, with no agent assigned yet";
+        return { ok: false, error: `This property is ${who}. Ask Bronwyn to add you to that listing.` };
+      }
+    } else {
+      // No open listing, but a sale still going through (offer, conveyancing).
+      const { data: busy } = await db
+        .from("transfer")
+        .select("id, lead_agent_user_id")
+        .eq("property_id", propertyId)
+        .not("status", "in", "(registered,cancelled,lapsed,sold_external)")
+        .is("registered_date", null);
+      const others = ((busy ?? []) as { id: string; lead_agent_user_id: string | null }[]).filter(
+        (t) => t.lead_agent_user_id !== ctx.userId,
+      );
+      if (others.length) {
+        return { ok: false, error: "This property has a sale in progress. Ask Bronwyn before taking it on." };
+      }
+    }
+  }
+
   let listingId: string | null = open?.id ?? null;
   let transferId: string | null = open?.transfer_id ?? null;
-  const listingAgentUserId: string | null = open?.agent_user_id ?? null;
 
   if (!transferId) {
     const { data: addr } = await db.from("property").select("primary_address").eq("id", propertyId).single();
@@ -224,6 +252,7 @@ export async function takeOnForMandate(input: { property: TakeOnProperty; seller
   if (input.seller) {
     const row = buildPartyRow(input.seller);
     if (!row) return { ok: false, error: "Add the seller's name (or the company / trust name)." };
+    row.owner_user_id = ctx.userId;
     const { data: party, error } = await db.from("party").insert(row).select("id").single();
     if (error || !party) return { ok: false, error: `Could not save the seller: ${error?.message ?? "unknown error"}` };
     const { error: tpErr } = await db.from("transfer_party").insert({
@@ -238,21 +267,7 @@ export async function takeOnForMandate(input: { property: TakeOnProperty; seller
   }
 
   // 4. The agent ------------------------------------------------------------
-  const { data: agent } = await db.from("agent").select("id").eq("app_user_id", user.id).maybeSingle();
-  if (agent) {
-    const { data: existing } = await db.from("listing_agent").select("agent_id, position").eq("listing_id", listingId);
-    const rows = (existing ?? []) as { agent_id: string; position: number }[];
-    if (!rows.some((r) => r.agent_id === agent.id)) {
-      await db.from("listing_agent").insert({
-        listing_id: listingId,
-        agent_id: agent.id,
-        position: rows.length ? Math.max(...rows.map((r) => r.position)) + 1 : 1,
-      });
-    }
-    if (!listingAgentUserId && !rows.length) {
-      await db.from("listing").update({ agent_user_id: user.id }).eq("id", listingId);
-    }
-  }
+  await claimListing(ctx, listingId);
 
   revalidatePath("/properties");
   revalidatePath(`/properties/${propertyId}`);

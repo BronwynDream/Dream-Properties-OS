@@ -8,6 +8,91 @@ _Last updated: 2026-10-19_
 
 ---
 
+## AGENT ACCESS RULES — MIGRATION 0086 (2026-10-19, evening)
+
+Built BEFORE any agent invite, as required. Simon's rule (verbatim, 2026-10-17)
+is in the WEBSITE LISTINGS section below. **Decisions (Simon, 2026-10-19, question card):**
+- Another agent's property opens with **public facts only** (address, erf,
+  size, photos, asking price, listing agent) — no parties/owners/buyers,
+  offers, documents, deal terms.
+- **Directors = Bronwyn, Camilla, Simon** (role `admin`) see everything.
+- **Contacts an agent loads are theirs + directors'** (`party.owner_user_id`).
+- **Past sales: date and price only**, completed sales only.
+
+**Shipped**
+- `supabase/migrations/0086_agent_access_rules.sql`:
+  - `is_staff()` now = active AND role in (admin, agent).
+  - Helpers (SECURITY DEFINER, all start with `is_staff()` so a deactivated
+    login loses everything): `works_on_listing` (listing_agent ↔ agent ↔
+    login, or listing.agent_user_id), `works_on_transfer` (lead, or works on a
+    listing on it), `works_on_property`, `can_see_party` (director, owner, or
+    on a visible deal / offer / entity / viewing), `can_see_link`,
+    `can_see_document` (visible link AND no hidden deal-level link — intake
+    links deal paperwork to the property too), `can_use_draft_anchors`,
+    `property_sales(pid)` (completed sales: dates + agreement price).
+  - Views `transfer_public` / `mandate_public` (staff only, no names/terms) for
+    the map and the record stamp.
+  - RLS replaced on party, party_member, transfer, transfer_party, offer,
+    agreement, suspensive_condition, milestone, commission (agents read, only
+    directors write), transfer_inventory, listing (read all; update own),
+    listing_price_history, mandate, cma, property_ownership_history,
+    market_property, ppra_disclosure(+rows), fica, communication, viewing(+
+    attendee), party_interest, party_tag, contact_point_suppression,
+    document, document_link, document_draft (+version write), storage
+    (`documents` follows the document row; `media` office-wide; `staging` by
+    batch creator).
+  - Linking needs visibility: transfer_party / offer purchaser / party_member /
+    viewing_attendee inserts require `can_see_party` on the person.
+  - Triggers (non-director user sessions only; service role passes):
+    `guard_deal_links` freezes listing.property_id/transfer_id/agent_user_id,
+    transfer.property_id/lead_agent_user_id, and transfer_id on child rows;
+    `guard_party_owner` stops contact take-over; `guard_draft_server_fields`
+    keeps rendered/signed ids, finalised status and anchors server-only.
+  - muni_property: column grants to authenticated for every column EXCEPT
+    `owner` (built from information_schema at apply time). NOTE: a future
+    column added to muni_property is not readable by users until the grant
+    block is re-run.
+  - `mark_transfer_sold` gets a `works_on_transfer` check (text-patched;
+    raises if 0033's body has changed).
+- App: `lib/takeon.ts` (staff check + service client + `claimListing` +
+  `listingMembers`); `takeOnForMandate` refuses someone else's listing, an
+  unassigned listing, or a sale in progress (non-directors) and makes the
+  seller the agent's contact; `createProperty` and `contacts/new` write via
+  takeon with ownership; `createDraft` checks the deal is visible;
+  property record public-facts mode (`works_on_property` rpc → `canSeeDeal`,
+  "Listed by … details private" band + Past sales, no Prepare document /
+  take-on drop zone, mandate stamp from `mandate_public`); map reads the
+  public views (falls back to the tables if 0086 hasn't run).
+- `scripts/check-access-0086.sql`: rollback-only test. Invents a stand-in
+  agent, puts them on one deal, impersonates them, and raises the report as an
+  error (so everything rolls back). 39 checks incl. the reviewer's attacks.
+
+**Verification**: built a stand-in Postgres 16 (tables/policies as in the
+migrations, no PostGIS) in the container; applied 0086 (and re-applied:
+idempotent); test **39/39 PASS**, each refusal for the right reason
+(policy / trigger message). Independent review agent found 4 critical + 6 high
+in the first draft (re-pointing listings/deals, linking other people's
+contacts, claiming unassigned listings, property-linked deal papers, drafts
+pointed at other deals, deactivated users, in-progress prices) — all fixed and
+covered by tests 37–50. tsc + next build pass. NOT yet run on Bon Bon.
+
+**Loose ends**
+- Simon to apply 0086 and run the check script on Bon Bon; then push.
+- Pre-existing, not touched: `/team` shows "No team members yet" (its select
+  probably errors on a column — investigate before inviting); property page
+  and AgentPicker select `app_user.name` / `agent:agent_user_id(name)` but the
+  column is `full_name`.
+- Agents still can't upload documents onto a record (take-on drop zone commit
+  is admin-only) — next step if Simon wants agents to file their own papers.
+- `/dashboard`, `/mandates` still scope by `listing.agent_user_id` (lead);
+  RLS now hides other deals anyway, but co-agents may miss shared ones there.
+- Performance: `can_see_party` per row on the contacts list — fine at today's
+  size; index / rewrite if the contact book grows large.
+- `muni_property_public` (0050) still shows purchase price and bond details to
+  all agents (deeds-office facts; owner excluded).
+
+---
+
 ## TAKE-ON MAP: BIGGER, WITH A SUBURB JUMP (2026-10-19)
 
 **Feedback moment (Simon, verbatim):** "the map is really small. should we
