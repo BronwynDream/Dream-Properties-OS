@@ -8,6 +8,18 @@ _Last updated: 2026-10-19_
 
 ---
 
+## TEAM PAGE: LIST FALLBACK + AGENT ROLE TEXT (2026-10-19)
+
+Simon: "HOW DO I SET CAMILLA AS A DIRECTOR? WHERE IN THE SYSTEM DOES THIS
+HAPPEN?" Answer: Admin → Team & access → "+ Invite team member", Access role
+"Director" (or the role dropdown on her row if she already has a login).
+The list showed "No team members yet" while two directors exist: its select
+asks for profile columns (job_title, phone, ppra_ffc, ffc_expiry_date) and
+the error was swallowed. `app/team/page.tsx` now falls back to the core
+columns and logs the error. `app/team/roles.ts` agent description updated
+to the 0086 rule. Verify live after push; if the warning shows, apply the
+missing profile migration (0024 / 0051).
+
 ## AGENT ACCESS RULES — MIGRATION 0086 (2026-10-19, evening)
 
 Built BEFORE any agent invite, as required. Simon's rule (verbatim, 2026-10-17)

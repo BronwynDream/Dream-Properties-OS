@@ -56,14 +56,22 @@ export default async function TeamPage() {
     );
   }
 
-  const [{ data: usersData }, { data: transfersData }] = await Promise.all([
-    supabase
-      .from("app_user")
-      .select("id, full_name, email, role, job_title, phone, active, ppra_ffc, ffc_expiry_date")
-      .order("active", { ascending: false })
-      .order("full_name"),
+  // The list showed "No team members yet" on 2026-10-19 although Bronwyn and
+  // Simon are directors: the select failed (a profile column missing on the
+  // live database) and the error was swallowed. Fall back to the core
+  // columns so the team always shows.
+  const FULL = "id, full_name, email, role, job_title, phone, active, ppra_ffc, ffc_expiry_date";
+  const CORE = "id, full_name, email, role, active";
+  const [fullRes, { data: transfersData }] = await Promise.all([
+    supabase.from("app_user").select(FULL).order("active", { ascending: false }).order("full_name"),
     supabase.from("transfer").select("lead_agent_user_id"),
   ]);
+  let usersData: any[] | null = fullRes.data as any[] | null;
+  if (fullRes.error) {
+    console.warn(`[team] full select failed, using core columns: ${fullRes.error.message}`);
+    const core = await supabase.from("app_user").select(CORE).order("active", { ascending: false }).order("full_name");
+    usersData = core.data as any[] | null;
+  }
 
   const transfersLed = new Map<string, number>();
   for (const t of (transfersData ?? []) as any[]) {

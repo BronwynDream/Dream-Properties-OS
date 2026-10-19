@@ -24,7 +24,7 @@ export const ROLE_ACCESS: Record<AppRole, string> = {
   admin:
     "Full access to every property, transfer, party, and document — plus team management.",
   agent:
-    "Sees all business data. FICA, private client documents, and communications are only visible on transfers this agent leads.",
+    "Full detail on the deals they work on (sellers, buyers, offers, documents, FICA) and their own contacts. Everywhere else, public facts only: the map, property facts, who it's listed by, and past sale dates and prices.",
   conveyancer:
     "External. Reserved for scoped magic-link transfer rooms (not yet enabled) — a conveyancer only sees the deal they're conveyancing.",
   client:
