@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { setAgentAccess } from "./actions";
+import { addRosterPerson, setAgentAccess } from "./actions";
 
 // The agent roster with an access switch per agent (2026-10-19). Every agent
 // from the website is listed; access starts OFF. Switching it on sends the
@@ -14,6 +14,7 @@ export type RosterRow = {
   email: string;
   phone: string | null;
   listings: number;
+  inviteRole: "agent" | "admin";
   state: "director" | "active" | "invited" | "off" | "none";
   invitedAt: string | null;
   lastSignIn: string | null;
@@ -33,26 +34,111 @@ function statusText(r: RosterRow): string {
     case "off":
       return "Access switched off";
     default:
-      return "No access · not invited";
+      return r.inviteRole === "admin" ? "Director-to-be · not invited" : "No access · not invited";
   }
 }
 
 export default function AgentRoster({ rows }: { rows: RosterRow[] }) {
+  const [list, setList] = useState(rows);
   return (
     <section className="roster" aria-labelledby="roster-h">
       <div className="roster-head">
-        <h2 id="roster-h">Agents</h2>
+        <h2 id="roster-h">The team</h2>
         <p>
-          Everyone on the Dream website. Switch an agent&apos;s access on to send their invitation; they&apos;ll see
-          their own listings and deals, and public facts for the rest. Switch it off to close their access.
+          Everyone at Dream, loaded with access off — nobody is emailed until you switch them on. Switching on
+          sends their invitation; switching off closes their access. Agents see their own listings and deals,
+          and public facts for the rest; directors see everything.
         </p>
       </div>
       <ul className="roster-list" role="list">
-        {rows.map((r) => (
+        {list.map((r) => (
           <RosterItem key={r.agentId} row={r} />
         ))}
       </ul>
+      <AddPerson onAdded={(r) => setList((l) => [...l, r].sort((a, b) => a.name.localeCompare(b.name)))} />
     </section>
+  );
+}
+
+function AddPerson({ onAdded }: { onAdded: (r: RosterRow) => void }) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [role, setRole] = useState<"agent" | "admin">("agent");
+  const [err, setErr] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+
+  if (!open) {
+    return (
+      <button type="button" className="roster-add-btn" onClick={() => setOpen(true)}>
+        + Add someone to the list
+      </button>
+    );
+  }
+  return (
+    <form
+      className="roster-add"
+      onSubmit={(e) => {
+        e.preventDefault();
+        setErr(null);
+        start(async () => {
+          const res = await addRosterPerson({ full_name: name, email, phone, role });
+          if (!res.ok) {
+            setErr(res.error);
+            return;
+          }
+          onAdded({
+            agentId: res.agentId,
+            name: name.trim(),
+            email: email.trim().toLowerCase(),
+            phone: phone.trim() || null,
+            listings: 0,
+            inviteRole: role,
+            state: "none",
+            invitedAt: null,
+            lastSignIn: null,
+          });
+          setName("");
+          setEmail("");
+          setPhone("");
+          setRole("agent");
+          setOpen(false);
+        });
+      }}
+    >
+      <p className="roster-add-note">Added with access off. No email goes out until you switch them on.</p>
+      <div className="roster-add-fields">
+        <label>
+          <span>Name</span>
+          <input value={name} onChange={(e) => setName(e.target.value)} required autoComplete="off" />
+        </label>
+        <label>
+          <span>Email</span>
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="off" />
+        </label>
+        <label>
+          <span>Phone</span>
+          <input value={phone} onChange={(e) => setPhone(e.target.value)} autoComplete="off" />
+        </label>
+        <label>
+          <span>Access when switched on</span>
+          <select value={role} onChange={(e) => setRole(e.target.value as "agent" | "admin")}>
+            <option value="agent">Agent</option>
+            <option value="admin">Director</option>
+          </select>
+        </label>
+      </div>
+      <div className="roster-add-go">
+        <button type="submit" className="btn-primary" disabled={pending}>
+          {pending ? "Adding…" : "Add to the list"}
+        </button>
+        <button type="button" className="roster-cancel" onClick={() => setOpen(false)} disabled={pending}>
+          Cancel
+        </button>
+        {err && <p className="roster-err" role="alert">{err}</p>}
+      </div>
+    </form>
   );
 }
 
@@ -110,7 +196,7 @@ function RosterItem({ row }: { row: RosterRow }) {
             <span>
               {asking === "on"
                 ? r.state === "none"
-                  ? `Send ${first} an invitation to Dream OS?`
+                  ? `Send ${first} an invitation to Dream OS${r.inviteRole === "admin" ? " as a director" : ""}?`
                   : `Switch ${first}'s access back on?`
                 : `Switch off ${first}'s access now?`}
             </span>

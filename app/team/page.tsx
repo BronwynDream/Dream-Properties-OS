@@ -3,7 +3,6 @@ import { createClient } from "@/lib/supabase/server";
 import AgentRoster, { type RosterRow } from "./AgentRoster";
 import { createServiceClient } from "@/lib/supabase/service";
 import TopBar from "@/app/components/TopBar";
-import InviteUser from "./InviteUser";
 import TeamRow, { type TeamMember } from "./TeamRow";
 import {
   ROLE_ACCESS,
@@ -87,7 +86,10 @@ export default async function TeamPage() {
   // client (this page is director-only).
   const roster: RosterRow[] = await (async () => {
     const [{ data: agents }, { data: la }] = await Promise.all([
-      supabase.from("agent").select("id, full_name, email, phone, app_user_id").order("full_name"),
+      (async () => {
+        const full = await supabase.from("agent").select("id, full_name, email, phone, app_user_id, invite_role").order("full_name");
+        return full.error ? await supabase.from("agent").select("id, full_name, email, phone, app_user_id").order("full_name") : full;
+      })(),
       supabase.from("listing_agent").select("agent_id, listing:listing_id(status)"),
     ]);
     const live = new Map<string, number>();
@@ -128,6 +130,7 @@ export default async function TeamPage() {
         email,
         phone: a.phone ?? null,
         listings: live.get(a.id) ?? 0,
+        inviteRole: a.invite_role === "admin" ? ("admin" as const) : ("agent" as const),
         state,
         invitedAt: au?.invited_at ?? null,
         lastSignIn: au?.last_sign_in_at ?? null,
@@ -162,16 +165,15 @@ export default async function TeamPage() {
         <hr className="tideline" />
 
         <section className="app-body" style={{ maxWidth: 1100 }}>
-          {roster.length > 0 && <AgentRoster rows={roster} />}
+          <AgentRoster rows={roster} />
 
+          {/* The old "+ Invite team member" button emailed straight away.
+              Simon: invitations go out only when access is switched on, so
+              new people are added to the list above instead. */}
           <h2 className="roster-sub">Logins &amp; roles</h2>
           <p className="roster-subnote">
-            Everyone with a Dream OS login. Make someone a director here, or invite someone who isn&apos;t on the
-            agent list (e.g. Camilla).
+            Everyone who has a Dream OS login. Change someone&apos;s role (agent or director) here.
           </p>
-          <div style={{ marginBottom: 20 }}>
-            <InviteUser />
-          </div>
 
           {members.length === 0 ? (
             <p style={{ color: "#5b6885" }}>No team members yet.</p>

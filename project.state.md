@@ -8,6 +8,28 @@ _Last updated: 2026-10-19_
 
 ---
 
+## ROSTER: LOAD EVERYONE, INVITE ONLY ON THE SWITCH (2026-10-19)
+
+**Feedback moment (Simon, verbatim):** "so i'd like to load everyone and not
+have to send an invite, the invoite should only go out when we flick the
+toggle to active"
+
+**Shipped**
+- Migration `0087_roster_invite_role.sql`: `agent.invite_role app_role
+  default 'agent'` — the role a roster person's login is created with when
+  switched on (Director for Camilla).
+- `addRosterPerson` (director-only): adds name/email/phone/role to the
+  roster, NO email; links an existing login by email if one exists.
+- `setAgentAccess` invites with `invite_role` (admin → director login).
+- Roster heading "The team"; "+ Add someone to the list" form; status shows
+  "Director-to-be · not invited"; confirm says "…as a director".
+- Removed the old "+ Invite team member" button (it emailed immediately).
+- All paths fall back if 0087 hasn't run (adding a director then asks for it).
+
+**Verification**: 0087 applied on the stand-in DB; tsc + build pass.
+**Live state seen 2026-10-19 ~18:55**: logins = Angie Bevan (agent, active),
+Bronwyn (director), Simon (director). Camilla: none.
+
 ## TEAM PAGE: AGENT ROSTER WITH ACCESS SWITCHES (2026-10-19)
 
 **Feedback moment (Simon, verbatim):** "I'D LIKE TO CREATE A PAGE WHERE EACH

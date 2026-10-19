@@ -233,11 +233,16 @@ export async function setAgentAccess(input: { agentId: string; on: boolean }) {
     return { ok: false as const, error: `${(e as Error).message} — set SUPABASE_SERVICE_ROLE_KEY on Vercel.` };
   }
 
-  const { data: agent } = await service
+  let { data: agent } = await service
     .from("agent")
-    .select("id, full_name, email, phone, app_user_id")
+    .select("id, full_name, email, phone, app_user_id, invite_role")
     .eq("id", input.agentId)
     .maybeSingle();
+  if (!agent) {
+    // before migration 0087 (no invite_role column)
+    const base = await service.from("agent").select("id, full_name, email, phone, app_user_id").eq("id", input.agentId).maybeSingle();
+    agent = base.data ? { ...base.data, invite_role: "agent" } : null;
+  }
   if (!agent) return { ok: false as const, error: "That agent isn't on the roster." };
   const email = String(agent.email).trim().toLowerCase();
 
@@ -294,7 +299,14 @@ export async function setAgentAccess(input: { agentId: string; on: boolean }) {
   }
 
   const { error: upErr } = await service.from("app_user").upsert(
-    { id: authUserId, full_name: agent.full_name, email, role: "agent", phone: agent.phone ?? null, active: true },
+    {
+      id: authUserId,
+      full_name: agent.full_name,
+      email,
+      role: agent.invite_role === "admin" ? "admin" : "agent",
+      phone: agent.phone ?? null,
+      active: true,
+    },
     { onConflict: "id" },
   );
   if (upErr) {
@@ -316,4 +328,51 @@ async function findAuthUserByEmail(service: ReturnType<typeof createServiceClien
     if (data.users.length < 200) return null;
   }
   return null;
+}
+
+// Put someone on the roster without inviting them (Simon, 2026-10-19:
+// "load everyone and not have to send an invite"). No email goes out; the
+// invitation is sent when their access is switched on.
+export async function addRosterPerson(input: {
+  full_name: string;
+  email: string;
+  phone?: string | null;
+  role: "agent" | "admin";
+}) {
+  const gate = await requireAdmin();
+  if (!gate.ok) return { ok: false as const, error: gate.error };
+  const full_name = (input.full_name ?? "").trim();
+  const email = (input.email ?? "").trim().toLowerCase();
+  if (!full_name || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+    return { ok: false as const, error: "Add their name and a valid email address." };
+  }
+  let service;
+  try {
+    service = createServiceClient();
+  } catch (e) {
+    return { ok: false as const, error: (e as Error).message };
+  }
+  const { data: dup } = await service.from("agent").select("id").ilike("email", email).maybeSingle();
+  if (dup) return { ok: false as const, error: "That email is already on the list." };
+  const row: Record<string, unknown> = {
+    full_name,
+    email,
+    phone: (input.phone ?? "").trim() || null,
+    invite_role: input.role === "admin" ? "admin" : "agent",
+  };
+  let { data, error } = await service.from("agent").insert(row).select("id").single();
+  if (error && /invite_role/.test(error.message)) {
+    if (input.role === "admin") {
+      return { ok: false as const, error: "Adding a director needs migration 0087 first." };
+    }
+    delete row.invite_role;
+    ({ data, error } = await service.from("agent").insert(row).select("id").single());
+  }
+  if (error || !data) return { ok: false as const, error: error?.message ?? "Couldn't add them." };
+  // If a login with this email already exists, link it (0085 trigger only
+  // fires on app_user changes).
+  const { data: u } = await service.from("app_user").select("id").ilike("email", email).maybeSingle();
+  if (u) await service.from("agent").update({ app_user_id: u.id }).eq("id", data.id);
+  revalidatePath("/team");
+  return { ok: true as const, agentId: data.id };
 }
