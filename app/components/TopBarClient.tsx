@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { Light } from "@/lib/feeds/registry";
+import ReportProblem from "./ReportProblem";
 import CommandSearch from "./CommandSearch";
 
 // Top bar — Blueprint (plan 019 Arc D, 2026-10-16).
@@ -47,6 +48,7 @@ const ADMIN: Group = {
     { href: "/triage", label: "Triage" },
     { href: "/dupes", label: "Dupes" },
     { href: "/team", label: "Team" },
+    { href: "/admin/reports", label: "Reports" },
     { href: "/settings", label: "Settings" },
   ],
 };
@@ -164,6 +166,7 @@ export default function TopBarClient({
 
         <div className="topbar-tools">
           <CommandSearch />
+          <ReportProblem />
           <Menu
             id="who"
             open={openMenu === "who"}

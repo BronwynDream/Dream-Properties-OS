@@ -8,6 +8,36 @@ _Last updated: 2026-10-19_
 
 ---
 
+## REPORT A PROBLEM + AUTOMATIC ERROR CAPTURE (2026-10-19, evening)
+
+Simon: "until we get more users onto the system, we're not really going to be
+able to bug fix just from my activity." Agreed: a report button, automatic
+error capture, a test-agent login, then a soft launch (Bronwyn + Angie +
+Vanessa for a week).
+
+**Shipped**
+- Migration **0089_app_feedback.sql** — `app_feedback` (kind report|error,
+  message, path, details jsonb, resolved_at/by). Staff insert own rows only;
+  directors read and resolve. Tested on the local stub (agent can't read, can't
+  spoof user_id, can't resolve; director can). **Simon must apply it.**
+- `app/components/ReportProblem.tsx` in the top bar ("!" on phones / narrow,
+  "Report a problem" ≥1280px): one-line dialog (portal to body), sends page,
+  device, home-screen-app flag, build SHA and the last few captured errors.
+- `lib/clientErrors.ts` (installed by ReportProblem, i.e. on every signed-in
+  page with the top bar): window errors, unhandled rejections, and same-origin
+  HTTP 5xx (APIs and server actions). Noise filtered; ≤10 per page load;
+  server dedupes per user+page+message for 30 min (count++).
+- `app/error.tsx`: crash page logs itself ("logged for Simon automatically").
+- **Admin → Reports** (`/admin/reports`): Reported / Errors / Done tabs,
+  Mark done / Reopen.
+
+**Verification**: tsc, eslint, build; RLS tested locally. NOT seen live yet.
+
+**Loose ends**: test-agent login (Simon adds a second email of his as an agent
+on Team); app/global-error.tsx not added (root-layout crashes only).
+
+---
+
 ## PASSWORD-RESET LINK FIX (2026-10-19, evening)
 
 **Feedback moment (verbatim, Simon on his iPhone):** "When I push the link to
