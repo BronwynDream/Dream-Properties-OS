@@ -365,7 +365,7 @@ table.queue td.strong { font-weight: 600; color: var(--estuary); }
 .prop-tab.on { background: var(--navy); border-color: var(--navy); color: var(--white); }
 .prop-tab:focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; }
 .prop-tab-n { font-family: var(--font-mono); font-size: 12px; opacity: 0.75; }
-.prop-hint { margin: 16px 0 0; padding: 10px 14px; border-radius: 10px; background: #fbefd9; color: #5c4210; font-size: 14px; line-height: 1.5; max-width: 760px; }
+.prop-hint { margin: 16px 0 0; padding: 10px 14px; border-radius: 10px; background: #fbefd9; color: #5c4210; font-size: 14px; line-height: 1.5; max-width: 1040px; }
 .prop-confirm { display: inline-block; margin-left: 8px; padding: 2px 8px; border-radius: 999px; background: #fbefd9; color: #7A5814; font-size: 11px; font-weight: 600; letter-spacing: 0.02em; vertical-align: 1px; white-space: nowrap; }
 .prop-status { display: inline-block; padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; background: #eef1f8; color: #5f6883; }
 .prop-status.s-live { background: #e2e8f6; color: var(--navy); }
@@ -2956,7 +2956,7 @@ button.doc-thumb {
 .docstart-blurb { font-size: 14px; line-height: 1.45; color: var(--ink-700); flex: 1; }
 .docstart-kinds { font-family: var(--font-mono); font-size: 11px; color: var(--paper-mute); }
 .docstart-needs { align-self: flex-start; font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--caution); border: 1px solid currentColor; border-radius: 999px; padding: 2px 8px; }
-.docstart-panel { display: grid; gap: var(--space-5); padding: 20px; background: var(--white); border: 1px solid var(--line-soft); border-radius: var(--radius-lg); max-width: 760px; }
+.docstart-panel { display: grid; gap: var(--space-5); padding: 20px; background: var(--white); border: 1px solid var(--line-soft); border-radius: var(--radius-lg); max-width: 1040px; }
 .docstart-step { border: 0; margin: 0; padding: 0; display: grid; gap: 10px; min-width: 0; }
 .docstart-step legend { padding: 0; margin-bottom: 10px; font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--estuary); }
 .docstart-variants { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr)); }
@@ -2986,3 +2986,9 @@ button.doc-thumb {
 .docstart-new { justify-self: start; background: none; border: 1px dashed var(--line-strong); border-radius: var(--radius-md); padding: 9px 12px; font: inherit; font-size: 14px; color: var(--navy); cursor: pointer; text-align: left; }
 .docstart-new:hover, .docstart-new:focus-visible { border-color: var(--navy); background: var(--paper-1); outline: none; }
 .docstart-onrecord { margin: 0; font-size: 14px; }
+/* Mandate take-on: search beside a satellite map you can pick an erf from. */
+.takeon-where { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
+@media (max-width: 760px) { .takeon-where { grid-template-columns: minmax(0, 1fr); } }
+.erfmap { display: grid; gap: 6px; min-width: 0; }
+.erfmap-canvas { height: 340px; border-radius: var(--radius-md); overflow: hidden; border: 1px solid var(--line-soft); background: var(--paper-2); }
+.erfmap-hint { margin: 0; font-size: 12px; color: var(--paper-mute); }

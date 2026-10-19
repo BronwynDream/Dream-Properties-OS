@@ -3,8 +3,13 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import AddSellerFields, { emptySeller, normaliseSeller, type SellerFormValue } from "@/app/properties/AddSellerFields";
-import { mandateContext, takeOnForMandate, type TakeOnProperty } from "./actions";
+import dynamic from "next/dynamic";
+import { locateErf, mandateContext, propertyForErf, takeOnForMandate, type TakeOnProperty } from "./actions";
 import type { StartProperty } from "./DocumentStart";
+import type { MapErf, MapFocus } from "./ErfPickerMap";
+
+// Mapbox touches window on import, so the picker map loads in the browser only.
+const ErfPickerMap = dynamic(() => import("./ErfPickerMap"), { ssr: false });
 
 // Mandate take-on on the Documents page (2026-10-19). Taking on the mandate
 // is usually what creates the property, so this asks for the property and
@@ -31,15 +36,18 @@ const groupDigits = (n: number) => String(Math.round(n)).replace(/\B(?=(\d{3})+(
 export default function MandateTakeOn({
   type,
   properties,
+  mapboxToken,
 }: {
   type: "exclusive" | "joint" | "open" | null;
   properties: StartProperty[];
+  mapboxToken: string;
 }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [roll, setRoll] = useState<RollHit[]>([]);
   const [rollBusy, setRollBusy] = useState(false);
   const [chosen, setChosen] = useState<Chosen | null>(null);
+  const [focus, setFocus] = useState<MapFocus>(null);
   const [onRecord, setOnRecord] = useState<string[] | null>(null);
   const [seller, setSeller] = useState<SellerFormValue>(emptySeller);
   const [sellerOpen, setSellerOpen] = useState(true);
@@ -100,11 +108,56 @@ export default function MandateTakeOn({
     };
   }, [chosen]);
 
-  function pick(c: Chosen) {
+  function pick(c: Chosen, at?: MapFocus) {
     setChosen(c);
     setErr(null);
     setSeller(emptySeller);
     setSellerOpen(true);
+    // Show it on the map: where the record or the click says, else find the erf.
+    if (at) {
+      setFocus(at);
+      return;
+    }
+    const p = c.existingId ? properties.find((x) => x.id === c.existingId) : null;
+    if (p?.lat != null && p?.lng != null) {
+      setFocus({ lng: p.lng, lat: p.lat, prclKey: null });
+      return;
+    }
+    if (c.property.kind === "erf") {
+      locateErf(c.property.erfNumber).then((hit) => setFocus(hit ? { lng: hit.lng, lat: hit.lat, prclKey: hit.prclKey } : null));
+    }
+  }
+
+  // An erf clicked on the map: its Dream OS record if it has one, else a new one from the roll.
+  async function pickFromMap(e: MapErf) {
+    const at: MapFocus = { lng: e.lng, lat: e.lat, prclKey: e.prclKey };
+    const owner = await propertyForErf(e.sgNumber, e.erfNumber);
+    if (owner) {
+      pick(
+        { label: owner.address, sub: owner.suburb ?? "already in Dream OS", property: { kind: "existing", propertyId: owner.id }, existingId: owner.id },
+        at,
+      );
+      return;
+    }
+    const suburb = e.suburb ? titleCase(e.suburb) : null;
+    const address = e.address ? titleCase(e.address) : `Erf ${e.erfNumber}${suburb ? `, ${suburb}` : ""}`;
+    pick(
+      {
+        label: address,
+        sub: [`Erf ${e.erfNumber}`, suburb, "new record"].filter(Boolean).join(" · "),
+        property: {
+          kind: "erf",
+          erfNumber: e.erfNumber,
+          sgNumber: e.sgNumber,
+          address,
+          suburb,
+          extentSqm: e.extentSqm,
+          titleDeedNo: e.titleDeedNo,
+        },
+        existingId: null,
+      },
+      at,
+    );
   }
 
   const sellerValue = sellerOpen ? normaliseSeller(seller) : null;
@@ -142,6 +195,7 @@ export default function MandateTakeOn({
 
   return (
     <>
+      <div className="takeon-where">
       <fieldset className="docstart-step">
         <legend>Which property?</legend>
         {chosen ? (
@@ -150,7 +204,15 @@ export default function MandateTakeOn({
               <b>{chosen.label}</b>
               {chosen.sub && <span className="docstart-sub"> · {chosen.sub}</span>}
             </span>
-            <button type="button" className="docstart-link" onClick={() => setChosen(null)} disabled={pending}>
+            <button
+              type="button"
+              className="docstart-link"
+              onClick={() => {
+                setChosen(null);
+                setFocus(null);
+              }}
+              disabled={pending}
+            >
               Change
             </button>
           </div>
@@ -167,8 +229,8 @@ export default function MandateTakeOn({
             />
             {q.length < 2 ? (
               <p className="docstart-note">
-                Type the address. If the property is already in Dream OS, you&apos;ll pick its record; if not,
-                it&apos;s created for you.
+                Type the address, or find the property on the map and click its erf. If it&apos;s already in
+                Dream OS you&apos;ll get its record; if not, it&apos;s created for you.
               </p>
             ) : (
               <div className="docstart-results">
@@ -245,6 +307,9 @@ export default function MandateTakeOn({
           </>
         )}
       </fieldset>
+
+        <ErfPickerMap token={mapboxToken} focus={focus} onPick={pickFromMap} />
+      </div>
 
       {chosen && (
         <fieldset className="docstart-step">

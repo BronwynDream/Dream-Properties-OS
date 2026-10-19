@@ -16,6 +16,8 @@ export type StartProperty = {
   id: string;
   address: string;
   suburb: string | null;
+  lat: number | null;
+  lng: number | null;
   listingId: string | null;
   transferId: string | null;
   mine: boolean;
@@ -84,7 +86,7 @@ const FAMILIES: Family[] = [
 
 const SHOW = 8;
 
-export default function DocumentStart({ properties }: { properties: StartProperty[] }) {
+export default function DocumentStart({ properties, mapboxToken }: { properties: StartProperty[]; mapboxToken: string }) {
   const router = useRouter();
   const [familyKey, setFamilyKey] = useState<string | null>(null);
   const [variantCode, setVariantCode] = useState<string | null>(null);
@@ -194,6 +196,7 @@ export default function DocumentStart({ properties }: { properties: StartPropert
               key={family.key}
               type={variant ? (variant.code.slice("mandate:".length) as "exclusive" | "joint" | "open") : null}
               properties={properties}
+              mapboxToken={mapboxToken}
             />
           ) : (
             <>

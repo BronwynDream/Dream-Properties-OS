@@ -40,6 +40,48 @@ export type TakeOnProperty =
     }
   | { kind: "new"; address: string };
 
+/** The erf's parcel on the map: key + centroid (cadastral_parcel, Knysna). */
+export async function locateErf(erfNumber: string): Promise<{ prclKey: string; lng: number; lat: number } | null> {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user || !erfNumber.trim()) return null;
+  const { data } = await createServiceClient().rpc("erf_centroid_lookup", { p_erf_number: erfNumber.trim() });
+  const row = (Array.isArray(data) ? data[0] : data) as { prcl_key: string; lng: number; lat: number } | null;
+  if (!row) return null;
+  const lng = Number(row.lng);
+  const lat = Number(row.lat);
+  return Number.isFinite(lng) && Number.isFinite(lat) ? { prclKey: row.prcl_key, lng, lat } : null;
+}
+
+/** A Dream OS property that already has this erf attached, if any. */
+export async function propertyForErf(
+  sgNumber: string | null,
+  erfNumber: string | null,
+): Promise<{ id: string; address: string; suburb: string | null } | null> {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
+  let pid: string | null = null;
+  if (sgNumber) {
+    const { data } = await supabase.from("erf").select("property_id").eq("sg_number", sgNumber).limit(1).maybeSingle();
+    pid = data?.property_id ?? null;
+  }
+  if (!pid && erfNumber) {
+    // Erf numbers repeat across towns; only trust a number match when it's unique.
+    const { data } = await supabase.from("erf").select("property_id").eq("erf_number", erfNumber).limit(2);
+    if (data && data.length === 1) pid = data[0].property_id;
+  }
+  if (!pid) return null;
+  const { data: p } = await supabase.from("property").select("id, primary_address, suburb:suburb_id(name)").eq("id", pid).maybeSingle();
+  if (!p) return null;
+  const sub = (Array.isArray(p.suburb) ? p.suburb[0] : p.suburb) as { name: string } | null;
+  return { id: p.id, address: p.primary_address, suburb: sub?.name ?? null };
+}
+
 type Result = { ok: true; propertyId: string; listingId: string } | { ok: false; error: string };
 
 const OPEN = ["draft", "live", "under_offer"];

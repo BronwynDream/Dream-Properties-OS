@@ -8,6 +8,29 @@ _Last updated: 2026-10-19_
 
 ---
 
+## MANDATE TAKE-ON: FIND THE PROPERTY ON THE MAP TOO (2026-10-19)
+
+**Feedback moment (Simon, verbatim):** "i think the search bar should allow
+you to find the property on the map as well?"
+
+**Shipped**
+- `app/documents/ErfPickerMap.tsx` (new, client-only via next/dynamic):
+  a 340 px satellite map beside the take-on search. Parcel tiles
+  (`/api/tiles/parcels`, from zoom 14) with hover highlight; clicking an erf
+  reads `/api/muni/at-erf` exactly like the main map's erf popup and picks
+  it. Picking a search result flies the map there and outlines the erf in
+  gold (or drops a marker when only the record's lat/lng is known).
+- `app/documents/actions.ts`: `locateErf(erfNumber)` (rpc
+  erf_centroid_lookup → prcl_key + centroid) and `propertyForErf(sg, erf)`
+  (an erf clicked on the map that's already on a Dream OS record picks that
+  record, not a new one; erf-number match only when unique).
+- `page.tsx` now selects property lat/lng and passes NEXT_PUBLIC_MAPBOX_TOKEN.
+- CSS `.takeon-where` (two columns, stacks under 760 px), `.erfmap*`;
+  `.docstart-panel` widened to 1040 px.
+
+**Verification**: tsc clean, build passes. **Map render NOT yet loaded in a
+browser** — house rule: check it live after Simon pushes, before relying on it.
+
 ## MANDATE FROM DOCUMENTS: TAKE ON THE PROPERTY + SELLER, THEN THE EDITOR (2026-10-19)
 
 **Feedback moment (Simon, verbatim):** "I would imagine you wouldn't have a
