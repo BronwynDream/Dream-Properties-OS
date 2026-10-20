@@ -41,7 +41,7 @@ export const FEEDS: FeedDef[] = [
     key: "property24",
     label: "Property24 index",
     what: "Discovers Knysna listings on Property24 and drains their detail pages through Firecrawl. Each run does one batch; the queue depth shows what is left.",
-    cadence: "weekly",
+    cadence: "daily",
     mapSource: "property24",
     route: "/api/sources/property24/refresh",
   },

@@ -4,7 +4,33 @@ Running log of what's decided, built, and next. Updated at the end of each worki
 session. `PROJECT.md` remains the canonical business/design doc; this file is the
 "where are we right now" companion.
 
-_Last updated: 2026-10-19_
+_Last updated: 2026-10-20_
+
+---
+
+## MORNING HEALTH EMAIL + PROPERTY24 DAILY (2026-10-20)
+
+Simon: "how do we set up a dream OS daily health check?" and asked to see the
+email draft first — approved ("ok. looks good").
+
+**Shipped**
+- `lib/health/dailyReport.ts`: `collect()` (feed lights from v_feed_latest,
+  Dream website new/taken-down in 24 h with address + price, P24 active/new/
+  gone/queue/missing coords, open reports + errors from app_feedback) and
+  `render()` → subject "Dream OS · All good · 21 Oct" / "· N things need
+  attention ·", HTML + text.
+- `app/api/health/daily/route.ts`: cron (Bearer CRON_SECRET) emails every
+  active director via Resend (RESEND_API_KEY + NOTIFY_FROM, already set for
+  notifyAdmins). Signed-in director: shows a preview; `?send=1` sends now.
+- `vercel.json`: health email `0 5 * * *` (07:00–08:00 SAST; Hobby fires
+  anywhere in the hour). **Property24 weekly → daily `0 2 * * *`**; registry
+  cadence weekly → daily so the light goes amber after 36 h.
+- Hobby plan = daily crons only (an hourly cron silently blocked deploys in
+  July). P24 backlog beyond 12/day: Data Health → Drain queue.
+
+**Verification**: tsc, eslint, build; email rendered from sample data and
+screenshot at 640/390 px. NOT verified: a real send (first one tomorrow
+morning), preview against live data.
 
 ---
 

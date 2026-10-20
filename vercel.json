@@ -6,7 +6,7 @@
     },
     {
       "path": "/api/sources/property24/refresh",
-      "schedule": "0 5 * * 1"
+      "schedule": "0 2 * * *"
     },
     {
       "path": "/api/sources/dream/refresh",
@@ -15,6 +15,10 @@
     {
       "path": "/api/sources/dream/sync-os",
       "schedule": "15 3 * * *"
+    },
+    {
+      "path": "/api/health/daily",
+      "schedule": "0 5 * * *"
     }
   ]
 }
