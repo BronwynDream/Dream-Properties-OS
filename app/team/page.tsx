@@ -130,7 +130,7 @@ export default async function TeamPage() {
         email,
         phone: a.phone ?? null,
         listings: live.get(a.id) ?? 0,
-        inviteRole: a.invite_role === "admin" ? ("admin" as const) : ("agent" as const),
+        inviteRole: a.invite_role === "admin" ? ("admin" as const) : a.invite_role === "compliance" ? ("compliance" as const) : ("agent" as const),
         state,
         invitedAt: au?.invited_at ?? null,
         lastSignIn: au?.last_sign_in_at ?? null,

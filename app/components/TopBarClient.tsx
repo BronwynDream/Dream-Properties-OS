@@ -45,6 +45,7 @@ const ADMIN: Group = {
   children: [
     { href: "/admin/health", label: "Data health" },
     { href: "/compliance", label: "Compliance" },
+    { href: "/fica", label: "FICA desk" },
     { href: "/triage", label: "Triage" },
     { href: "/dupes", label: "Dupes" },
     { href: "/team", label: "Team" },
@@ -76,7 +77,9 @@ export default function TopBarClient({
 }) {
   const path = usePathname();
   const isAdmin = role === "admin";
-  const groups: Group[] = isAdmin ? [MORE, ADMIN] : [MORE];
+  const isCompliance = role === "compliance";
+  const primary: Leaf[] = isCompliance ? [{ href: "/fica", label: "FICA desk" }] : PRIMARY;
+  const groups: Group[] = isCompliance ? [] : isAdmin ? [MORE, ADMIN] : [MORE];
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   useEffect(() => setDrawerOpen(false), [path]);
@@ -108,7 +111,7 @@ export default function TopBarClient({
         </Link>
 
         <nav className="topbar-nav" aria-label="Primary">
-          {PRIMARY.map((item) => {
+          {primary.map((item) => {
             const active = isActiveHref(path, item.href);
             return (
               <Link
@@ -165,7 +168,7 @@ export default function TopBarClient({
         </nav>
 
         <div className="topbar-tools">
-          <CommandSearch />
+          {!isCompliance && <CommandSearch />}
           <ReportProblem />
           <Menu
             id="who"
@@ -201,7 +204,7 @@ export default function TopBarClient({
         onClick={() => setDrawerOpen(false)}
       >
         <nav className="topbar-drawer-nav" aria-label="Primary (mobile)" onClick={(e) => e.stopPropagation()}>
-          {PRIMARY.map((item) => (
+          {primary.map((item) => (
             <DrawerLink key={item.href} item={item} path={path} onPick={() => setDrawerOpen(false)} />
           ))}
           {groups.map((g) => (

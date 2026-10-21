@@ -303,7 +303,7 @@ export async function setAgentAccess(input: { agentId: string; on: boolean }) {
       id: authUserId,
       full_name: agent.full_name,
       email,
-      role: agent.invite_role === "admin" ? "admin" : "agent",
+      role: agent.invite_role === "admin" ? "admin" : agent.invite_role === "compliance" ? "compliance" : "agent",
       phone: agent.phone ?? null,
       active: true,
     },
@@ -337,7 +337,7 @@ export async function addRosterPerson(input: {
   full_name: string;
   email: string;
   phone?: string | null;
-  role: "agent" | "admin";
+  role: "agent" | "admin" | "compliance";
 }) {
   const gate = await requireAdmin();
   if (!gate.ok) return { ok: false as const, error: gate.error };
@@ -358,12 +358,12 @@ export async function addRosterPerson(input: {
     full_name,
     email,
     phone: (input.phone ?? "").trim() || null,
-    invite_role: input.role === "admin" ? "admin" : "agent",
+    invite_role: input.role === "admin" ? "admin" : input.role === "compliance" ? "compliance" : "agent",
   };
   let { data, error } = await service.from("agent").insert(row).select("id").single();
   if (error && /invite_role/.test(error.message)) {
-    if (input.role === "admin") {
-      return { ok: false as const, error: "Adding a director needs migration 0087 first." };
+    if (input.role !== "agent") {
+      return { ok: false as const, error: "Adding a director or compliance person needs migration 0087 first." };
     }
     delete row.invite_role;
     ({ data, error } = await service.from("agent").insert(row).select("id").single());

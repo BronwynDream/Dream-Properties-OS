@@ -14,7 +14,7 @@ export type RosterRow = {
   email: string;
   phone: string | null;
   listings: number;
-  inviteRole: "agent" | "admin";
+  inviteRole: "agent" | "admin" | "compliance";
   state: "director" | "active" | "invited" | "off" | "none";
   invitedAt: string | null;
   lastSignIn: string | null;
@@ -34,7 +34,7 @@ function statusText(r: RosterRow): string {
     case "off":
       return "Access switched off";
     default:
-      return r.inviteRole === "admin" ? "Director-to-be · not invited" : "No access · not invited";
+      return r.inviteRole === "admin" ? "Director-to-be · not invited" : r.inviteRole === "compliance" ? "Compliance · not invited" : "No access · not invited";
   }
 }
 
@@ -65,7 +65,7 @@ function AddPerson({ onAdded }: { onAdded: (r: RosterRow) => void }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  const [role, setRole] = useState<"agent" | "admin">("agent");
+  const [role, setRole] = useState<"agent" | "admin" | "compliance">("agent");
   const [err, setErr] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
@@ -123,9 +123,10 @@ function AddPerson({ onAdded }: { onAdded: (r: RosterRow) => void }) {
         </label>
         <label>
           <span>Access when switched on</span>
-          <select value={role} onChange={(e) => setRole(e.target.value as "agent" | "admin")}>
+          <select value={role} onChange={(e) => setRole(e.target.value as "agent" | "admin" | "compliance")}>
             <option value="agent">Agent</option>
             <option value="admin">Director</option>
+            <option value="compliance">Compliance (FICA desk only)</option>
           </select>
         </label>
       </div>
@@ -196,7 +197,7 @@ function RosterItem({ row }: { row: RosterRow }) {
             <span>
               {asking === "on"
                 ? r.state === "none"
-                  ? `Send ${first} an invitation to Dream OS${r.inviteRole === "admin" ? " as a director" : ""}?`
+                  ? `Send ${first} an invitation to Dream OS${r.inviteRole === "admin" ? " as a director" : r.inviteRole === "compliance" ? " for the FICA desk" : ""}?`
                   : `Switch ${first}'s access back on?`
                 : `Switch off ${first}'s access now?`}
             </span>

@@ -8,6 +8,84 @@ _Last updated: 2026-10-21_
 
 ---
 
+## COMPLIANCE ROLE + FICA DESK (2026-10-21)
+
+**Brief (Simon, verbatim):** "create a compliance role within Dream, and the
+compliance role will only have access to relevant information. This role
+cannot have access to any commission information or any agreement of sale
+information, and should only access the second page of any sale agreement if
+that's possible. The job and the role of this function is to chase up all gaps
+in the [FICA] documentation and all missing documents. This role should also
+have a secondary function where she can load documents ... through the
+intake". Question-card answers: every deal; show asking price only; page 2 =
+parties' details; she may upload AND fill in details.
+
+**Design:** `compliance` is a new app_role that is NOT staff, so every RLS
+policy still gives her nothing. Her whole Dream OS is the **FICA desk**
+(`/fica`, `/fica/[transferId]`), read with the service key after
+`deskUser()` (lib/ficaDesk.ts) checks role admin|compliance, from a fixed
+column list. Never selected for the desk: commission, offer, agreement,
+mandate, transfer.name, sale prices.
+
+**Shipped**
+- Migration **0090_compliance_role.sql**: enum value, `is_compliance()`,
+  feedback insert for her, plus holes found in review (below).
+- `lib/ficaDesk.ts`: `loadDeals()` (deal, erven, suburb, status, agent,
+  listing asking price, sellers/buyers with whitelisted party fields, FICA
+  row, party-linked FICA/company docs, unassigned FICA docs on the deal,
+  agreements, cert docs, cert gaps for sale_agreed/in_conveyancing),
+  `partyGaps()` (the gap rules: ID/passport no. + copy, residential address +
+  proof, marital status + marriage cert if married; entities: reg no.,
+  CIPC/trust deed, resolution, address + proof; FICA status/age),
+  `documentAccess()` (full for fica/company/compliance categories that are on
+  a deal; page2 for agreement_of_sale/land_freehold_agreement).
+- `app/fica/*`: list (live/all, search, sorted by gaps), deal page (person
+  cards: gaps, docs, upload, edit details, FICA status/risk/source of
+  funds/notes), assign unassigned docs, page-2 link, certificates.
+  `app/fica/actions.ts`: savePartyDetails (whitelist, enum checks,
+  display_name kept in step), setFica (keeps verified_at on re-save),
+  startUpload/finishUpload (signed upload URL + HMAC ticket so a path can't
+  be swapped for someone else's file), assignDocument (refuses papers from
+  another deal on the same property). All ids UUID-checked.
+- `app/api/fica/doc/[id]`: FICA docs → 2-min signed link; agreements →
+  **page 2 rendered to an image with mupdf (new dep, pinned 1.3.6, wasm,
+  next.config externals + tracing) in a fresh PDF**. pdf-lib copyPages was
+  tested and REJECTED: shared form fields/resources/links drag other pages'
+  objects into the copy.
+- Lock-out: middleware passes `x-pathname`; TopBar redirects compliance to
+  /fica (allowed: /fica, /account); nav shows only "FICA desk"; no search.
+  Directors get Admin → FICA desk.
+- Intake: senders must be active; LIKE wildcards escaped in the sender match;
+  compliance sender = **file only** (no new property/party, no extract, no
+  commit_batch); property → linked to the property and its single live deal;
+  "Client:" → linked to the matched person; unmatched/unclassified → left in
+  /triage for a director.
+- Team: role "Compliance (FICA desk only)" in Add person; invite maps
+  invite_role compliance → app_user.role compliance.
+
+**Security review (independent agent) — fixed:** page-2 leak (→ image);
+`muni_property_public` was readable by ANY signed-in user and possibly anon
+(purchase prices, bonds) → `where is_staff()` + revoke anon; ingest_* /
+extraction / match_candidate policies trusted created_by only → now staff;
+party_insert allowed non-staff → staff; tax_residency is an enum (was free
+text → save always failed); upload path swap (→ HMAC ticket + already-filed
+check); docs not on any deal; agreement titles (carry the deal name) not
+shown; party on both sides; `..` in filenames; redirect loop for a switched-off
+compliance login (/fica now 404s instead).
+**Not fixed (noted):** "Client:" intake uses fuzzy name match (could file on
+the wrong person); KYC forms/notes may mention money (inherent);
+`upsert_parcel` / `snap_all_*` RPCs have no role check (pre-existing, map
+data only).
+
+**Verification:** 0090 applied twice on the local stub; as compliance: 0 rows
+from property/transfer/party/document/listing/muni_property_public, party and
+batch inserts blocked, feedback insert OK; as agent: muni view + inserts still
+work; anon can't read the view. mupdf page-2 render tested (no other page's
+text in output). tsc, eslint, build. NOT verified live: needs 0090 applied,
+a compliance login, and a real signed agreement PDF.
+
+---
+
 ## SPEED: SERVER MOVED NEXT TO THE DATABASE (2026-10-21)
 
 Simon: "the system is really slow. what can we do to fix it"

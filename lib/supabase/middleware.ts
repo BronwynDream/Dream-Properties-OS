@@ -45,5 +45,12 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  return supabaseResponse;
+  // Pass the path to server components (TopBar keeps the compliance role on
+  // the FICA desk; 2026-10-21). Rebuild the response with the extra request
+  // header and carry over any auth cookies Supabase refreshed above.
+  const headers = new Headers(request.headers);
+  headers.set("x-pathname", path);
+  const res = NextResponse.next({ request: { headers } });
+  supabaseResponse.cookies.getAll().forEach((c) => res.cookies.set(c));
+  return res;
 }

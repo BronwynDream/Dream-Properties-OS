@@ -5,15 +5,16 @@
 
 // Mirrors supabase's app_role enum (0001_init.sql). Kept local so we don't
 // depend on generated types — the enum values are tiny and rarely change.
-export type AppRole = "admin" | "agent" | "conveyancer" | "client";
+export type AppRole = "admin" | "agent" | "compliance" | "conveyancer" | "client";
 
-export const ROLE_ORDER: AppRole[] = ["admin", "agent", "conveyancer", "client"];
+export const ROLE_ORDER: AppRole[] = ["admin", "agent", "compliance", "conveyancer", "client"];
 
 // Dream-facing label — "admin" is a technical role in Supabase; Bronwyn reads
 // as a Director. Titles like "Sales & Marketing" live in app_user.job_title.
 export const ROLE_LABEL: Record<AppRole, string> = {
   admin: "Director",
   agent: "Agent",
+  compliance: "Compliance",
   conveyancer: "Conveyancer",
   client: "Client",
 };
@@ -25,6 +26,8 @@ export const ROLE_ACCESS: Record<AppRole, string> = {
     "Full access to every property, transfer, party, and document — plus team management.",
   agent:
     "Full detail on the deals they work on (sellers, buyers, offers, documents, FICA) and their own contacts. Everywhere else, public facts only: the map, property facts, who it's listed by, and past sale dates and prices.",
+  compliance:
+    "The FICA desk only: every deal's sellers and buyers, their FICA documents and details, certificates, and page 2 of each agreement of sale. No commission, sale prices, offers, mandates or the rest of the agreement.",
   conveyancer:
     "External. Reserved for scoped magic-link transfer rooms (not yet enabled) — a conveyancer only sees the deal they're conveyancing.",
   client:
@@ -48,6 +51,11 @@ export const ROLE_PILL: Record<
     border: "rgba(19,43,132,0.20)",
     fg: "var(--estuary)",
   },
+  compliance: {
+    bg: "rgba(61,122,78,0.10)",
+    border: "rgba(61,122,78,0.35)",
+    fg: "#2B5A3A",
+  },
   conveyancer: {
     bg: "rgba(28,91,58,0.08)",
     border: "rgba(28,91,58,0.25)",
@@ -61,5 +69,5 @@ export const ROLE_PILL: Record<
 };
 
 export function isAppRole(v: unknown): v is AppRole {
-  return v === "admin" || v === "agent" || v === "conveyancer" || v === "client";
+  return v === "admin" || v === "agent" || v === "compliance" || v === "conveyancer" || v === "client";
 }

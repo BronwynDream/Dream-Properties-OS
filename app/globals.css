@@ -3151,3 +3151,56 @@ button.doc-thumb {
 .reports-item pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px; background: var(--paper-1); padding: 8px; border-radius: var(--radius-sm); max-height: 240px; overflow: auto; }
 .reports-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
 .reports-empty { color: var(--paper-mute); }
+
+/* FICA desk (2026-10-21) */
+.fica-wrap { max-width: 1040px; margin: 0 auto; padding: 24px max(16px, env(safe-area-inset-right, 0px)) 56px max(16px, env(safe-area-inset-left, 0px)); }
+.fica-head { margin: 0 0 18px; }
+.fica-head .eyebrow { margin: 0 0 4px; font-family: var(--font-mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--navy); }
+.fica-head h1 { margin: 0 0 6px; font-size: clamp(22px, 4vw, 30px); color: var(--estuary); text-wrap: balance; }
+.fica-sub { margin: 0; font-size: 14px; color: var(--paper-mute); }
+.fica-back { margin: 0 0 12px; font-size: 14px; } .fica-back a { color: var(--navy); }
+.fica-tools { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 0 0 16px; }
+.fica-tools input { flex: 1 1 240px; min-height: 44px; padding: 8px 12px; font: inherit; font-size: 15px; border: 1px solid var(--line-strong); border-radius: var(--radius-md); background: var(--white); color: var(--ink); }
+.fica-tools .btn-secondary { min-height: 44px; }
+.fica-tools .reports-tabs { margin: 0; }
+.fica-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.fica-row { display: flex; gap: 14px; align-items: center; justify-content: space-between; padding: 14px 16px; background: var(--white); border: 1px solid var(--line-soft); border-left: 4px solid var(--critical); border-radius: var(--radius-lg); text-decoration: none; color: var(--ink); }
+.fica-row.clear { border-left-color: var(--positive); }
+.fica-row:hover { border-color: var(--line-strong); }
+.fica-row:focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; }
+.fica-row-main { display: grid; gap: 4px; min-width: 0; }
+.fica-addr { font-weight: 600; font-size: 16px; color: var(--estuary); }
+.fica-meta { font-size: 13px; color: var(--paper-mute); }
+.fica-people { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; }
+.fica-people .warn { color: var(--critical); } .fica-people .ok { color: var(--positive); }
+.fica-count { flex: none; font-family: var(--font-mono); font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 999px; background: #F6E1D9; color: var(--critical); white-space: nowrap; }
+.fica-count.ok { background: #DCEBDF; color: #2B5A3A; }
+.fica-callout { padding: 12px 14px; border-radius: var(--radius-md); background: #F3E6CF; color: #7A4A12; font-size: 14px; }
+.fica-parties { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr)); margin: 0 0 24px; }
+.fica-card { background: var(--white); border: 1px solid var(--line-soft); border-top: 4px solid var(--critical); border-radius: var(--radius-lg); padding: 16px 18px; display: grid; gap: 16px; align-content: start; min-width: 0; }
+.fica-card.clear { border-top-color: var(--positive); }
+.fica-card-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+.fica-card-head .eyebrow { margin: 0 0 2px; font-family: var(--font-mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--navy); }
+.fica-card h2 { margin: 0; font-size: 19px; color: var(--estuary); overflow-wrap: anywhere; }
+.fica-card h3, .fica-section h2 { margin: 0 0 8px; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-700); }
+.fica-section { background: var(--white); border: 1px solid var(--line-soft); border-radius: var(--radius-lg); padding: 16px 18px; margin: 0 0 16px; display: grid; gap: 10px; }
+.fica-h3row { display: flex; justify-content: space-between; align-items: baseline; }
+.fica-gaps { list-style: none; margin: 0; padding: 10px 12px; background: #FBEFEA; border-radius: var(--radius-md); display: grid; gap: 4px; font-size: 14px; color: var(--critical); }
+.fica-gaps li::before { content: "○ "; }
+.fica-docs { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 6px; font-size: 14px; }
+.fica-docs li { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; }
+.fica-docs a { color: var(--navy); font-weight: 500; overflow-wrap: anywhere; }
+.fica-when { font-family: var(--font-mono); font-size: 12px; color: var(--paper-mute); }
+.fica-upload, .fica-assign { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.fica-upload select, .fica-assign select, .fica-form input, .fica-form select, .fica-form textarea {
+  font: inherit; font-size: 15px; padding: 8px 10px; min-height: 40px; border: 1px solid var(--line-strong); border-radius: var(--radius-md); background: var(--white); color: var(--ink); max-width: 100%; box-sizing: border-box;
+}
+.fica-upload .btn-secondary, .fica-assign .btn-secondary { min-height: 40px; }
+.fica-dl { margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px 16px; }
+.fica-dl div { min-width: 0; } .fica-dl dt { font-size: 12px; color: var(--paper-mute); } .fica-dl dd { margin: 0; font-size: 14px; overflow-wrap: anywhere; } .fica-dl dd.empty { color: var(--critical); }
+.fica-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); gap: 10px 14px; }
+.fica-form label { display: grid; gap: 4px; font-size: 13px; color: var(--ink-700); min-width: 0; }
+.fica-form label.wide, .fica-form .wide { grid-column: 1 / -1; }
+.fica-form .fica-check { display: flex; align-items: center; gap: 8px; }
+.fica-form-go { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.fica-form-go button { min-height: 44px; }

@@ -180,8 +180,10 @@ async function handlePost(request: Request) {
   // 5. Sender allow-list: must be an app_user.
   const { data: appUser } = await supabase
     .from("app_user")
-    .select("id, email")
-    .ilike("email", fromEmail)
+    .select("id, email, role, active")
+    // Exact, case-insensitive: escape LIKE wildcards so a From header with
+    // % or _ can't match someone else (security review 2026-10-21).
+    .ilike("email", fromEmail.replace(/[\\%_]/g, (c) => `\\${c}`))
     .maybeSingle();
   if (!appUser?.id) {
     return NextResponse.json(
@@ -189,6 +191,15 @@ async function handlePost(request: Request) {
       { status: 403 },
     );
   }
+  // Switched-off users can't send in (2026-10-21).
+  if (appUser.active === false) {
+    return NextResponse.json({ error: `sender ${fromEmail} is switched off` }, { status: 403 });
+  }
+  // The compliance role (0090) files documents only: no new properties or
+  // people, no extraction, no commit_batch (which can open deals and write
+  // agreement and commission rows). Unmatched email waits in /triage for a
+  // director.
+  const complianceSender = String(appUser.role) === "compliance";
 
   const rawSubject = (email.subject ?? "").trim();
   const textBody = (email.text ?? "").trim();
@@ -199,8 +210,8 @@ async function handlePost(request: Request) {
 
   const target =
     intent === "client"
-      ? await resolveParty(supabase, subjectValue, label)
-      : await resolveProperty(supabase, subjectValue, label);
+      ? await resolveParty(supabase, subjectValue, label, !complianceSender)
+      : await resolveProperty(supabase, subjectValue, label, !complianceSender);
 
   // 7. Create the batch — one of property_id / party_id is set.
   // auto_commit_allowed is set to true here (the intake webhook) so the
@@ -214,8 +225,11 @@ async function handlePost(request: Request) {
     provider_message_id: providerMessageId,
     auto_commit_allowed: true,
   };
-  if (intent === "property") batchInsert.property_id = target.id;
-  else batchInsert.party_id = target.id;
+  if (complianceSender) batchInsert.auto_commit_allowed = false;
+  if (target.id) {
+    if (intent === "property") batchInsert.property_id = target.id;
+    else batchInsert.party_id = target.id;
+  }
 
   const { data: batch, error: bErr } = await supabase
     .from("ingest_batch")
@@ -358,7 +372,17 @@ async function handlePost(request: Request) {
     filed: number;
     deduped: number;
   } | null = null;
-  if (intent === "property" && target.id) {
+  if (complianceSender) {
+    if (target.id) {
+      try {
+        const res = await fileComplianceBatch(supabase, batch.id, appUser.id, intent, target.id);
+        autoFiled = { filed: res.filed, deduped: 0 };
+        if (res.error) errors.push(`compliance-file: ${res.error}`);
+      } catch (e) {
+        errors.push(`compliance-file: ${(e as Error).message}`);
+      }
+    }
+  } else if (intent === "property" && target.id) {
     try {
       const filingOnly = await batchIsFilingOnly(supabase, batch.id);
       if (filingOnly) {
@@ -515,7 +539,7 @@ function normaliseSubjectValue(s: string): string {
 }
 
 type ResolveResult = {
-  id: string;
+  id: string | null;
   batchLabel: string;
   matched: boolean;
   matchedName: string | null;
@@ -525,6 +549,7 @@ async function resolveProperty(
   supabase: SupabaseClient,
   subjectValue: string,
   fallbackLabel: string,
+  allowCreate = true,
 ): Promise<ResolveResult> {
   const q = subjectValue.trim();
   if (q.length >= 3) {
@@ -543,6 +568,7 @@ async function resolveProperty(
     }
   }
 
+  if (!allowCreate) return { id: null, batchLabel: `Unmatched · ${fallbackLabel}`, matched: false, matchedName: null };
   const primary_address = q || "(untitled intake)";
   const { data: newProp, error } = await supabase
     .from("property")
@@ -564,6 +590,7 @@ async function resolveParty(
   supabase: SupabaseClient,
   subjectValue: string,
   fallbackLabel: string,
+  allowCreate = true,
 ): Promise<ResolveResult> {
   const q = subjectValue.trim();
   if (q.length >= 3) {
@@ -582,6 +609,7 @@ async function resolveParty(
     }
   }
 
+  if (!allowCreate) return { id: null, batchLabel: `Unmatched client · ${fallbackLabel}`, matched: false, matchedName: null };
   const display_name = q || "(untitled client)";
   const { data: newParty, error } = await supabase
     .from("party")
@@ -621,4 +649,64 @@ function safeFilename(raw: string): string {
     .trim()
     .slice(0, 180);
   return cleaned || "attachment";
+}
+
+// Compliance intake (2026-10-21): file every classified attachment as a
+// document — on the property (and its one live deal, if there is exactly
+// one) or on the matched person. Nothing is extracted or committed.
+async function fileComplianceBatch(
+  supabase: SupabaseClient,
+  batchId: string,
+  userId: string,
+  intent: "property" | "client",
+  targetId: string,
+): Promise<{ filed: number; error?: string }> {
+  const links: { entity_type: string; entity_id: string }[] = [];
+  if (intent === "property") {
+    links.push({ entity_type: "property", entity_id: targetId });
+    const { data: live } = await supabase
+      .from("transfer")
+      .select("id")
+      .eq("property_id", targetId)
+      .in("status", ["preparing", "mandate", "listed", "under_offer", "sale_agreed", "in_conveyancing"]);
+    if (live && live.length === 1) links.push({ entity_type: "transfer", entity_id: live[0].id as string });
+  } else {
+    links.push({ entity_type: "party", entity_id: targetId });
+  }
+  const { data: files } = await supabase
+    .from("ingest_file")
+    .select("id, original_filename, storage_bucket, storage_path, mime_type, byte_size, is_pii, detected_doc_type_id, status")
+    .eq("batch_id", batchId);
+  let filed = 0;
+  let left = 0;
+  for (const f of (files ?? []) as Record<string, unknown>[]) {
+    if (f.status === "committed") continue;
+    const fname = String(f.original_filename ?? "");
+    if (fname.toLowerCase().endsWith(".eml") || /email-body\.txt$/i.test(fname) || String(f.storage_path ?? "").endsWith("00-email-body.txt")) continue;
+    if (!f.detected_doc_type_id) {
+      left++; // unclassified: leave the batch open in /triage for a director
+      continue;
+    }
+    const { data: doc, error } = await supabase
+      .from("document")
+      .insert({
+        doc_type_id: f.detected_doc_type_id,
+        title: f.original_filename,
+        storage_bucket: f.storage_bucket,
+        storage_path: f.storage_path,
+        mime_type: f.mime_type,
+        byte_size: f.byte_size,
+        is_pii: f.is_pii,
+        status: "final",
+        uploaded_by: userId,
+      })
+      .select("id")
+      .single();
+    if (error || !doc) return { filed, error: error?.message ?? "document insert failed" };
+    await supabase.from("document_link").insert(links.map((l) => ({ document_id: doc.id, ...l })));
+    await supabase.from("ingest_file").update({ committed_document_id: doc.id, status: "committed" }).eq("id", f.id as string);
+    filed++;
+  }
+  if (!left) await supabase.from("ingest_batch").update({ status: "committed" }).eq("id", batchId);
+  return { filed, error: left ? `${left} attachment(s) unclassified — left in triage` : undefined };
 }
