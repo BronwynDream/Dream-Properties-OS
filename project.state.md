@@ -4,7 +4,30 @@ Running log of what's decided, built, and next. Updated at the end of each worki
 session. `PROJECT.md` remains the canonical business/design doc; this file is the
 "where are we right now" companion.
 
-_Last updated: 2026-10-20_
+_Last updated: 2026-10-21_
+
+---
+
+## SPEED: SERVER MOVED NEXT TO THE DATABASE (2026-10-21)
+
+Simon: "the system is really slow. what can we do to fix it"
+
+**Diagnosis (measured from the browser pane in SA):** `x-vercel-id` =
+`cpt1::iad1::…` — requests enter Vercel in Cape Town but every page and API
+runs in **iad1 (Washington DC)** (Vercel's default), while Supabase is in
+**Ireland**. Each database query crossed the Atlantic (~80 ms) and pages make
+many queries; an API that does no database work still took ~500 ms warm,
+1.2 s cold.
+
+**Shipped**: `vercel.json` `"regions": ["dub1"]` (Dublin, beside Supabase
+eu-west-1). Hobby allows one region — fine.
+
+**Verification**: config only; check `x-vercel-id` shows `::dub1::` after
+deploy and compare page times.
+
+**Next if still slow**: middleware calls `auth.getUser()` (a network call to
+Supabase) on every request; heavy pages (property record, map, dashboard) run
+some queries one after another instead of in parallel; Supabase plan compute.
 
 ---
 
